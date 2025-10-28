@@ -57,7 +57,7 @@ Now go away and do something more productive. Like scrolling through memes.
 - [Bani Baskara](https://github.com/icedeyes12/)
 
 ### Team
-- [deepseek](https://www.deepseek.com/)
+- [DeepSeek](https://www.deepseek.com/)
 - [GPT](https://chatgpt.com/)
 - [Qwen](https://github.com/QwenLM/Qwen3-Coder)
 - [Aihara](https://guthib.com/icedeyes12/yuzu-companion)
