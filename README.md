@@ -29,7 +29,7 @@ But honestly, just ask ChatGPT. It will explain it better.
 
 ---
 
-## For the 3 People Actually Reading This
+## For the People Actually Reading This
 
 If you're still here, congratulations on your attention span. This is an intimate AI companion system with:
 
