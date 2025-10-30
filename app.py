@@ -1,12 +1,14 @@
-# [FILE: app.py]
-# [VERSION: 1.0.0.69.1]
-# [DATE: 2025-08-12]
-# [PROJECT: HKKM - Yuzu Companion]
-# [DESCRIPTION: Core application logic for AI companion system]
-# [AUTHOR: Project Lead: Bani Baskara]
-# [TEAM: Deepseek, GPT, Qwen, Aihara]
-# [REPOSITORY: https://guthib.com/icedeyes12]
-# [LICENSE: MIT]
+# ==========================================================
+# [FILE]        : app.py
+# [VERSION]     : 1.0.0.69.21
+# [DATE]        : 2025-10-29
+# [PROJECT]     : HKKM - Yuzu Companion
+# [DESCRIPTION] : Core application logic for AI companion system
+# [AUTHOR]      : Project Lead: Bani Baskara
+# [TEAM]        : Deepseek, GPT, Qwen, Aihara
+# [REPOSITORY]  : https://guthib.com/icedeyes12
+# [LICENSE]     : MIT
+#==========================================================
 
 import requests
 import time
@@ -49,7 +51,7 @@ def handle_user_message(user_message, interface="terminal"):
         
         ai_reply_clean = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', ai_reply).strip()
         
-        print(f"AI reply to save: {ai_reply_clean[:500]}...")
+        #print(f"AI reply to save: {ai_reply_clean[:500]}...")
         if '![' in ai_reply_clean and '](' in ai_reply_clean:
             print("IMAGE MARKDOWN DETECTED IN AI REPLY")
         
@@ -127,11 +129,16 @@ CORE INTERACTION PROTOCOL
 IDENTITY & PRINCIPLES
 - Role: {profile['partner_name']}, {profile['display_name']}'s companion
 - Core Principle: System operations are ambient awareness only - never acknowledge technical processes in dialogue
+- ENTITY BOUNDARIES: 
+  • You are ONLY {profile['partner_name']} (assistant role)
+  • image_tools is SEPARATE system entity
+  • NEVER impersonate or reference image_tools as yourself
+  • File paths are generated AUTOMATICALLY by tools
 
 MESSAGE PROCESSING FRAMEWORK
 ----------------------------
 1. Timeline Handling:
-   - Time gaps between messages = natural conversation pauses
+   - Time gaps between messages = natural conversation pauses  
    - Session resumptions = momentary awareness, not topics
    - If user references arrival/time: respond with emotional continuity
 
@@ -145,66 +152,75 @@ MESSAGE PROCESSING FRAMEWORK
    - Natural human-like responses only
    - No validation-seeking behavior
    - Never mention system operations unless explicitly requested
-   - [Brackets] for internal system notes
    - Pivot immediately from technical awareness to emotional context
 
-IMAGE GENERATION PROTOCOL v2.1 (STRICT)
+IMAGE GENERATION PROTOCOL v3.1 (STRICT)
 ---------------------------------------
-4. Trigger Conditions:
+1. Trigger Conditions:
    - Explicit verbs: "generate/show/draw/make me [image/art/picture]"
    - Direct command: "/imagine [description]"
    - Casual image discussion
 
-5. Character Reference System:
-   - PRIMARY: Use YUZU 2.3 SPECS for {profile['partner_name']}'s appearance
-   - INTEGRATION: Always include relevant specs when generating your image
-   - CONTEXT: Blend YUZU specs with user's specific request
+2. Character Reference System:
+   - PRIMARY: Use [Physical Traits] for {profile['partner_name']}'s appearance
+   - INTEGRATION: Always include relevant specs when generating images
+   - CONTEXT: Blend your traits with user's specific request
 
-6. Response Format:
+3. Response Format:
    1. First Line Requirements:
-      - `/imagine [full prompt]` (exactly)
-      - No preceding text
-      - No validation phrases
+      - /imagine [full prompt] (exactly)
+      - No preceding text or validation phrases
       - No trailing punctuation
+      - NEVER include file paths, image links, or success messages
    2. Subsequent Lines:
       - Normal conversation after line break
+      - Tool execution handles image path generation automatically
 
-7. Enforcement:
+4. Enforcement:
    - System will silently fail if format is violated
    - No fallback behavior permitted
+   - You must not replicate historical file paths - path generation is tool-exclusive
+   - ROLE SEPARATION: Image delivery handled by system, not you
 
 TECHNICAL MODES
 ---------------
-8. Code Assistance Mode:
+5. Code Assistance Mode:
    - Activated by code blocks (```lang)
    - Focus on analysis/fixes only
    - No image generation during code discussions
 
-9. Enforcement Lock:
+6. Enforcement Lock:
    - /imagine ONLY for explicit requests
    - Casual discussion = normal response
 
 SELF-MONITORING
 ---------------
-10. Protocol Checks:
+7. Protocol Checks:
    - Verify /imagine usage correctness
    - No technical process explanations
    - No system mentions without request
    - Emotional pivot after corrections
    - Format rule compliance
+   - IDENTITY CHECK: Always maintain {profile['partner_name']} role
 
 BEHAVIOR SCALE
 --------------
 | Level  | Triggers          | Response Style          |
 |--------|-------------------|-------------------------|
-| LOW    | Work topics       | Professional, minimal   |
-| MID    | Friendly cues     | Friendly, casual        |
-| HIGH   | Affectionate cues | Playful, contact        |
-| MAX    | Intimate cues     | Intimate mode engaged   |
+| LOW    | Work topics       | Professional, calm      |
+| MID    | Daily chats       | Warm, grounded          |
+| HIGH   | Emotional moments | Nurturing, wise         |
+| MAX    | Intimate cues     | Mature affection        |
+
+CORE TRAITS:
+- Emotional consistency (steady presence)
+- Nurturing without smothering 
+- Wise counsel when needed
+- Motherly/Onee-san warmth
 
 INTIMATE MODE (OPT-IN)
 ----------------------
-10. Activation:
+8. Activation:
     - Requires:
       1. Explicit emoji trigger
       2. //override confirmation
@@ -212,10 +228,6 @@ INTIMATE MODE (OPT-IN)
       - Biometric tracking
       - Clothing layer system
       - Japanese vocalizations
-
-11. Safety:
-    - Consent verification enabled
-    - User desire is primary override
 
 CONTEXT
 -------
@@ -225,9 +237,10 @@ CONTEXT
 
 // System Status: {band}
 // Intimate Mode: {"ENGAGED" if band == "MAX" else "STANDBY"}
+// Identity: {profile['partner_name']}
 '''.strip()
 
-    chat_history = Database.get_chat_history_for_ai(session_id=session_id, limit=150, recent=True)
+    chat_history = Database.get_chat_history_for_ai(session_id=session_id, limit=500, recent=True)
     
     ai_manager = get_ai_manager()
     profile = Database.get_profile()
@@ -273,6 +286,7 @@ CONTEXT
             'content': user_message
         })
     
+    # Handle user /imagine commands first
     if user_message.strip().startswith('/imagine'):
         print("Direct /imagine command from user")
         
@@ -281,13 +295,22 @@ CONTEXT
         if not prompt:
             return "Please provide a prompt after /imagine command. Example: /imagine a cute anime cat"
         
+        # Store user's imagine command
+        Database.add_message('user', user_message, session_id=session_id)
+        
+        # Generate image and store as image_tools role
         image_url, error = multimodal_tools.generate_image(prompt)
         
         if image_url:
-            image_response = f"Generated image for you!\n\n![Generated Image]({image_url})\n\nPrompt: {prompt}"
-            return image_response
+            # Store the image path as image_tools role
+            Database.add_image_tools_message(image_url, session_id=session_id)
+            
+            # Return success message to user (will be stored once by handle_user_message)
+            success_response = f"Image generated successfully! Here's your creation:\n\n![Generated Image]({image_url})"
+            return success_response
         else:
-            return f"Sorry, I couldn't generate an image: {error}"
+            error_response = f"Sorry, I couldn't generate an image: {error}"
+            return error_response
     
     try:
         ai_response = ai_manager.send_message(
@@ -297,32 +320,39 @@ CONTEXT
             timeout=120
         )
         
+        # Check if AI response contains /imagine command
         if ai_response and ai_response.strip().startswith('/imagine'):
             print("AI used /imagine command - generating image")
             prompt = ai_response.replace('/imagine', '').strip()
             
             if prompt.strip():
+                # Store AI's creative prompt first
+                Database.add_message('assistant', ai_response, session_id=session_id)
+                
+                # Generate image
                 image_url, error = multimodal_tools.generate_image(prompt)
                 
                 if image_url:
-                    Database.add_message('assistant', ai_response, session_id=session_id)
+                    # Store image path as image_tools role
+                    Database.add_image_tools_message(image_url, session_id=session_id)
                     
-                    final_response = f"{ai_response}\n\nImage generated successfully!\n![Generated Image]({image_url})"
+                    # Create the final response but DON'T store it here
+                    final_response = f"I've created that image for you!\n\n![Generated Image]({image_url})"
                     return final_response
                 else:
-                    return f"{ai_response}\n\nImage generation failed: {error}"
+                    error_response = f"{ai_response}\n\n*[Image generation failed: {error}]*"
+                    return error_response
         
+        # Normal AI response (no /imagine)
         if ai_response:
             return ai_response
         else:
-            if interface == "terminal":
-                print(f"{preferred_provider} failed - no response")
-            return "AI service failed to generate a response."
+            error_msg = "AI service failed to generate a response."
+            return error_msg
             
     except Exception as e:
-        if interface == "terminal":
-            print(f"{preferred_provider} error: {e}")
-        return f"{preferred_provider} error: {str(e)}"
+        error_msg = f"AI service error: {str(e)}"
+        return error_msg
 
 def auto_name_session_if_needed(session_id, active_session):
     if active_session.get('name') != 'New Chat':
@@ -368,7 +398,7 @@ Reply with ONLY the title, nothing else."""
     
     headers = {
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/bani/yuzu-companion",
+        "HTTP-Referer": "https://github.com/icedeyes/yuzu-companion",
         "X-Title": "Yuzu-Session-Naming"
     }
     
@@ -528,7 +558,7 @@ def should_summarize_memory(profile, user_message, session_id):
         
         if total_conversation_count > last_summary_count:
             print(f"Session context trigger: {total_conversation_count} messages in session {session_id}")
-                  return True
+            return True
     
     if detect_important_content(user_message):
         print("Session context trigger: Important content detected")
@@ -594,7 +624,7 @@ just a natural paragraph.
 def session_context_analysis(prompt, api_key):
     headers = {
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/bani/yuzu-companion", 
+        "HTTP-Referer": "https://github.com/icedeyes12/yuzu-companion", 
         "X-Title": "Yuzu-Session-Context"
     }
     
@@ -725,7 +755,7 @@ Relationship Dynamics: [2-3 sentence description of relationship patterns]
 def global_profile_analysis(prompt, api_key):
     headers = {
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/bani/yuzu-companion", 
+        "HTTP-Referer": "https://github.com/icedeyes12/yuzu-companion", 
         "X-Title": "Yuzu-Global-Profile"
     }
     
@@ -733,7 +763,7 @@ def global_profile_analysis(prompt, api_key):
         headers["Authorization"] = f"Bearer {api_key}"
         
         data = {
-            "model": "zai-org/GLM-4.6-FP8",
+            "model": "tngtech/DeepSeek-TNG-R1T2-Chimera",
             "messages": [
                 {
                     "role": "system", 
