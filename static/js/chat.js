@@ -688,6 +688,7 @@ function createMessageElement(role, content, timestamp = null) {
     const displayTime = timestamp ? formatTimestamp(timestamp) : getCurrentTime24h();
 
     const contentContainer = document.createElement("div");
+    contentContainer.className = "message-content";
 
     if (typeof renderMessageContent !== 'undefined') {
         contentContainer.innerHTML = renderMessageContent(String(content));

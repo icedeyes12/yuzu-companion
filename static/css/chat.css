@@ -491,6 +491,8 @@ html, body {
 
 /* Optimized Messages */
 .message {
+  display: flex;
+  flex-direction: column;
   max-width: 85%;
   padding: 0.5rem 0.8rem;
   border-radius: 11px;
@@ -507,6 +509,15 @@ html, body {
   transition: all 0.3s ease;
   overflow: hidden;
   box-sizing: border-box;
+}
+
+/* Message content container */
+.message-content {
+  display: block;
+  width: 100%;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 /* ENHANCED HEADING STYLES - MERGED & IMPROVED */
