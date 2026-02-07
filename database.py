@@ -777,7 +777,6 @@ class Database:
                             
                 except Exception as e:
                     failed_count += 1
-                    print(f"Failed to decrypt message {msg_id}: {e}")
                     continue
             
             # Final commit

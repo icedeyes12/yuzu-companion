@@ -1212,8 +1212,6 @@ Relationship Dynamics: [Provide analysis of the relationship dynamics between Us
             f.write("\n=== RAW ANALYSIS ===\n")
             f.write(summary_text)
         
-        print(f"[DEBUG] Raw analysis saved to: {debug_file}")
-        
         # Parse and update profile
         profile_update = parse_global_profile_summary(summary_text)
         profile_update['last_global_summary'] = datetime.now().isoformat()
@@ -1229,18 +1227,7 @@ Relationship Dynamics: [Provide analysis of the relationship dynamics between Us
         try:
             Database.update_profile({'memory': current_memory})
             
-            # Success report
-            print(f"\n{'='*50}")
-            print(f"GLOBAL PROFILE UPDATE COMPLETE!")
-            print(f"{'='*50}")
-            print(f"✅ Sessions analyzed: {len(all_conversations)}")
-            print(f"✅ Messages processed: {total_messages_processed}")
-            print(f"✅ Data volume: {len(conversation_text):,} chars")
-            print(f"✅ Player summary: {len(current_memory.get('player_summary', '')):,} chars")
-            print(f"✅ Likes identified: {len(current_memory.get('key_facts', {}).get('likes', []))}")
-            print(f"✅ Personality traits: {len(current_memory.get('key_facts', {}).get('personality_traits', []))}")
-            print(f"✅ Relationship analysis saved")
-            print(f"{'='*50}")
+            return True
             
             return True
             
@@ -1268,7 +1255,6 @@ def _merge_profile_data(existing_memory: Dict, new_data: Dict) -> Dict:
         # Keep the more detailed summary
         if len(new_summary) > len(existing_summary) * 1.5:  # New summary is 50% longer
             result['player_summary'] = new_summary
-            print(f"[INFO] Updated player summary (new: {len(new_summary)} chars, old: {len(existing_summary)} chars)")
     
     # Merge relationship dynamics
     if 'relationship_dynamics' in new_data and new_data['relationship_dynamics']:
@@ -1293,8 +1279,6 @@ def _merge_profile_data(existing_memory: Dict, new_data: Dict) -> Dict:
             result['key_facts'][category] = combined
             
             added = len(new_items - existing_items)
-            if added > 0:
-                print(f"[INFO] Added {added} new items to {category}")
     
     # Update metadata
     result['last_global_summary'] = new_data.get('last_global_summary', '')
@@ -1347,10 +1331,6 @@ def global_profile_analysis(prompt: str, api_key: str) -> Optional[str]:
             "stream": False
         }
         
-        print(f"[DEBUG] Using model: {model}")
-        print(f"[DEBUG] Prompt tokens estimate: ~{len(prompt) // 4}")
-        print(f"[DEBUG] Max response tokens: {data['max_tokens']}")
-        
         response = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers=headers,
@@ -1367,10 +1347,7 @@ def global_profile_analysis(prompt: str, api_key: str) -> Optional[str]:
                 finish_reason = result['choices'][0]['finish_reason']
                 if finish_reason == 'length':
                     print("[WARNING] Response may have been truncated due to token limit")
-                elif finish_reason == 'stop':
-                    print("[INFO] Response completed normally")
             
-            print(f"[SUCCESS] Analysis complete: {len(content):,} characters")
             return content
             
         else:
@@ -1381,14 +1358,10 @@ def global_profile_analysis(prompt: str, api_key: str) -> Optional[str]:
                 error_detail = error_data.get('error', {}).get('message', 'Unknown')
                 error_msg += f" - {error_detail}"
                 
-                print(f"[ERROR] {error_msg}")
-                
                 # Handle specific errors
                 if "insufficient_quota" in error_detail.lower():
-                    print("[ERROR] Insufficient API quota")
                     return _try_free_model(prompt, api_key)
                 elif "model not found" in error_detail.lower():
-                    print("[WARNING] GLM-4.7 not available, trying alternatives...")
                     return _try_alternative_models(prompt, api_key)
                     
             except:
@@ -1425,8 +1398,6 @@ def _try_alternative_models(prompt: str, api_key: str) -> Optional[str]:
     }
     
     for model, max_tokens in alternatives:
-        print(f"[INFO] Trying alternative model: {model}")
-        
         try:
             # Kurangi prompt untuk model dengan context lebih kecil
             if model.endswith(":free") or "flash" in model.lower():
@@ -1464,17 +1435,13 @@ def _try_alternative_models(prompt: str, api_key: str) -> Optional[str]:
             if response.status_code == 200:
                 result = response.json()
                 content = result['choices'][0]['message']['content'].strip()
-                print(f"[SUCCESS] Got response from {model}: {len(content):,} chars")
                 return content
             else:
-                print(f"[WARNING] {model} failed: {response.status_code}")
                 continue
                 
         except Exception as e:
-            print(f"[WARNING] Error with {model}: {str(e)}")
             continue
     
-    print("[ERROR] All alternative models failed")
     return None
 
 
@@ -1494,8 +1461,6 @@ def _try_free_model(prompt: str, api_key: str) -> Optional[str]:
     }
     
     for model in free_models:
-        print(f"[INFO] Trying free model: {model}")
-        
         try:
             # Potong prompt secara signifikan untuk model free
             shortened_prompt = prompt[:15000] + "\n\n...[analysis limited due to free tier constraints]"
@@ -1528,14 +1493,11 @@ def _try_free_model(prompt: str, api_key: str) -> Optional[str]:
             if response.status_code == 200:
                 result = response.json()
                 content = result['choices'][0]['message']['content'].strip()
-                print(f"[SUCCESS] Free model response: {len(content):,} chars")
                 return content
                 
         except Exception as e:
-            print(f"[WARNING] Free model {model} error: {str(e)}")
             continue
     
-    print("[ERROR] All free models failed")
     return None
 
 
@@ -1658,10 +1620,6 @@ def parse_global_profile_summary(summary_text: str) -> Dict:
                     seen.add(item)
                     unique_items.append(item)
             profile_data["key_facts"][key] = unique_items
-    
-    print(f"[DEBUG] Parsed profile: player_summary={len(profile_data['player_summary'])} chars, "
-          f"likes={len(profile_data['key_facts']['likes'])}, "
-          f"personality_traits={len(profile_data['key_facts']['personality_traits'])}")
     
     return profile_data
 

@@ -678,10 +678,8 @@ class AIProviderManager:
         response_time = time.time() - start_time
         
         if response:
-            print(f"Response time: {response_time:.1f}s")
             return response
         else:
-            print(f"AI service failed after {response_time:.1f}s")
             return None
     
     def send_message_streaming(self, provider_name: str, model: str, messages: List[Dict], **kwargs) -> Generator[str, None, None]:
@@ -697,7 +695,6 @@ class AIProviderManager:
                 yield chunk
             
             response_time = time.time() - start_time
-            # REMOVED: No print statement to avoid timing duplication
             
         except Exception as e:
             yield f"Streaming error: {str(e)}"

@@ -26,9 +26,7 @@ app = Flask(__name__,
 
 app.secret_key = os.urandom(24)
 
-print(f"Project directory: {BASE_DIR}")
-print(f"Static folder: {app.static_folder}")
-print(f"Templates folder: {app.template_folder}")
+
 
 def ensure_static_dirs():
     static_dirs = [
@@ -38,7 +36,6 @@ def ensure_static_dirs():
     
     for dir_path in static_dirs:
         os.makedirs(dir_path, exist_ok=True)
-        print(f"Ensured directory: {dir_path}")
 
 ensure_static_dirs()
 
@@ -51,14 +48,11 @@ def home():
 def chat():
     # Gunakan Flask session instead of global variable
     if 'web_session_started' not in session:
-        print("Flask session not found, starting new web session...")
-        
         # Panggil fungsi start_session dari app.py - semua logika connection_msg sudah diurus di sana
         start_session(interface="web") 
         
         # Tandai session user ini sudah dimulai
         session['web_session_started'] = True
-        print("Web session started and flagged in Flask session.")
     
     profile = Database.get_profile()
     return render_template('chat.html', profile=profile)
@@ -117,8 +111,6 @@ def api_get_profile():
         
         vision_capabilities = get_vision_capabilities()
         
-        print(f"Sending profile data - Active Session: {active_session['id']}, History: {len(chat_history)} messages")
-        
         return jsonify({
             **profile, 
             'chat_history': chat_history,
@@ -146,14 +138,10 @@ def api_send_message():
         if not user_message:
             return jsonify({'reply': 'Please type a message!'})
         
-        print(f"Web message: {user_message[:200]}...")
-        
         active_session = Database.get_active_session()
         session_id = active_session['id']
         
         ai_reply = handle_user_message(user_message, interface="web")
-        
-        print(f"AI reply: {ai_reply}")
         
         return jsonify({'reply': ai_reply})
         
@@ -173,8 +161,6 @@ def api_send_message_stream():
             def generate():
                 yield 'data: {"chunk": "Please type a message!"}\n\n'
             return Response(generate(), mimetype='text/event-stream')
-        
-        print(f"Streaming message: {user_message[:200]}...")
         
         # Get streaming response generator from app.py
         response_generator = handle_user_message_streaming(
@@ -210,8 +196,6 @@ def api_send_message_with_images():
         if not message_text and not image_files:
             return jsonify({'reply': 'Please provide a message or images!'})
         
-        print(f"Processing message with {len(image_files)} images")
-        
         active_session = Database.get_active_session()
         session_id = active_session['id']
         
@@ -240,14 +224,11 @@ def api_send_message_with_images():
                     'filepath': filepath,
                     'markdown': image_markdown
                 })
-                print(f"Saved image to static: {filepath}")
         
         if image_markdowns:
             final_user_message = f"{message_text}\n\n" + "\n".join(image_markdowns) if message_text else "\n".join(image_markdowns)
         else:
             final_user_message = message_text
-        
-        print(f"Final user message: {final_user_message[:200]}...")
         
         ai_reply = handle_user_message(final_user_message, interface="web")
         
@@ -271,13 +252,10 @@ def api_generate_image():
         if not prompt:
             return jsonify({'error': 'Prompt required'}), 400
         
-        print(f"Generating image with prompt: {prompt}")
-        
         active_session = Database.get_active_session()
         session_id = active_session['id']
         
         Database.add_message('user', prompt, session_id=session_id)
-        print(f"User image prompt saved to database")
         
         image_path, error = multimodal_tools.generate_image(prompt)
         
@@ -292,7 +270,6 @@ def api_generate_image():
                 filename = os.path.basename(image_path)
                 static_path = f"static/generated_images/{filename}"
                 shutil.copy2(image_path, static_path)
-                print(f"Copied {image_path} to {static_path}")
                 
                 web_url = f"/static/generated_images/{filename}"
                 image_markdown = f"![Generated Image](static/generated_images/{filename})"
@@ -300,7 +277,6 @@ def api_generate_image():
             ai_response = f"Image generated successfully! I've created your \"{prompt}\"\n\n{image_markdown}"
             
             Database.add_message('assistant', ai_response, session_id=session_id)
-            print(f"AI image response with static path saved to database")
             
             return jsonify({
                 'status': 'success',
@@ -476,7 +452,6 @@ def api_update_global_profile():
         
         if success:
             profile = Database.get_profile()
-            print(f"Returning updated profile with memory: {profile.get('memory', {})}")
             
             return jsonify({
                 'status': 'success', 
@@ -563,7 +538,6 @@ def api_test_provider_connection():
 def api_browser_unload():
     # Reset session flag instead of global variable
     session.pop('web_session_started', None)
-    print("Web page closed or refreshed - Flask session cleared")
     
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
     profile = Database.get_profile()
