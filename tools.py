@@ -433,7 +433,9 @@ class MultimodalTools:
                     with open(filepath, 'wb') as f:
                         f.write(response.content)
                     
-                    return filepath, None
+                    # Return web-accessible URL path with leading slash
+                    web_path = f"/{filepath.replace(os.sep, '/')}"
+                    return web_path, None
                 else:
                     return None, f"API error {response.status_code}"
             

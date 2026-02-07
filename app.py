@@ -706,10 +706,7 @@ def _handle_image_generation(user_message, session_id):
     image_url, error = multimodal_tools.generate_image(prompt)
     
     if image_url:
-        # Ensure path starts with / for browser access
-        if not image_url.startswith('/') and not image_url.startswith('http'):
-            image_url = '/' + image_url
-            
+        # image_url already has leading slash from generate_image()
         Database.add_image_tools_message(image_url, session_id=session_id)
         # Use single-line markdown syntax: ![alt](url)
         return f"Image generated successfully! Here's your creation:\n\n![Generated Image]({image_url})"
@@ -741,11 +738,8 @@ def _handle_ai_image_generation(ai_response, session_id):
         
         if image_url:
             # Store image as image_tools message
+            # image_url already has leading slash from generate_image()
             Database.add_image_tools_message(image_url, session_id=session_id)
-            
-            # Ensure path starts with / for browser access
-            if not image_url.startswith('/') and not image_url.startswith('http'):
-                image_url = '/' + image_url
             
             # Return only visible text + image for UI
             # Don't add "I've created that image for you!" message
