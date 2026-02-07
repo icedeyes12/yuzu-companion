@@ -10,8 +10,6 @@
 
 // About page interactions
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('Yuzu Companion About Page Loaded');
-    
     // Add hover effects to tech cards
     const techCards = document.querySelectorAll('.tech-card');
     
@@ -152,8 +150,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 100);
         }
     });
-
-    console.log('About page interactions initialized');
 });
 
 // Secret message function from the original about page

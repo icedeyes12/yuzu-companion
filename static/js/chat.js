@@ -8,8 +8,6 @@
 // [REPOSITORY: https://github.com/icedeyes12]
 // [LICENSE: MIT]
 
-console.log("Starting OPTIMIZED chat with performance improvements...");
-
 // ==================== PERFORMANCE OPTIMIZATIONS ====================
 let isProcessingMessage = false; // Global flag to prevent double-send
 
@@ -23,7 +21,6 @@ class MultimodalManager {
     }
 
     init() {
-        console.log("Initializing Multimodal...");
         this.createToggle();
         this.setupEventListeners();
         this.patchSendButton();
@@ -108,15 +105,12 @@ class MultimodalManager {
     handleSend() {
         // PREVENTION: Check global flag to prevent double-send
         if (isProcessingMessage) {
-            console.log("Message already being processed, please wait...");
             return;
         }
-
         const input = document.getElementById('messageInput');
         const text = input.value.trim();
 
         if (this.isSending) {
-            console.log("Already sending, please wait...");
             return;
         }
 
@@ -181,8 +175,6 @@ class MultimodalManager {
         this.setSendButtonState('sending');
 
         try {
-            console.log("Generating image with prompt:", prompt);
-            
             addMessage("user", prompt);
             
             const response = await fetch("/api/generate_image", {
@@ -583,7 +575,6 @@ function createPermanentScrollButton() {
     btn.onclick = scrollToBottom;
     
     document.body.appendChild(btn);
-    console.log("Scroll button created");
     return btn;
 }
 
@@ -730,7 +721,6 @@ function addMessage(role, content, timestamp = null, isHistory = false) {
         }, 50);
     }
     
-    console.log(`Added ${role} message`);
     return msg;
 }
 
@@ -779,7 +769,6 @@ async function loadChatHistory() {
 
         if (history.length > 0) {
             chatContainer.innerHTML = '';
-            console.log(`Processing ${history.length} messages from history`);
             
             const immediateDisplayCount = Math.min(30, history.length);
             const messagesToShowImmediately = history.slice(-immediateDisplayCount);
@@ -813,9 +802,7 @@ async function loadChatHistory() {
                 }
             }, 300);
             
-            console.log(`Immediately displayed ${messagesToShowImmediately.length} recent messages`);
         } else {
-            console.log("No chat history found");
             addMessage("ai", "Hello! I'm your AI companion. Let's start a new conversation!");
             scrollToBottom();
         }
@@ -834,8 +821,6 @@ async function loadOlderMessages(fullHistory, alreadyLoadedCount) {
     const totalOlder = olderMessages.length;
     
     if (totalOlder === 0) return;
-    
-    console.log(`Loading ${totalOlder} older messages in background...`);
     
     const loadingIndicator = document.createElement('div');
     loadingIndicator.className = 'loading-older';
@@ -874,8 +859,6 @@ async function loadOlderMessages(fullHistory, alreadyLoadedCount) {
         }
         initializeCopyButtons(chatContainer);
     }, 100);
-    
-    console.log(`Loaded ${totalOlder} older messages in background`);
 }
 
 // ==================== OPTIMIZED COPY FUNCTIONS ====================
@@ -943,9 +926,6 @@ function initializeHighlightJS(container = document) {
         blocks.forEach((block) => {
             hljs.highlightElement(block);
         });
-        console.log(`Highlight.js initialized on ${blocks.length} blocks`);
-    } else {
-        console.log("Highlight.js not loaded yet");
     }
 }
 
@@ -965,8 +945,6 @@ function initializeInputBehavior() {
 
 // ==================== OPTIMIZED INITIALIZATION ====================
 function initializeChat() {
-    console.log("Initializing OPTIMIZED chat system...");
-    
     // Initialize scroll system
     createPermanentScrollButton();
     initializeScrollButtonAutoHide();
@@ -986,8 +964,6 @@ function initializeChat() {
     
     // Monitor scroll system
     setTimeout(() => monitorScrollSystem(), 1000);
-    
-    console.log("OPTIMIZED chat system ready!");
 }
 
 // Start when page loads

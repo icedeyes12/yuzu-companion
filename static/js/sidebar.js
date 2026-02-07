@@ -113,8 +113,6 @@ function switchTheme(theme) {
     
     // Save preference
     localStorage.setItem('yuzu-theme', theme);
-    
-    console.log(`Switched to ${theme} theme`);
 }
 
 // Enhanced session loading with action buttons - MARKDOWN SAFE
@@ -367,11 +365,8 @@ function showNotification(message, type = 'info') {
 
 // Initialize theme on load
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('Initializing sidebar...');
-    
     // Get saved theme or default to dark
     const savedTheme = localStorage.getItem('yuzu-theme') || 'dark';
-    console.log('Saved theme:', savedTheme);
     
     // Apply the theme immediately
     document.body.setAttribute('data-theme', savedTheme);
@@ -396,13 +391,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    console.log('Custom dropdown initialized');
-    
     // Debug: Check if elements exist
-    console.log('Sidebar elements check:');
-    console.log('- mainSidebar:', document.getElementById('mainSidebar'));
-    console.log('- themeDropdown:', document.getElementById('themeDropdown'));
-    console.log('- hamburgerMenu:', document.getElementById('hamburgerMenu'));
 });
 
 // Make functions globally available

@@ -10,7 +10,6 @@
 
 // Configuration page functionality
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('Config page loaded - initializing...');
     loadProfileData();
     loadAPIKeys();
     loadGlobalKnowledge();
@@ -25,8 +24,6 @@ async function loadProfileData() {
         const response = await fetch('/api/get_profile');
         const data = await response.json();
         
-        console.log('Full profile data:', data);
-
         // Update SESSION CONTEXT display
         const sessionMemory = data.session_memory || {};
         document.getElementById('session-context').textContent = 
@@ -36,10 +33,8 @@ async function loadProfileData() {
         
         // Update GLOBAL PLAYER PROFILE display
         const profileMemory = data.memory || {};
-        console.log('Profile memory data:', profileMemory);
         
         const keyFacts = profileMemory.key_facts || {};
-        console.log('Key facts data:', keyFacts);
         
         // Update the display with actual data
         document.getElementById('player-summary').textContent = 
@@ -74,8 +69,6 @@ async function loadProfileData() {
         // Update form fields
         document.getElementById('display-name').value = data.display_name || '';
         document.getElementById('partner-name').value = data.partner_name || '';
-        
-        console.log('Profile data loaded successfully');
         
     } catch (error) {
         console.error('Error loading profile data:', error);
@@ -115,8 +108,6 @@ async function loadProviderSettings() {
             
             // Test connection for current provider
             testProviderConnection(data.current_provider);
-            
-            console.log('Provider settings loaded');
         }
     } catch (error) {
         console.error('Error loading provider settings:', error);
@@ -151,8 +142,6 @@ function updateModelDropdown(provider, allModels, currentModel = '') {
         }
         modelSelect.appendChild(option);
     });
-    
-    console.log(`Updated model dropdown for ${provider}`);
 }
 
 // Test provider connection
@@ -202,8 +191,6 @@ async function testProviderConnection(providerName) {
 }
 
 function setupEventListeners() {
-    console.log('Setting up config event listeners...');
-    
     // Profile settings
     const saveProfileBtn = document.getElementById('save-profile');
     const affectionSlider = document.getElementById('affection-level');
@@ -309,8 +296,6 @@ function setupEventListeners() {
             }
         }
     });
-    
-    console.log('Event listeners setup complete');
 }
 
 // Save provider settings
@@ -439,8 +424,6 @@ async function loadAPIKeys() {
                 <button onclick="removeAPIKey('${keyName}')" class="btn" style="background: #ef4444; color: white; padding: 0.3rem 0.6rem; font-size: 0.8rem;">Remove</button>
             </li>
         `).join('');
-        
-        console.log('API keys loaded');
         
     } catch (error) {
         console.error('Error loading API keys:', error);
@@ -605,8 +588,6 @@ async function updateGlobalProfile() {
 
 // Direct update function for global profile display
 function updateGlobalProfileDisplay(profileMemory) {
-    console.log('Updating global profile display with:', profileMemory);
-    
     const keyFacts = profileMemory.key_facts || {};
     
     document.getElementById('player-summary').textContent = 
@@ -674,7 +655,6 @@ async function loadGlobalKnowledge() {
         const globalKnowledge = data.global_knowledge || {};
         document.getElementById('global-knowledge').value = globalKnowledge.facts || '';
         
-        console.log('Global knowledge loaded');
     } catch (error) {
         console.error('Error loading global knowledge:', error);
         showError('Failed to load global knowledge');
@@ -789,8 +769,6 @@ function initializeConfigAnimations() {
         section.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
         observer.observe(section);
     });
-    
-    console.log('Config animations initialized');
 }
 
 // Make functions globally available

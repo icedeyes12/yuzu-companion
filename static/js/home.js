@@ -10,15 +10,12 @@
 
 // Home page functionality
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('Home page loaded - initializing...');
     initializeHomePage();
     loadRecentSessions();
     initializeHomeAnimations();
 });
 
 function initializeHomePage() {
-    console.log('Setting up home page interactions...');
-    
     // Add click effects to cards
     const cards = document.querySelectorAll('.card');
     
@@ -69,8 +66,6 @@ function initializeHomePage() {
             }, 150);
         });
     }
-    
-    console.log('Home page interactions initialized');
 }
 
 async function loadRecentSessions() {
@@ -111,8 +106,6 @@ async function loadRecentSessions() {
             });
         }, 100);
         
-        console.log(`Loaded ${recentSessions.length} recent sessions`);
-        
     } catch (error) {
         console.error('Error loading sessions:', error);
         const sessionsContainer = document.getElementById('recent-sessions');
@@ -128,8 +121,6 @@ async function loadRecentSessions() {
 }
 
 function initializeHomeAnimations() {
-    console.log('Initializing home page animations...');
-    
     // Add intersection observer for cards
     const observerOptions = {
         threshold: 0.1,
@@ -168,8 +159,6 @@ function initializeHomeAnimations() {
     
     // Add background pattern animation
     createBackgroundPattern();
-    
-    console.log('Home animations initialized');
 }
 
 function createRippleEffect(event, element) {

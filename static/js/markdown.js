@@ -3,9 +3,6 @@ class MarkdownParser {
     static parse(text) {
         if (!text) return '';
         let html = String(text);
-
-        console.log("Processing text length:", html.length);
-
         // Parse code block DULU - lindungi dari parsing lain
         html = this.protectAndParseCodeBlocks(html);
 
@@ -57,11 +54,6 @@ class MarkdownParser {
         let placeholderIndex = 0;
         
         const processedHtml = html.replace(/```([\w+-]*)\s*\n([\s\S]*?)\n```/g, (full, lang, code) => {
-            console.log("Found code block:", { 
-                lang: lang || 'text', 
-                codeLength: code.length
-            });
-            
             const placeholder = `__CODE_BLOCK_${placeholderIndex}__`;
             this.codeBlockPlaceholders.push({
                 placeholder,
@@ -287,7 +279,6 @@ class MarkdownParser {
         for (let i = 0; i < parts.length; i++) {
             if (i % 2 === 0) {
                 result += parts[i].replace(/(?:\|.*\|\s*\n\|[-:\s|]+\|\s*\n(?:\|.*\|\s*\n)*)/g, (tableBlock) => {
-                    console.log("Found table:", tableBlock.substring(0, 100) + '...');
                     return this.createTable(tableBlock);
                 });
             } else {
@@ -538,10 +529,8 @@ class MarkdownParser {
 
     static highlightCodeBlocks(container = document) {
         if (typeof hljs === 'undefined') {
-            console.log('Highlight.js not loaded');
             return 0;
         }
-
         const blocks = container.querySelectorAll('pre code');
         let count = 0;
 
@@ -561,8 +550,6 @@ class MarkdownParser {
                 block.classList.add('hljs');
             }
         });
-
-        console.log(`Highlighted ${count} code blocks`);
         return count;
     }
 }
@@ -592,7 +579,6 @@ function copyCodeToClipboard(button) {
                 button.classList.remove('copied');
             }, 2000);
         }).catch(err => {
-            console.log('Using fallback copy method');
             const textArea = document.createElement('textarea');
             textArea.value = codeText;
             textArea.style.position = 'fixed';
@@ -617,8 +603,6 @@ function copyCodeToClipboard(button) {
 
 // INISIALISASI
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Markdown parser loaded with complete features');
-    
     if (typeof hljs !== 'undefined') {
         hljs.configure({ 
             tabReplace: '    ',
@@ -626,8 +610,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         setTimeout(() => {
-            const count = MarkdownParser.highlightCodeBlocks();
-            console.log(`Initially highlighted ${count} code blocks`);
+            MarkdownParser.highlightCodeBlocks();
         }, 1000);
     }
 });
