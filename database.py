@@ -188,11 +188,6 @@ def get_db_session():
     finally:
         session.close()
 
-def hash_password(password):
-    return hashlib.sha256(password.encode('utf-8')).hexdigest()
-
-def verify_password(stored_password, provided_password):
-    return stored_password == hashlib.sha256(provided_password.encode('utf-8')).hexdigest()
 
 class Database:
     @staticmethod
