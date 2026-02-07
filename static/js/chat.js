@@ -945,17 +945,18 @@ async function loadMoreMessages() {
                 chatContainer.appendChild(fragment);
             }
             
-            // Process markdown and code blocks
+            // Maintain scroll position BEFORE processing markdown
+            const newScrollHeight = chatContainer.scrollHeight;
+            const scrollDiff = newScrollHeight - previousScrollHeight;
+            chatContainer.scrollTop = scrollDiff;
+            
+            // Process markdown and code blocks AFTER scroll adjustment
             setTimeout(() => {
                 if (typeof MarkdownParser !== 'undefined') {
                     MarkdownParser.highlightCodeBlocks(chatContainer);
                 }
                 initializeCopyButtons(chatContainer);
             }, 100);
-            
-            // Maintain scroll position
-            const newScrollHeight = chatContainer.scrollHeight;
-            chatContainer.scrollTop = newScrollHeight - previousScrollHeight;
             
             // Update pagination state
             chatPaginationState.currentOffset += olderMessages.length;

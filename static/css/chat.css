@@ -32,6 +32,7 @@ html, body {
 .chat-container {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden; /* Prevent horizontal scroll */
   overscroll-behavior: contain;
   scroll-behavior: smooth;
   padding: 4.8rem 0.6rem 8rem;
@@ -499,6 +500,22 @@ html, body {
   margin: 0.08rem 0;
   color: var(--text-color) !important;
   transition: all 0.3s ease;
+  overflow: hidden; /* Prevent content overflow */
+}
+
+/* Ensure all images inside messages are constrained */
+.message img {
+  max-width: 100% !important;
+  height: auto !important;
+  display: block;
+  border-radius: 8px;
+  margin: 0.5rem 0;
+}
+
+/* Ensure message bubbles don't cause horizontal scroll */
+.message * {
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* ENHANCED HEADING STYLES - MERGED & IMPROVED */
@@ -924,9 +941,11 @@ blockquote blockquote blockquote {
   overflow: hidden;
   background: var(--code-bg) !important;
   border: 1px solid var(--code-border);
-  max-width: 100%;
+  max-width: 100%; /* Ensure it doesn't overflow parent */
+  width: 100%; /* Take full width of parent */
   box-shadow: var(--shadow-soft);
   transition: all 0.3s ease;
+  box-sizing: border-box; /* Include padding and border in width */
 }
 
 .code-header {

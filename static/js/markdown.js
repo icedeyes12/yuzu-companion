@@ -43,12 +43,15 @@ class MarkdownParser {
             const langClass = language ? `language-${language}` : '';
             const langLabel = language ? language : 'text';
             
-            return `<div class="code-block-container">
+            // Return as a string, not an object
+            const html = `<div class="code-block-container">
                 <div class="code-header">
                     <span class="code-language">${langLabel}</span>
                 </div>
                 <pre><code class="${langClass}">${escapedCode}</code></pre>
             </div>`;
+            
+            return html;
         };
         
         marked.use({ renderer });
