@@ -1,8 +1,5 @@
 // markme.js - Marked.js wrapper with custom enhancements
 
-// Configuration constants
-const SCROLL_THRESHOLD_PX = 100;
-
 class MarkdownParser {
     static parse(text) {
         if (!text) return '';

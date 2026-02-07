@@ -8,6 +8,12 @@
 // [REPOSITORY: https://github.com/icedeyes12]
 // [LICENSE: MIT]
 
+// Fail-safe guard to prevent double-loading
+if (window.__CHAT_JS_LOADED__) {
+    console.warn("chat.js loaded twice, ignoring second load");
+} else {
+    window.__CHAT_JS_LOADED__ = true;
+
 console.log("Starting OPTIMIZED chat with performance improvements...");
 
 // ==================== PERFORMANCE OPTIMIZATIONS ====================
@@ -1099,4 +1105,6 @@ window.monitorScrollSystem = monitorScrollSystem;
 window.loadChatHistory = loadChatHistory;
 window.initializeHighlightJS = initializeHighlightJS;
 window.initializeCopyButtons = initializeCopyButtons;
+
+} // End of fail-safe guard
 window.MultimodalManager = MultimodalManager;
