@@ -35,8 +35,8 @@ function renderMessageContent(text) {
     }
     
     try {
-        // Use marked.parse with custom renderer
-        return marked.parse(String(text), { renderer: customRenderer });
+        // Use marked.parse (custom renderer already registered via marked.use)
+        return marked.parse(String(text));
     } catch (e) {
         console.error('Error parsing markdown:', e);
         return String(text);
