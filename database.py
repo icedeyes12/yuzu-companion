@@ -508,7 +508,7 @@ class Database:
         Database.add_system_note(content, session_id)
         
     @staticmethod
-    def get_chat_history(session_id=None, limit=None, recent=False):
+    def get_chat_history(session_id=None, limit=None, offset=0, recent=False):
         if session_id is None:
             active_session = Database.get_active_session()
             session_id = active_session['id']
@@ -520,11 +520,14 @@ class Database:
             )
             
             if recent and limit:
-                messages = query.order_by(Message.timestamp.desc()).limit(limit).all()
+                # For recent messages with pagination
+                messages = query.order_by(Message.timestamp.desc()).offset(offset).limit(limit).all()
                 messages = list(reversed(messages))
             elif limit:
-                messages = query.order_by(Message.timestamp.asc()).limit(limit).all()
+                # For limited messages with pagination (ascending order)
+                messages = query.order_by(Message.timestamp.asc()).offset(offset).limit(limit).all()
             else:
+                # Default behavior: all messages in ascending order (no pagination)
                 messages = query.order_by(Message.timestamp.asc()).all()
             
             # Tidak perlu dekripsi karena pesan tidak terenkripsi

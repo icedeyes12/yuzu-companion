@@ -13,7 +13,7 @@ import os
 from datetime import datetime
 from app import handle_user_message, start_session, end_session_cleanup, summarize_memory, summarize_global_player_profile
 from app import get_available_providers, get_all_models, set_preferred_provider, get_vision_capabilities
-from database import Database
+from database import Database, get_db_session
 from providers import get_ai_manager
 from tools import multimodal_tools
 
@@ -141,6 +141,52 @@ def api_get_profile():
     except Exception as e:
         print(f"Error in api_get_profile: {e}")
         return jsonify({'error': 'Failed to load profile'}), 500
+
+@app.route('/api/get_chat_history', methods=['GET'])
+def api_get_chat_history():
+    """Get paginated chat history"""
+    try:
+        # Get query parameters
+        limit = request.args.get('limit', 50, type=int)
+        offset = request.args.get('offset', 0, type=int)
+        session_id = request.args.get('session_id', type=int)
+        
+        # Get active session if not provided
+        if session_id is None:
+            active_session = Database.get_active_session()
+            session_id = active_session['id']
+        
+        # Get paginated history
+        chat_history = Database.get_chat_history(
+            session_id=session_id, 
+            limit=limit, 
+            offset=offset,
+            recent=True  # Use DESC order for pagination
+        )
+        
+        # Get total message count for this session
+        with get_db_session() as db_session:
+            from database import Message
+            total_count = db_session.query(Message).filter(
+                Message.session_id == session_id,
+                Message.role.in_(['user', 'assistant', 'image_tools'])
+            ).count()
+        
+        has_more = (offset + len(chat_history)) < total_count
+        
+        return jsonify({
+            'status': 'success',
+            'messages': chat_history,
+            'offset': offset,
+            'limit': limit,
+            'total_count': total_count,
+            'has_more': has_more
+        })
+    except Exception as e:
+        print(f"Error in api_get_chat_history: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': 'Failed to load chat history'}), 500
 
 @app.route('/api/send_message', methods=['POST'])
 def api_send_message():

@@ -13,6 +13,14 @@ console.log("Starting OPTIMIZED chat with performance improvements...");
 // ==================== PERFORMANCE OPTIMIZATIONS ====================
 let isProcessingMessage = false; // Global flag to prevent double-send
 
+// ==================== PAGINATION STATE ====================
+let pagination = {
+    offset: 0,
+    limit: 50,
+    loading: false,
+    hasMore: true
+};
+
 // ==================== MULTIMODAL MANAGER ====================
 class MultimodalManager {
     constructor() {
@@ -761,7 +769,7 @@ function getCurrentTime24h() {
     return `${hours}:${minutes}`;
 }
 
-// ==================== OPTIMIZED HISTORY FUNCTION ====================
+// ==================== OPTIMIZED HISTORY FUNCTION WITH PAGINATION ====================
 async function loadChatHistory() {
     const chatContainer = document.getElementById("chatContainer");
     if (!chatContainer) {
@@ -773,21 +781,27 @@ async function loadChatHistory() {
         chatContainer.innerHTML = '<div class="loading">Loading recent messages...</div>';
         setTimeout(scrollToBottom, 100);
         
-        const res = await fetch("/api/get_profile");
+        // Reset pagination state
+        pagination.offset = 0;
+        pagination.loading = false;
+        pagination.hasMore = true;
+        
+        // Load first batch of messages using paginated API
+        const res = await fetch(`/api/get_chat_history?limit=${pagination.limit}&offset=${pagination.offset}`);
         const data = await res.json();
-        const history = data.chat_history || [];
-
-        if (history.length > 0) {
+        
+        if (data.status === 'success' && data.messages && data.messages.length > 0) {
             chatContainer.innerHTML = '';
-            console.log(`Processing ${history.length} messages from history`);
+            console.log(`Processing ${data.messages.length} recent messages from paginated history`);
             
-            const immediateDisplayCount = Math.min(30, history.length);
-            const messagesToShowImmediately = history.slice(-immediateDisplayCount);
+            // Update pagination state
+            pagination.offset += data.messages.length;
+            pagination.hasMore = data.has_more;
             
             // OPTIMIZED: Use document fragment for batch DOM operations
             const fragment = document.createDocumentFragment();
             
-            messagesToShowImmediately.forEach(msg => {
+            data.messages.forEach(msg => {
                 if (msg.role === "user" || msg.role === "assistant") {
                     const msgElement = createMessageElement(
                         msg.role === "user" ? "user" : "ai", 
@@ -808,24 +822,133 @@ async function loadChatHistory() {
                 initializeCopyButtons(chatContainer);
                 scrollToBottom();
                 
-                if (history.length > immediateDisplayCount) {
-                    setTimeout(() => loadOlderMessages(history, immediateDisplayCount), 500);
-                }
+                // Setup scroll listener for pagination
+                setupPaginationScrollListener();
             }, 300);
             
-            console.log(`Immediately displayed ${messagesToShowImmediately.length} recent messages`);
+            console.log(`Displayed ${data.messages.length} recent messages. Has more: ${data.has_more}`);
         } else {
             console.log("No chat history found");
+            pagination.hasMore = false;
+            chatContainer.innerHTML = '';
             addMessage("ai", "Hello! I'm your AI companion. Let's start a new conversation!");
             scrollToBottom();
         }
     } catch (err) {
         console.error("Failed to load chat history:", err);
+        pagination.hasMore = false;
+        chatContainer.innerHTML = '';
         addMessage("ai", "Hello! I'm your AI companion. Let's start a new conversation!");
         scrollToBottom();
     }
 }
 
+// Setup scroll listener for pagination
+function setupPaginationScrollListener() {
+    const chatContainer = document.getElementById("chatContainer");
+    if (!chatContainer) return;
+    
+    // Remove existing listener if any
+    chatContainer.removeEventListener('scroll', handlePaginationScroll);
+    
+    // Add new listener
+    chatContainer.addEventListener('scroll', handlePaginationScroll);
+}
+
+// Handle scroll for pagination
+async function handlePaginationScroll() {
+    const chatContainer = document.getElementById("chatContainer");
+    if (!chatContainer) return;
+    
+    // Check if scrolled near top (within 100px)
+    if (chatContainer.scrollTop < 100 && pagination.hasMore && !pagination.loading) {
+        await loadMoreMessages();
+    }
+}
+
+// Load more messages when scrolling to top
+async function loadMoreMessages() {
+    const chatContainer = document.getElementById("chatContainer");
+    if (!chatContainer || pagination.loading || !pagination.hasMore) return;
+    
+    pagination.loading = true;
+    
+    console.log(`Loading more messages from offset ${pagination.offset}`);
+    
+    // Save current scroll position
+    const previousHeight = chatContainer.scrollHeight;
+    
+    // Add loading indicator at top
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'loading-older';
+    loadingIndicator.innerHTML = `<div class="loading-spinner-small"></div> Loading older messages...`;
+    chatContainer.insertBefore(loadingIndicator, chatContainer.firstChild);
+    
+    try {
+        const res = await fetch(`/api/get_chat_history?limit=${pagination.limit}&offset=${pagination.offset}`);
+        const data = await res.json();
+        
+        if (data.status === 'success' && data.messages && data.messages.length > 0) {
+            // Update pagination state
+            pagination.offset += data.messages.length;
+            pagination.hasMore = data.has_more;
+            
+            // Create fragment for new messages
+            const fragment = document.createDocumentFragment();
+            
+            data.messages.forEach(msg => {
+                if (msg.role === "user" || msg.role === "assistant") {
+                    const msgElement = createMessageElement(
+                        msg.role === "user" ? "user" : "ai", 
+                        msg.content, 
+                        msg.timestamp
+                    );
+                    fragment.appendChild(msgElement);
+                }
+            });
+            
+            // Remove loading indicator
+            if (loadingIndicator.parentNode) {
+                loadingIndicator.parentNode.removeChild(loadingIndicator);
+            }
+            
+            // Prepend new messages
+            if (chatContainer.firstChild) {
+                chatContainer.insertBefore(fragment, chatContainer.firstChild);
+            } else {
+                chatContainer.appendChild(fragment);
+            }
+            
+            // CRITICAL: Preserve scroll position
+            const newHeight = chatContainer.scrollHeight;
+            chatContainer.scrollTop += (newHeight - previousHeight);
+            
+            // Process markdown and code highlighting
+            if (typeof MarkdownParser !== 'undefined') {
+                MarkdownParser.highlightCodeBlocks(chatContainer);
+            }
+            initializeCopyButtons(chatContainer);
+            
+            console.log(`Loaded ${data.messages.length} older messages. Has more: ${data.has_more}`);
+        } else {
+            // No more messages
+            pagination.hasMore = false;
+            if (loadingIndicator.parentNode) {
+                loadingIndicator.parentNode.removeChild(loadingIndicator);
+            }
+            console.log("No more messages to load");
+        }
+    } catch (err) {
+        console.error("Failed to load more messages:", err);
+        if (loadingIndicator.parentNode) {
+            loadingIndicator.parentNode.removeChild(loadingIndicator);
+        }
+    } finally {
+        pagination.loading = false;
+    }
+}
+
+// Deprecated function - kept for backward compatibility
 async function loadOlderMessages(fullHistory, alreadyLoadedCount) {
     const chatContainer = document.getElementById("chatContainer");
     if (!chatContainer) return;
