@@ -24,6 +24,9 @@ from database import Database
 from providers import get_ai_manager
 from tools import multimodal_tools
 
+# Constants
+EMPTY_RESPONSE_ERROR_MSG = "Assistant response failed (empty output)."
+
 class UserContext:
     def __init__(self):
         pass
@@ -52,7 +55,7 @@ def handle_user_message(user_message, interface="terminal"):
         
         # Only store assistant message if it's not empty and not the error message
         # (error messages are stored as system messages in generate_ai_response)
-        if ai_reply_clean and ai_reply_clean != "Assistant response failed (empty output).":
+        if ai_reply_clean and ai_reply_clean != EMPTY_RESPONSE_ERROR_MSG:
             Database.add_message('assistant', ai_reply_clean, session_id=session_id)
         
         auto_name_session_if_needed(session_id, active_session)
@@ -797,9 +800,8 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
             if not full_response_retry or not full_response_retry.strip():
                 print(f"[ERROR] Streaming AI service returned empty response after retry")
                 # Store system message instead of empty assistant message
-                error_message = "Assistant response failed (empty output)."
-                Database.add_message('system', error_message, session_id=session_id)
-                yield error_message
+                Database.add_message('system', EMPTY_RESPONSE_ERROR_MSG, session_id=session_id)
+                yield EMPTY_RESPONSE_ERROR_MSG
                 return
             
             full_response = full_response_retry
@@ -878,9 +880,8 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
             if not ai_response or not ai_response.strip():
                 print(f"[ERROR] AI service returned empty response after retry")
                 # Store system message instead of empty assistant message
-                error_message = "Assistant response failed (empty output)."
-                Database.add_message('system', error_message, session_id=session_id)
-                return error_message
+                Database.add_message('system', EMPTY_RESPONSE_ERROR_MSG, session_id=session_id)
+                return EMPTY_RESPONSE_ERROR_MSG
         
         return ai_response
             
