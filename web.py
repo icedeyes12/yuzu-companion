@@ -47,11 +47,6 @@ def home():
     profile = Database.get_profile()
     return render_template('index.html', profile=profile)
 
-@app.route('/dashboard')
-def dashboard():
-    profile = Database.get_profile()
-    return render_template('dashboard.html', profile=profile)
-
 @app.route('/chat')
 def chat():
     # Gunakan Flask session instead of global variable
