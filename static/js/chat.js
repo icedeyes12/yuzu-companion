@@ -693,8 +693,8 @@ function createMessageElement(role, content, timestamp = null) {
 
     if (typeof renderMessageContent !== 'undefined') {
         contentContainer.innerHTML = renderMessageContent(String(content));
-    } else if (typeof MarkdownParser !== 'undefined') {
-        contentContainer.innerHTML = MarkdownParser.parseWithEmojis(String(content));
+    } else if (typeof MarkdownParser !== 'undefined' && typeof MarkdownParser.parse === 'function') {
+        contentContainer.innerHTML = MarkdownParser.parse(String(content));
     } else {
         contentContainer.textContent = String(content);
     }
