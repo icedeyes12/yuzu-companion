@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual env
+venv/
+.env/
+
+# SQLite
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Backup & logs
+backup/
+database_backups/
+debug_logs/
+*.log
+
+# Secrets
+*.key
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
