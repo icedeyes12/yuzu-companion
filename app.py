@@ -572,13 +572,117 @@ Your speaking style and personality are defined above.
 
     messages = [{"role": "system", "content": system_message}]
 
+    # Find and track last N image messages for context injection
+    image_messages = _find_recent_image_messages(chat_history, max_images=3)
+    
     for msg in chat_history:
-        messages.append({
-            "role": msg["role"],
-            "content": msg["content"]
-        })
+        # Check if this message contains images and should have image context injected
+        msg_id = id(msg)  # Use object ID as unique identifier
+        if msg_id in [id(img_msg) for img_msg in image_messages]:
+            # Inject image context
+            formatted_msg = _inject_image_context(msg)
+            messages.append(formatted_msg)
+        else:
+            # Normal text message
+            messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
 
     return messages
+
+def _find_recent_image_messages(chat_history, max_images=3):
+    """Find the last N messages that contain images"""
+    image_messages = []
+    
+    # Iterate in reverse to find recent images first
+    for msg in reversed(chat_history):
+        if len(image_messages) >= max_images:
+            break
+        
+        # Check if message contains image markdown or upload paths
+        content = msg.get("content", "")
+        if multimodal_tools.has_images(content):
+            image_messages.insert(0, msg)  # Insert at beginning to maintain order
+    
+    return image_messages
+
+def _inject_image_context(message):
+    """Inject base64 image data into a message for vision models"""
+    import base64
+    import os
+    
+    content = message.get("content", "")
+    role = message.get("role", "user")
+    
+    # Extract image paths from markdown
+    image_urls = multimodal_tools._extract_image_urls_from_markdown(content)
+    
+    if not image_urls:
+        # No images found, return as-is
+        return {"role": role, "content": content}
+    
+    # Remove image markdown from text
+    clean_text = multimodal_tools._remove_image_markdown(content)
+    
+    # Build multimodal content array
+    message_content = [{"type": "text", "text": clean_text or "Image message"}]
+    
+    # Load and encode images
+    for image_url in image_urls[:3]:  # Limit to 3 images per message
+        # Convert local paths to absolute paths
+        if image_url.startswith('http://localhost'):
+            # Extract path after domain
+            path_match = image_url.replace('http://localhost:5000/', '')
+            local_path = path_match
+        elif image_url.startswith('static/'):
+            local_path = image_url
+        else:
+            # Try to download remote image
+            image_data = multimodal_tools.download_and_encode_image(image_url)
+            if image_data:
+                message_content.append(image_data)
+            continue
+        
+        # Read local file and encode to base64
+        try:
+            if not os.path.isabs(local_path):
+                # Make path absolute
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                full_path = os.path.join(base_dir, local_path)
+            else:
+                full_path = local_path
+            
+            if os.path.exists(full_path):
+                with open(full_path, 'rb') as f:
+                    image_bytes = f.read()
+                    image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+                    
+                    # Determine mime type
+                    if full_path.lower().endswith('.png'):
+                        mime_type = "image/png"
+                    elif full_path.lower().endswith(('.jpg', '.jpeg')):
+                        mime_type = "image/jpeg"
+                    elif full_path.lower().endswith('.gif'):
+                        mime_type = "image/gif"
+                    elif full_path.lower().endswith('.webp'):
+                        mime_type = "image/webp"
+                    else:
+                        mime_type = "image/jpeg"
+                    
+                    message_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime_type};base64,{image_base64}"
+                        }
+                    })
+        except Exception as e:
+            print(f"[WARNING] Failed to load image {local_path}: {e}")
+            continue
+    
+    # Return formatted message with images
+    return {"role": role, "content": message_content}
+
 
 def _handle_vision_processing(messages, user_message, current_provider, current_model):
     """Handle vision model switching and message formatting"""
