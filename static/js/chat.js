@@ -639,6 +639,15 @@ function monitorScrollSystem() {
     return true;
 }
 
+// ==================== PAGINATION STATE ====================
+let chatPaginationState = {
+    currentOffset: 0,
+    limit: 50,
+    isLoading: false,
+    hasMoreMessages: true,
+    initialLoadDone: false
+};
+
 // ==================== OPTIMIZED CHAT FUNCTIONS ====================
 async function loadCurrentSessionName() {
     try {
@@ -761,7 +770,7 @@ function getCurrentTime24h() {
     return `${hours}:${minutes}`;
 }
 
-// ==================== OPTIMIZED HISTORY FUNCTION ====================
+// ==================== OPTIMIZED HISTORY FUNCTION WITH PAGINATION ====================
 async function loadChatHistory() {
     const chatContainer = document.getElementById("chatContainer");
     if (!chatContainer) {
@@ -773,21 +782,28 @@ async function loadChatHistory() {
         chatContainer.innerHTML = '<div class="loading">Loading recent messages...</div>';
         setTimeout(scrollToBottom, 100);
         
-        const res = await fetch("/api/get_profile");
+        // Reset pagination state
+        chatPaginationState = {
+            currentOffset: 0,
+            limit: 50,
+            isLoading: false,
+            hasMoreMessages: true,
+            initialLoadDone: false
+        };
+        
+        // Load initial batch with pagination
+        const res = await fetch(`/api/get_profile?limit=${chatPaginationState.limit}&offset=${chatPaginationState.currentOffset}`);
         const data = await res.json();
         const history = data.chat_history || [];
 
         if (history.length > 0) {
             chatContainer.innerHTML = '';
-            console.log(`Processing ${history.length} messages from history`);
-            
-            const immediateDisplayCount = Math.min(30, history.length);
-            const messagesToShowImmediately = history.slice(-immediateDisplayCount);
+            console.log(`Loaded ${history.length} recent messages (pagination enabled)`);
             
             // OPTIMIZED: Use document fragment for batch DOM operations
             const fragment = document.createDocumentFragment();
             
-            messagesToShowImmediately.forEach(msg => {
+            history.forEach(msg => {
                 if (msg.role === "user" || msg.role === "assistant") {
                     const msgElement = createMessageElement(
                         msg.role === "user" ? "user" : "ai", 
@@ -800,7 +816,12 @@ async function loadChatHistory() {
             
             chatContainer.appendChild(fragment);
             
-            // OPTIMIZED: Process all history messages at once after DOM insertion
+            // Update pagination state
+            chatPaginationState.currentOffset = history.length;
+            chatPaginationState.hasMoreMessages = history.length === chatPaginationState.limit;
+            chatPaginationState.initialLoadDone = true;
+            
+            // OPTIMIZED: Process messages after DOM insertion
             setTimeout(() => {
                 if (typeof MarkdownParser !== 'undefined') {
                     MarkdownParser.highlightCodeBlocks(chatContainer);
@@ -808,74 +829,147 @@ async function loadChatHistory() {
                 initializeCopyButtons(chatContainer);
                 scrollToBottom();
                 
-                if (history.length > immediateDisplayCount) {
-                    setTimeout(() => loadOlderMessages(history, immediateDisplayCount), 500);
-                }
+                // Setup scroll listener for loading more
+                setupScrollToTopListener();
             }, 300);
             
-            console.log(`Immediately displayed ${messagesToShowImmediately.length} recent messages`);
+            console.log(`Initial load complete. Offset: ${chatPaginationState.currentOffset}, Has more: ${chatPaginationState.hasMoreMessages}`);
         } else {
             console.log("No chat history found");
             addMessage("ai", "Hello! I'm your AI companion. Let's start a new conversation!");
             scrollToBottom();
+            chatPaginationState.initialLoadDone = true;
         }
     } catch (err) {
         console.error("Failed to load chat history:", err);
         addMessage("ai", "Hello! I'm your AI companion. Let's start a new conversation!");
         scrollToBottom();
+        chatPaginationState.initialLoadDone = true;
     }
 }
 
-async function loadOlderMessages(fullHistory, alreadyLoadedCount) {
+// Setup scroll listener to detect when user scrolls to top
+function setupScrollToTopListener() {
     const chatContainer = document.getElementById("chatContainer");
     if (!chatContainer) return;
     
-    const olderMessages = fullHistory.slice(0, -alreadyLoadedCount);
-    const totalOlder = olderMessages.length;
+    // Remove existing listener if any
+    chatContainer.removeEventListener('scroll', handleScrollToTop);
     
-    if (totalOlder === 0) return;
+    // Add new listener
+    chatContainer.addEventListener('scroll', handleScrollToTop);
+    console.log("Scroll-to-top listener enabled for pagination");
+}
+
+// Handle scroll to top for loading older messages
+async function handleScrollToTop() {
+    const chatContainer = document.getElementById("chatContainer");
+    if (!chatContainer) return;
     
-    console.log(`Loading ${totalOlder} older messages in background...`);
+    // Check if scrolled near the top (within 100px)
+    const isNearTop = chatContainer.scrollTop < 100;
     
-    const loadingIndicator = document.createElement('div');
-    loadingIndicator.className = 'loading-older';
-    loadingIndicator.innerHTML = `<div class="loading-spinner-small"></div> Loading ${totalOlder} older messages...`;
-    chatContainer.insertBefore(loadingIndicator, chatContainer.firstChild);
-    
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    const fragment = document.createDocumentFragment();
-    
-    olderMessages.forEach(msg => {
-        if (msg.role === "user" || msg.role === "assistant") {
-            const msgElement = createMessageElement(
-                msg.role === "user" ? "user" : "ai", 
-                msg.content, 
-                msg.timestamp
-            );
-            fragment.appendChild(msgElement);
-        }
-    });
-    
-    if (loadingIndicator.parentNode) {
-        loadingIndicator.parentNode.removeChild(loadingIndicator);
+    if (isNearTop && 
+        !chatPaginationState.isLoading && 
+        chatPaginationState.hasMoreMessages && 
+        chatPaginationState.initialLoadDone) {
+        
+        console.log("Near top - loading more messages...");
+        await loadMoreMessages();
+    }
+}
+
+// Load more messages when scrolling up
+async function loadMoreMessages() {
+    if (chatPaginationState.isLoading || !chatPaginationState.hasMoreMessages) {
+        return;
     }
     
-    if (chatContainer.firstChild) {
-        chatContainer.insertBefore(fragment, chatContainer.firstChild);
-    } else {
-        chatContainer.appendChild(fragment);
-    }
+    chatPaginationState.isLoading = true;
+    const chatContainer = document.getElementById("chatContainer");
+    if (!chatContainer) return;
     
-    // OPTIMIZED: Process older messages in a single batch
-    setTimeout(() => {
-        if (typeof MarkdownParser !== 'undefined') {
-            MarkdownParser.highlightCodeBlocks(chatContainer);
+    try {
+        // Save current scroll position
+        const previousScrollHeight = chatContainer.scrollHeight;
+        
+        // Show loading indicator
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.className = 'loading-older';
+        loadingIndicator.id = 'paginationLoading';
+        loadingIndicator.innerHTML = `<div class="loading-spinner-small"></div> Loading older messages...`;
+        chatContainer.insertBefore(loadingIndicator, chatContainer.firstChild);
+        
+        console.log(`Loading more: limit=${chatPaginationState.limit}, offset=${chatPaginationState.currentOffset}`);
+        
+        // Fetch older messages
+        const res = await fetch(`/api/get_profile?limit=${chatPaginationState.limit}&offset=${chatPaginationState.currentOffset}`);
+        const data = await res.json();
+        const olderMessages = data.chat_history || [];
+        
+        console.log(`Received ${olderMessages.length} older messages`);
+        
+        // Remove loading indicator
+        const indicator = document.getElementById('paginationLoading');
+        if (indicator && indicator.parentNode) {
+            indicator.parentNode.removeChild(indicator);
         }
-        initializeCopyButtons(chatContainer);
-    }, 100);
-    
-    console.log(`Loaded ${totalOlder} older messages in background`);
+        
+        if (olderMessages.length > 0) {
+            // Create fragment for batch insertion
+            const fragment = document.createDocumentFragment();
+            
+            olderMessages.forEach(msg => {
+                if (msg.role === "user" || msg.role === "assistant") {
+                    const msgElement = createMessageElement(
+                        msg.role === "user" ? "user" : "ai", 
+                        msg.content, 
+                        msg.timestamp
+                    );
+                    fragment.appendChild(msgElement);
+                }
+            });
+            
+            // Prepend to chat container
+            if (chatContainer.firstChild) {
+                chatContainer.insertBefore(fragment, chatContainer.firstChild);
+            } else {
+                chatContainer.appendChild(fragment);
+            }
+            
+            // Process markdown and code blocks
+            setTimeout(() => {
+                if (typeof MarkdownParser !== 'undefined') {
+                    MarkdownParser.highlightCodeBlocks(chatContainer);
+                }
+                initializeCopyButtons(chatContainer);
+            }, 100);
+            
+            // Maintain scroll position
+            const newScrollHeight = chatContainer.scrollHeight;
+            chatContainer.scrollTop = newScrollHeight - previousScrollHeight;
+            
+            // Update pagination state
+            chatPaginationState.currentOffset += olderMessages.length;
+            chatPaginationState.hasMoreMessages = olderMessages.length === chatPaginationState.limit;
+            
+            console.log(`Loaded ${olderMessages.length} older messages. New offset: ${chatPaginationState.currentOffset}`);
+        } else {
+            chatPaginationState.hasMoreMessages = false;
+            console.log("No more messages to load");
+        }
+        
+    } catch (err) {
+        console.error("Failed to load more messages:", err);
+        
+        // Remove loading indicator on error
+        const indicator = document.getElementById('paginationLoading');
+        if (indicator && indicator.parentNode) {
+            indicator.parentNode.removeChild(indicator);
+        }
+    } finally {
+        chatPaginationState.isLoading = false;
+    }
 }
 
 // ==================== OPTIMIZED COPY FUNCTIONS ====================

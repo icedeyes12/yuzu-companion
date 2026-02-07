@@ -106,7 +106,17 @@ def api_get_profile():
         profile = Database.get_profile()
         active_session = Database.get_active_session()
         
-        chat_history = Database.get_chat_history(session_id=active_session['id'])
+        # Get pagination parameters from query string
+        limit = request.args.get('limit', default=50, type=int)
+        offset = request.args.get('offset', default=0, type=int)
+        
+        # Use pagination for chat history (recent=True to get most recent first)
+        chat_history = Database.get_chat_history(
+            session_id=active_session['id'],
+            limit=limit,
+            offset=offset,
+            recent=True
+        )
         
         session_memory = Database.get_session_memory(active_session['id'])
         

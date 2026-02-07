@@ -508,7 +508,7 @@ class Database:
         Database.add_system_note(content, session_id)
         
     @staticmethod
-    def get_chat_history(session_id=None, limit=None, recent=False):
+    def get_chat_history(session_id=None, limit=None, offset=None, recent=False):
         if session_id is None:
             active_session = Database.get_active_session()
             session_id = active_session['id']
@@ -520,10 +520,17 @@ class Database:
             )
             
             if recent and limit:
-                messages = query.order_by(Message.timestamp.desc()).limit(limit).all()
+                # For pagination: order by DESC, apply offset and limit, then reverse
+                query = query.order_by(Message.timestamp.desc())
+                if offset:
+                    query = query.offset(offset)
+                messages = query.limit(limit).all()
                 messages = list(reversed(messages))
             elif limit:
-                messages = query.order_by(Message.timestamp.asc()).limit(limit).all()
+                query = query.order_by(Message.timestamp.asc())
+                if offset:
+                    query = query.offset(offset)
+                messages = query.limit(limit).all()
             else:
                 messages = query.order_by(Message.timestamp.asc()).all()
             
