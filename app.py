@@ -50,7 +50,10 @@ def handle_user_message(user_message, interface="terminal"):
         
         ai_reply_clean = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', ai_reply).strip()
         
-        Database.add_message('assistant', ai_reply_clean, session_id=session_id)
+        # Only store assistant message if it's not empty and not the error message
+        # (error messages are stored as system messages in generate_ai_response)
+        if ai_reply_clean and ai_reply_clean != "Assistant response failed (empty output).":
+            Database.add_message('assistant', ai_reply_clean, session_id=session_id)
         
         auto_name_session_if_needed(session_id, active_session)
         
@@ -660,6 +663,35 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
                 full_response += chunk
                 yield chunk
         
+        # Check if response is empty or whitespace after streaming
+        if not full_response or not full_response.strip():
+            print(f"[WARNING] Streaming AI service returned empty response, retrying once...")
+            
+            # Retry once
+            response_generator_retry = ai_manager.send_message_streaming(
+                preferred_provider, 
+                preferred_model, 
+                messages,
+                **kwargs
+            )
+            
+            full_response_retry = ""
+            for chunk in response_generator_retry:
+                if chunk:
+                    full_response_retry += chunk
+                    yield chunk
+            
+            # Check again after retry
+            if not full_response_retry or not full_response_retry.strip():
+                print(f"[ERROR] Streaming AI service returned empty response after retry")
+                # Store system message instead of empty assistant message
+                error_message = "Assistant response failed (empty output)."
+                Database.add_message('system', error_message, session_id=session_id)
+                yield error_message
+                return
+            
+            full_response = full_response_retry
+        
         # Handle AI-initiated image generation
         if full_response and full_response.strip().startswith('/imagine'):
             result = _handle_ai_image_generation(full_response, session_id)
@@ -718,11 +750,27 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
         if ai_response and ai_response.strip().startswith('/imagine'):
             return _handle_ai_image_generation(ai_response, session_id)
         
-        if ai_response:
-            return ai_response
-        else:
-            print(f"[WARNING] AI service returned empty response")
-            return "AI service failed to generate a response."
+        # Check if response is empty or whitespace
+        if not ai_response or not ai_response.strip():
+            print(f"[WARNING] AI service returned empty response, retrying once...")
+            
+            # Retry once
+            ai_response = ai_manager.send_message(
+                preferred_provider, 
+                preferred_model, 
+                messages,
+                **kwargs
+            )
+            
+            # Check again after retry
+            if not ai_response or not ai_response.strip():
+                print(f"[ERROR] AI service returned empty response after retry")
+                # Store system message instead of empty assistant message
+                error_message = "Assistant response failed (empty output)."
+                Database.add_message('system', error_message, session_id=session_id)
+                return error_message
+        
+        return ai_response
             
     except Exception as e:
         error_msg = f"AI service error: {str(e)}"
