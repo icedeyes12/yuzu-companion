@@ -489,6 +489,7 @@ html, body {
 /* Optimized Messages */
 .message {
   max-width: 88%;
+  width: fit-content; /* Size to content, not full width */
   padding: 0.5rem 0.8rem;
   border-radius: 11px;
   line-height: 1.45;

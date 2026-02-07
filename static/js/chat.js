@@ -898,7 +898,8 @@ async function loadMoreMessages() {
     if (!chatContainer) return;
     
     try {
-        // Save current scroll position
+        // Save current scroll position BEFORE any DOM changes
+        const previousScrollTop = chatContainer.scrollTop;
         const previousScrollHeight = chatContainer.scrollHeight;
         
         // Show loading indicator
@@ -945,10 +946,10 @@ async function loadMoreMessages() {
                 chatContainer.appendChild(fragment);
             }
             
-            // Maintain scroll position BEFORE processing markdown
+            // Maintain scroll position by adding the height difference to current position
             const newScrollHeight = chatContainer.scrollHeight;
-            const scrollDiff = newScrollHeight - previousScrollHeight;
-            chatContainer.scrollTop = scrollDiff;
+            const heightDifference = newScrollHeight - previousScrollHeight;
+            chatContainer.scrollTop = previousScrollTop + heightDifference;
             
             // Process markdown and code blocks AFTER scroll adjustment
             setTimeout(() => {
