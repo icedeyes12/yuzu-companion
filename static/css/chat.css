@@ -604,7 +604,8 @@ html, body {
   transition: all 0.3s ease;
 }
 
-.message.ai {
+.message.ai,
+.message.assistant {
   align-self: flex-start;
   background: var(--ai-bubble);
   border-bottom-left-radius: 3px;
