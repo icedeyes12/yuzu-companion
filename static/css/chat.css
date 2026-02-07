@@ -507,8 +507,9 @@ html, body {
   margin: 0.08rem 0;
   color: var(--text-color) !important;
   transition: all 0.3s ease;
-  overflow: hidden;
+  overflow: visible;     /* <-- fix utama */
   box-sizing: border-box;
+  height: auto;          /* <-- jaga tinggi natural */
 }
 
 /* Message content container */
