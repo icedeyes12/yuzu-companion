@@ -1,6 +1,9 @@
 // markdown.js - SAFE CDN VERSION with marked.js
 // Uses marked.js from CDN for parsing, keeps utility functions
 
+// Flag to track if marked.js is configured
+let markedConfigured = false;
+
 // Custom renderer for code blocks, tables, and images
 const customRenderer = {
     code(code, language) {
@@ -49,9 +52,42 @@ const customRenderer = {
     }
 };
 
+// Initialize marked.js configuration immediately if available
+function initializeMarked() {
+    if (typeof marked !== 'undefined' && !markedConfigured) {
+        // Configure marked options
+        marked.setOptions({
+            breaks: true,        // Support line breaks
+            gfm: true,          // GitHub Flavored Markdown
+            headerIds: true,
+            mangle: false,
+            sanitize: false,    // We trust our content
+            smartLists: true,
+            smartypants: false,
+            xhtml: false
+        });
+        
+        // Use custom renderer for better code block wrapping
+        marked.use({ renderer: customRenderer });
+        
+        markedConfigured = true;
+        console.log('marked.js configured successfully with custom renderer');
+        return true;
+    }
+    return false;
+}
+
+// Try to initialize immediately if marked is already loaded
+initializeMarked();
+
 // Simple wrapper to use marked.js for markdown parsing
 function renderMessageContent(text) {
     if (!text) return "";
+    
+    // Try to initialize marked if not configured yet
+    if (!markedConfigured) {
+        initializeMarked();
+    }
     
     // Ensure marked is available
     if (typeof marked === 'undefined') {
@@ -144,28 +180,12 @@ function copyCodeToClipboard(button) {
     }
 }
 
-// Initialize marked.js options when available
+// Initialize marked.js options when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Markdown parser (CDN version) loaded');
+    console.log('Markdown parser (CDN version) - DOMContentLoaded event');
     
-    if (typeof marked !== 'undefined') {
-        // Configure marked options
-        marked.setOptions({
-            breaks: true,        // Support line breaks
-            gfm: true,          // GitHub Flavored Markdown
-            headerIds: true,
-            mangle: false,
-            sanitize: false,    // We trust our content
-            smartLists: true,
-            smartypants: false,
-            xhtml: false
-        });
-        
-        // Use custom renderer for better code block wrapping
-        marked.use({ renderer: customRenderer });
-        
-        console.log('marked.js configured successfully with custom renderer');
-    } else {
+    // Try to initialize marked if not already done
+    if (!initializeMarked()) {
         console.error('marked.js not found! Make sure CDN script is loaded.');
     }
     
