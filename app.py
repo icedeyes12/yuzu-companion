@@ -712,20 +712,46 @@ def _handle_image_generation(user_message, session_id):
         return f"Sorry, I couldn't generate an image: {error}"
 
 def _handle_ai_image_generation(ai_response, session_id):
-    """Handle AI responses that start with /imagine"""
-    prompt = ai_response.replace('/imagine', '').strip()
+    """Handle AI responses that start with /imagine
     
-    if prompt.strip():
+    Splits the response into:
+    - Command part: /imagine prompt
+    - Visible text: everything after the command
+    
+    Returns only the visible text + generated image for UI rendering
+    """
+    lines = ai_response.split('\n', 1)
+    command_line = lines[0].strip()
+    visible_text = lines[1].strip() if len(lines) > 1 else ""
+    
+    # Extract prompt from /imagine command
+    prompt = command_line.replace('/imagine', '').strip()
+    
+    if prompt:
+        # Store the FULL assistant message (including command) in database
         Database.add_message('assistant', ai_response, session_id=session_id)
         
+        # Generate the image
         image_url, error = multimodal_tools.generate_image(prompt)
         
         if image_url:
+            # Store image as image_tools message
             Database.add_image_tools_message(image_url, session_id=session_id)
-            return f"I've created that image for you!\n\n![Generated Image]({image_url})"
+            
+            # Return only visible text + image for UI
+            # Don't add "I've created that image for you!" message
+            if visible_text:
+                return f"{visible_text}\n\n![Generated Image]({image_url})"
+            else:
+                return f"![Generated Image]({image_url})"
         else:
-            return f"{ai_response}\n\n*[Image generation failed: {error}]*"
+            # On error, return visible text + error note
+            if visible_text:
+                return f"{visible_text}\n\n*[Image generation failed: {error}]*"
+            else:
+                return f"*[Image generation failed: {error}]*"
     
+    # No valid prompt, return original response
     return ai_response
 
 def generate_ai_response_streaming(profile, user_message, interface="terminal", session_id=None, provider=None, model=None):

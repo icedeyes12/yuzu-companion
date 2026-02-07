@@ -229,7 +229,8 @@ class MultimodalManager {
         this.setSendButtonState('sending');
 
         try {
-            addMessage("user", text || "Analyze these images");
+            // Don't add user message here - let backend handle it to avoid duplication
+            // The backend will store the complete message with image markdown
             
             this.selectedImages.forEach((image) => {
                 const imageUrl = URL.createObjectURL(image);
