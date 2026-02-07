@@ -1,4 +1,8 @@
 // markme.js - Marked.js wrapper with custom enhancements
+
+// Configuration constants
+const SCROLL_THRESHOLD_PX = 100;
+
 class MarkdownParser {
     static parse(text) {
         if (!text) return '';
@@ -35,9 +39,10 @@ class MarkdownParser {
         
         // Custom renderer to wrap code blocks
         const renderer = new marked.Renderer();
-        const originalCodeRenderer = renderer.code.bind(renderer);
         
         renderer.code = function(code, language) {
+            // Escape HTML to prevent XSS
+            const escapedCode = MarkdownParser.escapeHtml(code);
             const langClass = language ? `language-${language}` : '';
             const langLabel = language ? language : 'text';
             
@@ -45,7 +50,7 @@ class MarkdownParser {
                 <div class="code-header">
                     <span class="code-language">${langLabel}</span>
                 </div>
-                <pre><code class="${langClass}">${code}</code></pre>
+                <pre><code class="${langClass}">${escapedCode}</code></pre>
             </div>`;
         };
         
@@ -78,15 +83,13 @@ class MarkdownParser {
         }
 
         const blocks = container.querySelectorAll('pre code');
+        
+        // Filter out already-highlighted blocks before iterating
+        const unhighlightedBlocks = Array.from(blocks).filter(block => !block.classList.contains('hljs'));
         let count = 0;
 
-        blocks.forEach(block => {
+        unhighlightedBlocks.forEach(block => {
             try {
-                // Skip if already highlighted
-                if (block.classList.contains('hljs')) {
-                    return;
-                }
-                
                 block.className = block.className.replace(/hljs/g, '').trim();
                 
                 const match = block.className.match(/language-(\w+)/);

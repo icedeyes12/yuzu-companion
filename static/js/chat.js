@@ -640,6 +640,8 @@ function monitorScrollSystem() {
 }
 
 // ==================== PAGINATION STATE ====================
+const SCROLL_THRESHOLD_PX = 100;  // Pixels from top to trigger load more
+
 let chatPaginationState = {
     currentOffset: 0,
     limit: 50,
@@ -866,8 +868,8 @@ async function handleScrollToTop() {
     const chatContainer = document.getElementById("chatContainer");
     if (!chatContainer) return;
     
-    // Check if scrolled near the top (within 100px)
-    const isNearTop = chatContainer.scrollTop < 100;
+    // Check if scrolled near the top
+    const isNearTop = chatContainer.scrollTop < SCROLL_THRESHOLD_PX;
     
     if (isNearTop && 
         !chatPaginationState.isLoading && 

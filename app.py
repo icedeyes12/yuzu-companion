@@ -27,6 +27,8 @@ from tools import multimodal_tools
 # Image context cache to avoid repeated file I/O
 image_context_cache = {}  # {file_path: (timestamp, base64_data, mime_type)}
 IMAGE_CACHE_TTL = 300  # 5 minutes
+MAX_IMAGES_PER_MESSAGE = 3  # Maximum images to include per message
+MAX_RECENT_IMAGE_MESSAGES = 3  # Maximum recent image messages to inject into context
 
 class UserContext:
     def __init__(self):
@@ -595,7 +597,7 @@ Your speaking style and personality are defined above.
 
     return messages
 
-def _find_recent_image_messages(chat_history, max_images=3):
+def _find_recent_image_messages(chat_history, max_images=MAX_RECENT_IMAGE_MESSAGES):
     """Find the last N messages that contain images"""
     image_messages = []
     
@@ -633,7 +635,7 @@ def _inject_image_context(message):
     message_content = [{"type": "text", "text": clean_text or "Image message"}]
     
     # Load and encode images
-    for image_url in image_urls[:3]:  # Limit to 3 images per message
+    for image_url in image_urls[:MAX_IMAGES_PER_MESSAGE]:  # Limit images per message
         # Convert local paths to absolute paths
         if image_url.startswith('http://localhost'):
             # Extract path after domain
@@ -648,6 +650,9 @@ def _inject_image_context(message):
                 message_content.append(image_data)
             continue
         
+        # Get current time outside try block for cache check
+        current_time = time.time()
+        
         # Read local file and encode to base64 (with caching)
         try:
             if not os.path.isabs(local_path):
@@ -659,7 +664,6 @@ def _inject_image_context(message):
             
             if os.path.exists(full_path):
                 # Check cache first
-                current_time = time.time()
                 if full_path in image_context_cache:
                     cached_time, cached_base64, cached_mime = image_context_cache[full_path]
                     if current_time - cached_time < IMAGE_CACHE_TTL:
