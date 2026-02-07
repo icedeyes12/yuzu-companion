@@ -95,6 +95,75 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
         if should_summarize_memory(profile, user_message, session_id):
             summarize_memory(profile, user_message, full_response, session_id)
 
+def _extract_image_context(session_id, limit_images=2, scan_messages=20):
+    """Extract up to 2 recent images from chat history for vision context"""
+    import re
+    import base64
+    import os
+    
+    try:
+        # Get last N messages from history
+        recent_messages = Database.get_chat_history(session_id=session_id, limit=scan_messages, recent=True)
+        
+        images_found = []
+        
+        # Scan messages in reverse order (most recent first)
+        for msg in reversed(recent_messages):
+            if len(images_found) >= limit_images:
+                break
+            
+            content = msg.get('content', '')
+            
+            # Extract image paths from markdown: ![text](path)
+            image_pattern = r'!\[.*?\]\((static/uploads/[^)]+)\)'
+            matches = re.findall(image_pattern, content)
+            
+            for image_path in matches:
+                if len(images_found) >= limit_images:
+                    break
+                
+                # Convert relative path to absolute
+                full_path = os.path.join(os.path.dirname(__file__), image_path)
+                
+                # Check if file exists
+                if os.path.exists(full_path):
+                    try:
+                        # Read and encode image to base64
+                        with open(full_path, 'rb') as img_file:
+                            image_data = img_file.read()
+                            base64_image = base64.b64encode(image_data).decode('utf-8')
+                        
+                        # Detect image type from extension
+                        ext = os.path.splitext(full_path)[1].lower()
+                        mime_type = {
+                            '.jpg': 'image/jpeg',
+                            '.jpeg': 'image/jpeg',
+                            '.png': 'image/png',
+                            '.gif': 'image/gif',
+                            '.webp': 'image/webp'
+                        }.get(ext, 'image/jpeg')
+                        
+                        images_found.append({
+                            'path': image_path,
+                            'base64': base64_image,
+                            'mime_type': mime_type
+                        })
+                        
+                        print(f"[IMAGE CONTEXT] Loaded image: {image_path}")
+                    except Exception as e:
+                        print(f"[WARNING] Failed to load image {full_path}: {e}")
+                else:
+                    print(f"[WARNING] Image not found: {full_path}")
+        
+        if images_found:
+            print(f"[IMAGE CONTEXT] Extracted {len(images_found)} images for context")
+        
+        return images_found
+    
+    except Exception as e:
+        print(f"[ERROR] Failed to extract image context: {e}")
+        return []
+
 def _build_generation_context(profile, session_id, interface="terminal"):
     """Shared context building logic for both streaming and non-streaming responses"""
     from datetime import datetime
@@ -562,8 +631,8 @@ Your speaking style and personality are defined above.
 
     return messages
 
-def _handle_vision_processing(messages, user_message, current_provider, current_model):
-    """Handle vision model switching and message formatting"""
+def _handle_vision_processing(messages, user_message, current_provider, current_model, session_id=None):
+    """Handle vision model switching and message formatting with image context injection"""
     should_switch_provider = multimodal_tools.should_use_vision(user_message, current_provider, current_model)
 
     if should_switch_provider:
@@ -576,6 +645,49 @@ def _handle_vision_processing(messages, user_message, current_provider, current_
             # Replace last user message with vision format
             if messages and messages[-1]['role'] == 'user':
                 messages = messages[:-1] + vision_messages
+    
+    # Inject image context from recent chat history (Task 3)
+    if session_id:
+        image_context = _extract_image_context(session_id, limit_images=2, scan_messages=20)
+        
+        if image_context:
+            # Find the last user message to add image context
+            for i in range(len(messages) - 1, -1, -1):
+                if messages[i]['role'] == 'user':
+                    # Check if message already has vision format
+                    if isinstance(messages[i]['content'], list):
+                        # Already in vision format, add images to the content array
+                        for img in image_context:
+                            messages[i]['content'].append({
+                                'type': 'image_url',
+                                'image_url': {
+                                    'url': f"data:{img['mime_type']};base64,{img['base64']}"
+                                }
+                            })
+                    else:
+                        # Convert to vision format and add images
+                        text_content = messages[i]['content']
+                        messages[i]['content'] = [
+                            {
+                                'type': 'text',
+                                'text': text_content
+                            }
+                        ]
+                        for img in image_context:
+                            messages[i]['content'].append({
+                                'type': 'image_url',
+                                'image_url': {
+                                    'url': f"data:{img['mime_type']};base64,{img['base64']}"
+                                }
+                            })
+                        
+                        # Switch to vision model if we added images
+                        if current_provider != 'chutes':
+                            vision_provider, vision_model = multimodal_tools.get_best_vision_provider()
+                            if vision_provider and vision_model:
+                                current_provider = vision_provider
+                                current_model = vision_model
+                    break
     
     return messages, current_provider, current_model
 
@@ -635,7 +747,7 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
     
     # Handle vision processing
     messages, preferred_provider, preferred_model = _handle_vision_processing(
-        messages, user_message, preferred_provider, preferred_model
+        messages, user_message, preferred_provider, preferred_model, session_id
     )
     
     try:
@@ -724,7 +836,7 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
     
     # Handle vision processing
     messages, preferred_provider, preferred_model = _handle_vision_processing(
-        messages, user_message, preferred_provider, preferred_model
+        messages, user_message, preferred_provider, preferred_model, session_id
     )
     
     try:
