@@ -691,11 +691,33 @@ function createMessageElement(role, content, timestamp = null) {
     const contentContainer = document.createElement("div");
     contentContainer.className = "message-content";
 
+    // Debug logging for image rendering (temporary)
+    if (content && content.includes('![Generated Image]')) {
+        console.log('[DEBUG] Message contains generated image markdown:', content);
+        console.log('[DEBUG] renderMessageContent available:', typeof renderMessageContent !== 'undefined');
+        console.log('[DEBUG] MarkdownParser available:', typeof MarkdownParser !== 'undefined');
+        console.log('[DEBUG] marked available:', typeof marked !== 'undefined');
+    }
+
     if (typeof renderMessageContent !== 'undefined') {
-        contentContainer.innerHTML = renderMessageContent(String(content));
+        const renderedHTML = renderMessageContent(String(content));
+        contentContainer.innerHTML = renderedHTML;
+        
+        // Debug: verify image was rendered
+        if (content && content.includes('![Generated Image]')) {
+            console.log('[DEBUG] After renderMessageContent, HTML contains <img>:', renderedHTML.includes('<img'));
+            console.log('[DEBUG] Rendered HTML snippet:', renderedHTML.substring(0, 200));
+        }
     } else if (typeof MarkdownParser !== 'undefined' && typeof MarkdownParser.parse === 'function') {
-        contentContainer.innerHTML = MarkdownParser.parse(String(content));
+        const renderedHTML = MarkdownParser.parse(String(content));
+        contentContainer.innerHTML = renderedHTML;
+        
+        // Debug: verify image was rendered
+        if (content && content.includes('![Generated Image]')) {
+            console.log('[DEBUG] After MarkdownParser.parse, HTML contains <img>:', renderedHTML.includes('<img'));
+        }
     } else {
+        console.warn('[WARNING] No markdown parser available, using textContent');
         contentContainer.textContent = String(content);
     }
 
