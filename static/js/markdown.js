@@ -1,6 +1,29 @@
 // markdown.js - SAFE CDN VERSION with marked.js
 // Uses marked.js from CDN for parsing, keeps utility functions
 
+// Custom renderer for code blocks
+const customRenderer = {
+    code(code, language) {
+        const lang = language || 'text';
+        const escapedCode = code
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+        
+        return `<div class="code-block-container">
+    <div class="code-header">
+        <span class="language-name">${lang.toUpperCase()}</span>
+        <button class="copy-code-btn" onclick="copyCodeToClipboard(this)">
+            <span class="copy-text">Copy</span>
+        </button>
+    </div>
+    <pre><code class="language-${lang}">${escapedCode}</code></pre>
+</div>`;
+    }
+};
+
 // Simple wrapper to use marked.js for markdown parsing
 function renderMessageContent(text) {
     if (!text) return "";
@@ -12,8 +35,8 @@ function renderMessageContent(text) {
     }
     
     try {
-        // Use marked.parse to convert markdown to HTML
-        return marked.parse(String(text));
+        // Use marked.parse with custom renderer
+        return marked.parse(String(text), { renderer: customRenderer });
     } catch (e) {
         console.error('Error parsing markdown:', e);
         return String(text);
@@ -112,7 +135,11 @@ document.addEventListener('DOMContentLoaded', () => {
             smartypants: false,
             xhtml: false
         });
-        console.log('marked.js configured successfully');
+        
+        // Use custom renderer for better code block wrapping
+        marked.use({ renderer: customRenderer });
+        
+        console.log('marked.js configured successfully with custom renderer');
     } else {
         console.error('marked.js not found! Make sure CDN script is loaded.');
     }
