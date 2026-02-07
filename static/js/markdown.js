@@ -1,7 +1,7 @@
 // markdown.js - SAFE CDN VERSION with marked.js
 // Uses marked.js from CDN for parsing, keeps utility functions
 
-// Custom renderer for code blocks
+// Custom renderer for code blocks and tables
 const customRenderer = {
     code(code, language) {
         const lang = language || 'text';
@@ -20,6 +20,16 @@ const customRenderer = {
         </button>
     </div>
     <pre><code class="language-${lang}">${escapedCode}</code></pre>
+</div>`;
+    },
+    
+    table(header, body) {
+        // Wrap table in .table-container for proper styling and overflow handling
+        return `<div class="table-container">
+    <table>
+        <thead>${header}</thead>
+        <tbody>${body}</tbody>
+    </table>
 </div>`;
     }
 };
