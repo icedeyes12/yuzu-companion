@@ -24,6 +24,10 @@ from database import Database
 from providers import get_ai_manager
 from tools import multimodal_tools
 
+# Image context cache to avoid repeated file I/O
+image_context_cache = {}  # {file_path: (timestamp, base64_data, mime_type)}
+IMAGE_CACHE_TTL = 300  # 5 minutes
+
 class UserContext:
     def __init__(self):
         pass
@@ -644,7 +648,7 @@ def _inject_image_context(message):
                 message_content.append(image_data)
             continue
         
-        # Read local file and encode to base64
+        # Read local file and encode to base64 (with caching)
         try:
             if not os.path.isabs(local_path):
                 # Make path absolute
@@ -654,6 +658,21 @@ def _inject_image_context(message):
                 full_path = local_path
             
             if os.path.exists(full_path):
+                # Check cache first
+                current_time = time.time()
+                if full_path in image_context_cache:
+                    cached_time, cached_base64, cached_mime = image_context_cache[full_path]
+                    if current_time - cached_time < IMAGE_CACHE_TTL:
+                        # Use cached data
+                        message_content.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{cached_mime};base64,{cached_base64}"
+                            }
+                        })
+                        continue
+                
+                # Cache miss or expired - load from disk
                 with open(full_path, 'rb') as f:
                     image_bytes = f.read()
                     image_base64 = base64.b64encode(image_bytes).decode('utf-8')
@@ -669,6 +688,9 @@ def _inject_image_context(message):
                         mime_type = "image/webp"
                     else:
                         mime_type = "image/jpeg"
+                    
+                    # Cache the data
+                    image_context_cache[full_path] = (current_time, image_base64, mime_type)
                     
                     message_content.append({
                         "type": "image_url",
