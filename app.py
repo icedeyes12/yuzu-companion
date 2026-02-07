@@ -46,7 +46,16 @@ def handle_user_message(user_message, interface="terminal"):
         
         Database.add_message('user', user_message, session_id=session_id)
         
-        ai_reply = generate_ai_response(profile, user_message, interface, session_id)
+        # Try to get AI response with retry for empty responses
+        ai_reply = generate_ai_response_with_retry(profile, user_message, interface, session_id)
+        
+        # Check if response failed (empty after retry)
+        if ai_reply is None:
+            # Store system message instead of empty assistant message
+            error_msg = "Assistant response failed (empty output)."
+            Database.add_message('system', error_msg, session_id=session_id)
+            print(f"[ERROR] Empty response after retry for session {session_id}")
+            return "I'm sorry, I couldn't generate a response. Please try again."
         
         ai_reply_clean = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', ai_reply).strip()
         
@@ -73,17 +82,29 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
         
         Database.add_message('user', user_message, session_id=session_id)
         
-        response_generator = generate_ai_response_streaming(
+        # Try to get streaming response with retry for empty responses
+        response_generator = generate_ai_response_streaming_with_retry(
             profile, user_message, interface, session_id, provider, model
         )
         
         full_response = ""
+        error_occurred = False
+        
         for chunk in response_generator:
+            if chunk == "__EMPTY_RESPONSE_ERROR__":
+                error_occurred = True
+                break
             yield chunk
             if chunk:
                 full_response += chunk
         
-        if full_response.strip():
+        if error_occurred:
+            # Store system message instead of empty assistant message
+            error_msg = "Assistant response failed (empty output)."
+            Database.add_message('system', error_msg, session_id=session_id)
+            print(f"[ERROR] Empty streaming response after retry for session {session_id}")
+            yield "I'm sorry, I couldn't generate a response. Please try again."
+        elif full_response.strip():
             full_response_clean = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', full_response).strip()
             Database.add_message('assistant', full_response_clean, session_id=session_id)
         
@@ -609,6 +630,62 @@ def _handle_ai_image_generation(ai_response, session_id):
             return f"{ai_response}\n\n*[Image generation failed: {error}]*"
     
     return ai_response
+
+def _is_empty_response(response):
+    """Check if response is empty or None"""
+    if response is None:
+        return True
+    if isinstance(response, str):
+        return response.strip() == ""
+    return False
+
+def generate_ai_response_with_retry(profile, user_message, interface="terminal", session_id=None, max_retries=1):
+    """Generate AI response with retry for empty responses"""
+    for attempt in range(max_retries + 1):
+        if attempt > 0:
+            print(f"[RETRY] Attempt {attempt + 1} for empty response (session: {session_id})")
+        
+        response = generate_ai_response(profile, user_message, interface, session_id)
+        
+        if not _is_empty_response(response):
+            return response
+        
+        print(f"[WARNING] Empty response detected on attempt {attempt + 1}")
+    
+    # All retries exhausted, return None to signal failure
+    print(f"[ERROR] All retry attempts exhausted, response still empty")
+    return None
+
+def generate_ai_response_streaming_with_retry(profile, user_message, interface="terminal", session_id=None, provider=None, model=None, max_retries=1):
+    """Generate streaming AI response with retry for empty responses"""
+    for attempt in range(max_retries + 1):
+        if attempt > 0:
+            print(f"[RETRY] Streaming attempt {attempt + 1} for empty response (session: {session_id})")
+        
+        response_generator = generate_ai_response_streaming(
+            profile, user_message, interface, session_id, provider, model
+        )
+        
+        full_response = ""
+        chunks = []
+        
+        # Collect all chunks first
+        for chunk in response_generator:
+            chunks.append(chunk)
+            if chunk:
+                full_response += chunk
+        
+        if not _is_empty_response(full_response):
+            # Response is valid, yield all chunks
+            for chunk in chunks:
+                yield chunk
+            return
+        
+        print(f"[WARNING] Empty streaming response detected on attempt {attempt + 1}")
+    
+    # All retries exhausted, signal error
+    print(f"[ERROR] All streaming retry attempts exhausted, response still empty")
+    yield "__EMPTY_RESPONSE_ERROR__"
 
 def generate_ai_response_streaming(profile, user_message, interface="terminal", session_id=None, provider=None, model=None):
     """Generate AI response with streaming support"""
