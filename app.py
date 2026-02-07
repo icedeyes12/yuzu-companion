@@ -1226,9 +1226,6 @@ Relationship Dynamics: [Provide analysis of the relationship dynamics between Us
         
         try:
             Database.update_profile({'memory': current_memory})
-            
-            return True
-            
             return True
             
         except Exception as e:
