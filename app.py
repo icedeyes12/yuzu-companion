@@ -706,7 +706,12 @@ def _handle_image_generation(user_message, session_id):
     image_url, error = multimodal_tools.generate_image(prompt)
     
     if image_url:
+        # Ensure path starts with / for browser access
+        if not image_url.startswith('/') and not image_url.startswith('http'):
+            image_url = '/' + image_url
+            
         Database.add_image_tools_message(image_url, session_id=session_id)
+        # Use single-line markdown syntax: ![alt](url)
         return f"Image generated successfully! Here's your creation:\n\n![Generated Image]({image_url})"
     else:
         return f"Sorry, I couldn't generate an image: {error}"
@@ -738,8 +743,13 @@ def _handle_ai_image_generation(ai_response, session_id):
             # Store image as image_tools message
             Database.add_image_tools_message(image_url, session_id=session_id)
             
+            # Ensure path starts with / for browser access
+            if not image_url.startswith('/') and not image_url.startswith('http'):
+                image_url = '/' + image_url
+            
             # Return only visible text + image for UI
             # Don't add "I've created that image for you!" message
+            # Use single-line markdown syntax: ![alt](url)
             if visible_text:
                 return f"{visible_text}\n\n![Generated Image]({image_url})"
             else:
