@@ -694,30 +694,38 @@ function createMessageElement(role, content, timestamp = null) {
     // Debug logging for image rendering (temporary)
     if (content && content.includes('![Generated Image]')) {
         console.log('[DEBUG] Message contains generated image markdown:', content);
+        console.log('[DEBUG] Message role:', role);
         console.log('[DEBUG] renderMessageContent available:', typeof renderMessageContent !== 'undefined');
         console.log('[DEBUG] MarkdownParser available:', typeof MarkdownParser !== 'undefined');
         console.log('[DEBUG] marked available:', typeof marked !== 'undefined');
     }
 
-    if (typeof renderMessageContent !== 'undefined') {
-        const renderedHTML = renderMessageContent(String(content));
-        contentContainer.innerHTML = renderedHTML;
-        
-        // Debug: verify image was rendered
-        if (content && content.includes('![Generated Image]')) {
-            console.log('[DEBUG] After renderMessageContent, HTML contains <img>:', renderedHTML.includes('<img'));
-            console.log('[DEBUG] Rendered HTML snippet:', renderedHTML.substring(0, 200));
-        }
-    } else if (typeof MarkdownParser !== 'undefined' && typeof MarkdownParser.parse === 'function') {
-        const renderedHTML = MarkdownParser.parse(String(content));
-        contentContainer.innerHTML = renderedHTML;
-        
-        // Debug: verify image was rendered
-        if (content && content.includes('![Generated Image]')) {
-            console.log('[DEBUG] After MarkdownParser.parse, HTML contains <img>:', renderedHTML.includes('<img'));
+    // Apply markdown parsing ONLY to assistant, system, and tool messages
+    // User messages should remain as plain text
+    if (role === "assistant" || role === "ai" || role === "system" || role === "tool" || role === "image_tools") {
+        if (typeof renderMessageContent !== 'undefined') {
+            const renderedHTML = renderMessageContent(String(content));
+            contentContainer.innerHTML = renderedHTML;
+            
+            // Debug: verify image was rendered
+            if (content && content.includes('![Generated Image]')) {
+                console.log('[DEBUG] After renderMessageContent, HTML contains <img>:', renderedHTML.includes('<img'));
+                console.log('[DEBUG] Rendered HTML snippet:', renderedHTML.substring(0, 200));
+            }
+        } else if (typeof MarkdownParser !== 'undefined' && typeof MarkdownParser.parse === 'function') {
+            const renderedHTML = MarkdownParser.parse(String(content));
+            contentContainer.innerHTML = renderedHTML;
+            
+            // Debug: verify image was rendered
+            if (content && content.includes('![Generated Image]')) {
+                console.log('[DEBUG] After MarkdownParser.parse, HTML contains <img>:', renderedHTML.includes('<img'));
+            }
+        } else {
+            console.warn('[WARNING] No markdown parser available for', role, 'message, using textContent');
+            contentContainer.textContent = String(content);
         }
     } else {
-        console.warn('[WARNING] No markdown parser available, using textContent');
+        // User messages: use plain text (no markdown parsing)
         contentContainer.textContent = String(content);
     }
 
