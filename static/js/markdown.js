@@ -1,7 +1,7 @@
 // markdown.js - SAFE CDN VERSION with marked.js
 // Uses marked.js from CDN for parsing, keeps utility functions
 
-// Custom renderer for code blocks and tables
+// Custom renderer for code blocks, tables, and images
 const customRenderer = {
     code(code, language) {
         const lang = language || 'text';
@@ -31,6 +31,21 @@ const customRenderer = {
         <tbody>${body}</tbody>
     </table>
 </div>`;
+    },
+    
+    image(href, title, text) {
+        // Ensure proper path with leading slash
+        let src = href;
+        if (src && !src.startsWith('http') && !src.startsWith('/')) {
+            src = '/' + src;
+        }
+        
+        // Build title/alt attributes
+        const titleAttr = title ? ` title="${title}"` : '';
+        const altAttr = text ? ` alt="${text}"` : ' alt="Image"';
+        
+        // Return image with markdown-image class for proper styling
+        return `<img src="${src}" class="markdown-image"${altAttr}${titleAttr}>`;
     }
 };
 
