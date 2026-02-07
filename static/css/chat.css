@@ -17,9 +17,12 @@
 
 html, body {
   overflow: hidden;
+  overflow-x: hidden;
   height: 100%;
   margin: 0;
   padding: 0;
+  max-width: 100vw;
+  box-sizing: border-box;
 }
 
 .chat-app {
@@ -32,6 +35,7 @@ html, body {
 .chat-container {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
   padding: 4.8rem 0.6rem 8rem;
@@ -487,18 +491,22 @@ html, body {
 
 /* Optimized Messages */
 .message {
-  max-width: 88%;
+  max-width: 85%;
   padding: 0.5rem 0.8rem;
   border-radius: 11px;
   line-height: 1.45;
   border: 1px solid rgba(0,0,0,0.1);
   word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
   animation: fadeIn 0.25s ease;
   font-size: 0.98rem;
   backdrop-filter: blur(10px);
   margin: 0.08rem 0;
   color: var(--text-color) !important;
   transition: all 0.3s ease;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 /* ENHANCED HEADING STYLES - MERGED & IMPROVED */
@@ -593,6 +601,23 @@ html, body {
   font-weight: 500;
   box-shadow: 0 4px 18px var(--shadow-dark);
   transition: all 0.3s ease;
+}
+
+/* Ensure all message content respects container width */
+.message * {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.message img {
+  max-width: 100%;
+  height: auto;
+}
+
+.message pre,
+.message code,
+.message table {
+  max-width: 100%;
 }
 
 .timestamp {
@@ -762,6 +787,8 @@ blockquote blockquote blockquote {
   box-shadow: var(--shadow-soft);
   transition: all 0.3s ease;
   max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .table-container table {
@@ -925,6 +952,8 @@ blockquote blockquote blockquote {
   background: var(--code-bg) !important;
   border: 1px solid var(--code-border);
   max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
   box-shadow: var(--shadow-soft);
   transition: all 0.3s ease;
 }
@@ -1105,6 +1134,7 @@ blockquote blockquote blockquote {
 /* Markdown Image Styles */
 .markdown-image {
   max-width: 100% !important;
+  width: auto !important;
   height: auto !important;
   border-radius: 12px !important;
   margin: 0.8rem 0 !important;
@@ -1114,6 +1144,8 @@ blockquote blockquote blockquote {
   display: block !important;
   background: var(--code-bg) !important;
   padding: 0.3rem !important;
+  box-sizing: border-box !important;
+  object-fit: contain !important;
 }
 
 .markdown-image:hover {

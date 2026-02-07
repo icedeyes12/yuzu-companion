@@ -875,8 +875,9 @@ async function loadMoreMessages() {
     
     console.log(`Loading more messages from offset ${pagination.offset}`);
     
-    // Save current scroll position
+    // Save current scroll position and the first visible element
     const previousHeight = chatContainer.scrollHeight;
+    const previousScrollTop = chatContainer.scrollTop;
     
     // Add loading indicator at top
     const loadingIndicator = document.createElement('div');
@@ -919,9 +920,10 @@ async function loadMoreMessages() {
                 chatContainer.appendChild(fragment);
             }
             
-            // CRITICAL: Preserve scroll position
+            // CRITICAL: Preserve scroll position - account for height change
             const newHeight = chatContainer.scrollHeight;
-            chatContainer.scrollTop += (newHeight - previousHeight);
+            const heightDifference = newHeight - previousHeight;
+            chatContainer.scrollTop = previousScrollTop + heightDifference;
             
             // Process markdown and code highlighting
             if (typeof MarkdownParser !== 'undefined') {
