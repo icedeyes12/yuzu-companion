@@ -8,7 +8,7 @@
 # [REPOSITORY: https://guthib.com/icedeyes12]
 # [LICENSE: MIT]
 
-from flask import Flask, render_template, request, jsonify, send_from_directory, session
+from flask import Flask, render_template, request, jsonify, send_from_directory, session, Response
 import os
 from datetime import datetime
 from app import handle_user_message, start_session, end_session_cleanup, summarize_memory, summarize_global_player_profile
@@ -741,4 +741,4 @@ def api_update_global_knowledge():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000)
