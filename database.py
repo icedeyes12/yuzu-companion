@@ -74,6 +74,9 @@ Index('idx_messages_role', Message.role)
 Index('idx_chat_sessions_active', ChatSession.is_active)
 Index('idx_chat_sessions_updated', ChatSession.updated_at)
 Index('idx_api_keys_name', APIKey.key_name)
+# Composite indexes for commonly joined queries
+Index('idx_messages_session_role', Message.session_id, Message.role)
+Index('idx_messages_session_timestamp', Message.session_id, Message.timestamp)
 
 def get_db_path():
     return os.path.join(os.path.dirname(__file__), 'yuzu_core.db')
@@ -520,8 +523,9 @@ class Database:
             )
             
             if recent and limit:
-                messages = query.order_by(Message.timestamp.desc()).limit(limit).all()
-                messages = list(reversed(messages))
+                # Optimize: Use subquery to get recent messages, then order ascending
+                subquery = query.order_by(Message.timestamp.desc()).limit(limit).subquery()
+                messages = session.query(Message).select_from(subquery).order_by(subquery.c.timestamp.asc()).all()
             elif limit:
                 messages = query.order_by(Message.timestamp.asc()).limit(limit).all()
             else:
@@ -560,8 +564,9 @@ class Database:
             )
             
             if recent and limit:
-                messages = query.order_by(Message.timestamp.desc()).limit(limit).all()
-                messages = list(reversed(messages))
+                # Optimize: Use subquery to get recent messages, then order ascending
+                subquery = query.order_by(Message.timestamp.desc()).limit(limit).subquery()
+                messages = session.query(Message).select_from(subquery).order_by(subquery.c.timestamp.asc()).all()
             elif limit:
                 messages = query.order_by(Message.timestamp.asc()).limit(limit).all()
             else:
