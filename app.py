@@ -46,7 +46,14 @@ def handle_user_message(user_message, interface="terminal"):
         
         Database.add_message('user', user_message, session_id=session_id)
         
-        ai_reply = generate_ai_response(profile, user_message, interface, session_id)
+        ai_reply = generate_ai_response_with_retry(profile, user_message, interface, session_id)
+        
+        # Check if response failed after retry
+        if ai_reply is None:
+            # Store system message indicating failure
+            error_msg = "Assistant response failed (empty output)."
+            Database.add_message('system', error_msg, session_id=session_id)
+            return error_msg
         
         ai_reply_clean = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', ai_reply).strip()
         
@@ -82,6 +89,24 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
             yield chunk
             if chunk:
                 full_response += chunk
+        
+        # Check if response is empty after streaming
+        if _is_response_empty(full_response):
+            print("[WARNING] Empty streaming response, attempting retry with non-streaming...")
+            # Retry with non-streaming approach
+            retry_response = generate_ai_response(profile, user_message, interface, session_id)
+            
+            if not _is_response_empty(retry_response):
+                print("[INFO] Retry successful with non-streaming")
+                full_response = retry_response
+                yield retry_response
+            else:
+                # Still empty - store system message
+                print("[ERROR] Response still empty after streaming retry")
+                error_msg = "Assistant response failed (empty output)."
+                Database.add_message('system', error_msg, session_id=session_id)
+                yield error_msg
+                return
         
         if full_response.strip():
             full_response_clean = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', full_response).strip()
@@ -670,6 +695,40 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
         error_msg = f"AI service error: {str(e)}"
         print(f"[ERROR] Streaming response failed: {error_msg}")
         yield error_msg
+
+def _is_response_empty(response):
+    """Check if response is empty or contains only whitespace"""
+    if response is None:
+        return True
+    if not isinstance(response, str):
+        return True
+    if not response.strip():
+        return True
+    return False
+
+def generate_ai_response_with_retry(profile, user_message, interface="terminal", session_id=None):
+    """Generate AI response with retry logic for empty responses"""
+    if session_id is None:
+        active_session = Database.get_active_session()
+        session_id = active_session['id']
+    
+    # First attempt
+    response = generate_ai_response(profile, user_message, interface, session_id)
+    
+    if not _is_response_empty(response):
+        return response
+    
+    # Retry once if first response was empty
+    print("[WARNING] Empty response detected, retrying...")
+    response = generate_ai_response(profile, user_message, interface, session_id)
+    
+    if not _is_response_empty(response):
+        print("[INFO] Retry successful")
+        return response
+    
+    # Still empty after retry - return None to signal failure
+    print("[ERROR] Response still empty after retry")
+    return None
 
 def generate_ai_response(profile, user_message, interface="terminal", session_id=None):
     """Generate AI response (non-streaming)"""
