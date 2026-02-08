@@ -13,6 +13,9 @@ console.log("Starting OPTIMIZED chat with performance improvements...");
 // ==================== PERFORMANCE OPTIMIZATIONS ====================
 let isProcessingMessage = false; // Global flag to prevent double-send
 
+// ==================== PAGINATION CONSTANTS ====================
+const PAGINATION_SCROLL_TRIGGER_PX = 100; // Pixels from top to trigger pagination load
+
 // ==================== MULTIMODAL MANAGER ====================
 class MultimodalManager {
     constructor() {
@@ -839,8 +842,8 @@ function setupPaginationScrollListener() {
     if (!chatContainer) return;
     
     chatContainer.addEventListener('scroll', async function() {
-        // Check if user scrolled near the top (within 100px)
-        if (chatContainer.scrollTop < 100 && 
+        // Check if user scrolled near the top
+        if (chatContainer.scrollTop < PAGINATION_SCROLL_TRIGGER_PX && 
             window.chatPagination && 
             !window.chatPagination.isLoading && 
             window.chatPagination.hasMore) {

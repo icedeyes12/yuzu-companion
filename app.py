@@ -709,8 +709,9 @@ def _is_response_empty(response):
         return True
     return False
 
-# Image context cache
+# Image context cache and TTL configuration
 _image_context_cache = {}
+IMAGE_CACHE_TTL_SECONDS = 300  # 5 minutes
 
 def _get_recent_image_messages(session_id, limit=3):
     """Get recent messages containing images from chat history"""
@@ -756,16 +757,16 @@ def _load_image_to_base64(image_path):
     cache_key = f"{image_path}_{os.path.getmtime(image_path) if os.path.exists(image_path) else 0}"
     current_time = time.time()
     
-    # Clean expired cache entries (TTL: 5 minutes = 300 seconds)
+    # Clean expired cache entries
     expired_keys = [k for k, v in _image_context_cache.items() 
-                    if current_time - v['timestamp'] > 300]
+                    if current_time - v['timestamp'] > IMAGE_CACHE_TTL_SECONDS]
     for k in expired_keys:
         del _image_context_cache[k]
     
-    # Return from cache if available
+    # Return from cache if available and not expired
     if cache_key in _image_context_cache:
         cache_entry = _image_context_cache[cache_key]
-        if current_time - cache_entry['timestamp'] < 300:  # TTL: 5 minutes
+        if current_time - cache_entry['timestamp'] < IMAGE_CACHE_TTL_SECONDS:
             return cache_entry['data']
     
     # Load from disk
@@ -818,7 +819,7 @@ def _inject_image_context_to_messages(messages, session_id):
     if not messages or messages[-1].get('role') != 'user':
         return messages
     
-    # Get recent image messages (last 2-3)
+    # Get recent image messages (last 2)
     recent_images = _get_recent_image_messages(session_id, limit=2)
     
     if not recent_images:

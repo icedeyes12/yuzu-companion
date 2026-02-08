@@ -529,13 +529,20 @@ class Database:
             )
             
             if recent and limit:
+                # For "recent" mode, get the latest N messages
                 messages = query.order_by(Message.timestamp.desc()).limit(limit).offset(offset).all()
                 messages = list(reversed(messages))
             elif limit:
-                # For pagination, order DESC to get most recent first, then apply offset
-                messages = query.order_by(Message.timestamp.desc()).limit(limit).offset(offset).all()
-                # Reverse to maintain chronological order in the result
-                messages = list(reversed(messages))
+                # For pagination: get total count, then fetch from the end
+                total_count = query.count()
+                
+                # Calculate position from start for pagination
+                # offset=0 means most recent messages
+                # offset=50 means skip the 50 most recent, get the next 50
+                start_position = max(0, total_count - offset - limit)
+                
+                # Fetch messages in chronological order
+                messages = query.order_by(Message.timestamp.asc()).offset(start_position).limit(limit).all()
             else:
                 messages = query.order_by(Message.timestamp.asc()).all()
             
