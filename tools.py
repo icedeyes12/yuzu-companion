@@ -16,6 +16,7 @@ import time
 import os
 import shutil
 from datetime import datetime
+from urllib.parse import quote
 from database import Database
 from typing import List, Dict, Optional, Tuple
 
@@ -434,7 +435,13 @@ class MultimodalTools:
                         f.write(response.content)
                     
                     # Return web-accessible URL path with leading slash
-                    web_path = f"/{filepath.replace(os.sep, '/')}"
+                    # URL-encode the filename to handle spaces and special characters
+                    normalized_path = filepath.replace(os.sep, '/')
+                    # Split path to encode only the filename part
+                    path_parts = normalized_path.split('/')
+                    encoded_filename = quote(path_parts[-1])
+                    path_parts[-1] = encoded_filename
+                    web_path = '/' + '/'.join(path_parts)
                     return web_path, None
                 else:
                     return None, f"API error {response.status_code}"
