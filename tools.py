@@ -45,6 +45,23 @@ class MultimodalTools:
         self.image_cache = {}
         self.cache_ttl = 3600  # 1 hour TTL
         
+        # Pre-compiled patterns and sets for performance
+        self._image_domains = frozenset([
+            'ibb.co', 'imgur.com', 'gyazo.com', 'prntscr.com', 'prnt.sc',
+            'tinypic.com', 'postimg.org', 'imageshack.us', 'flickr.com',
+            'deviantart.com', 'artstation.com', 'pinterest.com',
+            'cdn.discordapp.com', 'media.discordapp.net', 'i.redd.it',
+            'i.imgur.com'
+        ])
+        self._image_ext_pattern = re.compile(r'\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$', re.IGNORECASE)
+        self._id_pattern = re.compile(r'/[a-z0-9]{7,}', re.IGNORECASE)
+        
+        # Pre-lowercase vision models for faster comparison
+        self._vision_models_lower = {
+            provider: [model.lower() for model in models]
+            for provider, models in self.vision_models.items()
+        }
+        
     def get_available_vision_models(self, provider: str) -> List[str]:
         return self.vision_models.get(provider, [])
     
@@ -52,25 +69,25 @@ class MultimodalTools:
         return self.provider_endpoints.get(provider)
     
     def is_vision_model(self, model_name: str, provider: str = None) -> bool:
+        model_name_lower = model_name.lower()
         if provider:
-            return any(vision_model.lower() in model_name.lower() 
-                      for vision_model in self.vision_models.get(provider, []))
+            return any(vision_model in model_name_lower 
+                      for vision_model in self._vision_models_lower.get(provider, []))
         else:
-            for provider_models in self.vision_models.values():
-                if any(vision_model.lower() in model_name.lower() 
+            for provider_models in self._vision_models_lower.values():
+                if any(vision_model in model_name_lower 
                       for vision_model in provider_models):
                     return True
         return False
 
     def _clean_cache(self):
-        """Remove expired cache entries"""
+        """Remove expired cache entries - optimized single-pass"""
         current_time = time.time()
-        expired_keys = [
-            key for key, (timestamp, _) in self.image_cache.items()
-            if current_time - timestamp > self.cache_ttl
-        ]
-        for key in expired_keys:
-            del self.image_cache[key]
+        # Single-pass iteration using dict comprehension
+        self.image_cache = {
+            key: value for key, value in self.image_cache.items()
+            if current_time - value[0] <= self.cache_ttl
+        }
 
     def extract_image_urls(self, text: str) -> List[str]:
         url_pattern = r'https?://[^\s<>"\'{}]+'
@@ -80,18 +97,15 @@ class MultimodalTools:
         for url in urls:
             if self._is_url_in_code_context(text, url):
                 continue
-                
-            if any(domain in url.lower() for domain in [
-                'ibb.co', 'imgur.com', 'gyazo.com', 'prntscr.com', 'prnt.sc',
-                'tinypic.com', 'postimg.org', 'imageshack.us', 'flickr.com',
-                'deviantart.com', 'artstation.com', 'pinterest.com',
-                'cdn.discordapp.com', 'media.discordapp.net', 'i.redd.it',
-                'i.imgur.com'
-            ]):
+            
+            url_lower = url.lower()  # Lower once per URL
+            
+            # Check if any domain in URL using frozenset (O(n) vs O(n*m))
+            if any(domain in url_lower for domain in self._image_domains):
                 image_urls.append(url)
-            elif re.search(r'\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$', url.lower()):
+            elif self._image_ext_pattern.search(url_lower):
                 image_urls.append(url)
-            elif re.search(r'/[a-z0-9]{7,}', url.lower()):
+            elif self._id_pattern.search(url_lower):
                 image_urls.append(url)
         
         return image_urls
