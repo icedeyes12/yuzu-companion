@@ -18,6 +18,7 @@ import shutil
 from datetime import datetime
 from database import Database
 from typing import List, Dict, Optional, Tuple
+from urllib.parse import urlparse
 
 class MultimodalTools:
     def __init__(self):
@@ -98,12 +99,27 @@ class MultimodalTools:
             if self._is_url_in_code_context(text, url):
                 continue
             
-            url_lower = url.lower()  # Lower once per URL
+            # Parse URL to extract hostname for efficient domain matching
+            try:
+                parsed = urlparse(url)
+                hostname = parsed.netloc.lower()
+                
+                # Check if hostname matches or ends with any known image domain
+                # This is more efficient than substring matching on the entire URL
+                if any(hostname == domain or hostname.endswith('.' + domain) 
+                       for domain in self._image_domains):
+                    image_urls.append(url)
+                    continue
+            except:
+                # Fallback to substring matching if URL parsing fails
+                url_lower = url.lower()
+                if any(domain in url_lower for domain in self._image_domains):
+                    image_urls.append(url)
+                    continue
             
-            # Check if any domain in URL using frozenset (O(n) vs O(n*m))
-            if any(domain in url_lower for domain in self._image_domains):
-                image_urls.append(url)
-            elif self._image_ext_pattern.search(url_lower):
+            # Check for image file extensions
+            url_lower = url.lower()
+            if self._image_ext_pattern.search(url_lower):
                 image_urls.append(url)
             elif self._id_pattern.search(url_lower):
                 image_urls.append(url)

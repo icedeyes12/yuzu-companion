@@ -27,10 +27,12 @@ messages = session.query(Message).select_from(subquery).order_by(subquery.c.time
 ```
 
 **Benefits**:
-- Eliminates O(n) list reversal operation
-- Leverages database query optimizer for efficient sorting
-- Reduces memory operations in Python
+- Eliminates Python list reversal operation
+- Keeps all ordering logic at the SQL level
+- More maintainable with explicit intent in SQL
 - Better performance with large message histories (100+ messages)
+
+**Note**: SQLAlchemy may materialize the subquery before the outer query, so the performance benefit may be marginal for small result sets. However, it avoids mixing SQL and Python-level operations and may benefit from database-specific optimizations.
 
 #### Composite Database Indexes
 **Location**: Database model definitions
@@ -46,10 +48,10 @@ messages = session.query(Message).select_from(subquery).order_by(subquery.c.time
 
 ### 2. URL Processing Optimization (tools.py)
 
-#### Domain Checking with Frozenset
+#### Domain Checking with URL Parsing
 **Location**: `MultimodalTools.__init__()` and `extract_image_urls()`
 
-**Problem**: Domain list was created inline and URL was lowercased multiple times.
+**Problem**: Domain list was created inline and URL was processed inefficiently.
 
 ```python
 # Old approach - inefficient
@@ -58,7 +60,7 @@ if any(domain in url.lower() for domain in [
 ]):
 ```
 
-**Solution**: Use frozenset for O(1) lookups and lowercase URL once.
+**Solution**: Parse URL hostname and use frozenset for domain matching.
 
 ```python
 # New approach - optimized
@@ -67,14 +69,17 @@ self._image_domains = frozenset([
 ])
 
 # In extract_image_urls:
-url_lower = url.lower()  # Lower once
-if any(domain in url_lower for domain in self._image_domains):
+parsed = urlparse(url)
+hostname = parsed.netloc.lower()
+if any(hostname == domain or hostname.endswith('.' + domain) 
+       for domain in self._image_domains):
 ```
 
 **Benefits**:
-- Reduces complexity from O(n*m) to O(n) where n=URLs, m=domains
-- Eliminates repeated string lowercasing operations
-- Pre-compiled data structure improves lookup speed
+- Checks exact hostname match instead of substring in entire URL
+- Avoids false positives from domain names in URL paths
+- More accurate domain identification
+- Pre-compiled data structure for consistent lookups
 
 #### Pre-compiled Regex Patterns
 **Location**: `MultimodalTools.__init__()`
