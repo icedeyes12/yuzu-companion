@@ -106,7 +106,12 @@ def api_get_profile():
         profile = Database.get_profile()
         active_session = Database.get_active_session()
         
-        chat_history = Database.get_chat_history(session_id=active_session['id'])
+        # Load only initial 50 messages for performance
+        chat_history = Database.get_chat_history(
+            session_id=active_session['id'],
+            limit=50,
+            offset=0
+        )
         
         session_memory = Database.get_session_memory(active_session['id'])
         
@@ -141,6 +146,37 @@ def api_get_profile():
     except Exception as e:
         print(f"Error in api_get_profile: {e}")
         return jsonify({'error': 'Failed to load profile'}), 500
+
+@app.route('/api/get_chat_history')
+def api_get_chat_history():
+    """Get paginated chat history for current session"""
+    try:
+        active_session = Database.get_active_session()
+        session_id = active_session['id']
+        
+        # Get pagination parameters from query string
+        limit = request.args.get('limit', default=50, type=int)
+        offset = request.args.get('offset', default=0, type=int)
+        
+        # Validate parameters
+        limit = max(1, min(limit, 100))  # Clamp between 1 and 100
+        offset = max(0, offset)  # Must be >= 0
+        
+        chat_history = Database.get_chat_history(
+            session_id=session_id,
+            limit=limit,
+            offset=offset
+        )
+        
+        return jsonify({
+            'messages': chat_history,
+            'limit': limit,
+            'offset': offset,
+            'count': len(chat_history)
+        })
+    except Exception as e:
+        print(f"Error in api_get_chat_history: {e}")
+        return jsonify({'error': 'Failed to load chat history'}), 500
 
 @app.route('/api/send_message', methods=['POST'])
 def api_send_message():
