@@ -582,6 +582,9 @@ Your speaking style and personality are defined above.
             "content": msg["content"]
         })
 
+    # Inject image context for visual continuity (Phase 3)
+    messages = _inject_image_context_to_messages(messages, session_id)
+
     return messages
 
 def _handle_vision_processing(messages, user_message, current_provider, current_model):
@@ -705,6 +708,152 @@ def _is_response_empty(response):
     if not response.strip():
         return True
     return False
+
+# Image context cache
+_image_context_cache = {}
+
+def _get_recent_image_messages(session_id, limit=3):
+    """Get recent messages containing images from chat history"""
+    import re
+    
+    # Get more messages to find images (last 20 messages)
+    chat_history = Database.get_chat_history(session_id=session_id, limit=20, offset=0)
+    
+    image_messages = []
+    for msg in reversed(chat_history):  # Most recent first
+        # Check for markdown images or image_tools role
+        if msg.get('role') == 'image_tools':
+            # Extract image path from image_tools message
+            content = msg.get('content', '')
+            image_match = re.search(r'!\[.*?\]\((.*?)\)', content)
+            if image_match:
+                image_messages.append({
+                    'image_path': image_match.group(1),
+                    'timestamp': msg.get('timestamp')
+                })
+        elif msg.get('role') in ['user', 'assistant']:
+            # Check for markdown image references
+            content = msg.get('content', '')
+            images = re.findall(r'!\[.*?\]\((static/uploads/.*?|static/generated_images/.*?)\)', content)
+            for image_path in images:
+                image_messages.append({
+                    'image_path': image_path,
+                    'timestamp': msg.get('timestamp')
+                })
+        
+        if len(image_messages) >= limit:
+            break
+    
+    return image_messages[:limit]
+
+def _load_image_to_base64(image_path):
+    """Load image from disk and convert to base64 with MIME type detection"""
+    import base64
+    import mimetypes
+    from pathlib import Path
+    
+    # Check cache first
+    cache_key = f"{image_path}_{os.path.getmtime(image_path) if os.path.exists(image_path) else 0}"
+    current_time = time.time()
+    
+    # Clean expired cache entries (TTL: 5 minutes = 300 seconds)
+    expired_keys = [k for k, v in _image_context_cache.items() 
+                    if current_time - v['timestamp'] > 300]
+    for k in expired_keys:
+        del _image_context_cache[k]
+    
+    # Return from cache if available
+    if cache_key in _image_context_cache:
+        cache_entry = _image_context_cache[cache_key]
+        if current_time - cache_entry['timestamp'] < 300:  # TTL: 5 minutes
+            return cache_entry['data']
+    
+    # Load from disk
+    try:
+        # Handle relative paths
+        if not image_path.startswith('/'):
+            image_path = os.path.join(os.path.dirname(__file__), image_path)
+        
+        if not os.path.exists(image_path):
+            print(f"[WARNING] Image not found: {image_path}")
+            return None
+        
+        # Detect MIME type
+        mime_type, _ = mimetypes.guess_type(image_path)
+        if not mime_type or not mime_type.startswith('image/'):
+            # Fallback based on extension
+            ext = Path(image_path).suffix.lower()
+            mime_type_map = {
+                '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+                '.png': 'image/png', '.gif': 'image/gif',
+                '.webp': 'image/webp', '.bmp': 'image/bmp'
+            }
+            mime_type = mime_type_map.get(ext, 'image/jpeg')
+        
+        # Read and encode
+        with open(image_path, 'rb') as f:
+            image_bytes = f.read()
+            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+        
+        result = {
+            'type': 'image_url',
+            'image_url': {
+                'url': f"data:{mime_type};base64,{image_base64}"
+            }
+        }
+        
+        # Cache the result
+        _image_context_cache[cache_key] = {
+            'data': result,
+            'timestamp': current_time
+        }
+        
+        return result
+    except Exception as e:
+        print(f"[ERROR] Failed to load image {image_path}: {e}")
+        return None
+
+def _inject_image_context_to_messages(messages, session_id):
+    """Inject recent images into the last user message for visual context"""
+    if not messages or messages[-1].get('role') != 'user':
+        return messages
+    
+    # Get recent image messages (last 2-3)
+    recent_images = _get_recent_image_messages(session_id, limit=2)
+    
+    if not recent_images:
+        return messages
+    
+    # Load images to base64
+    image_contents = []
+    for img_msg in recent_images:
+        image_data = _load_image_to_base64(img_msg['image_path'])
+        if image_data:
+            image_contents.append(image_data)
+    
+    if not image_contents:
+        return messages
+    
+    # Convert last user message to multipart format
+    last_message = messages[-1]
+    user_text = last_message.get('content', '')
+    
+    # Check if message is already multipart
+    if isinstance(user_text, list):
+        # Already multipart, just add images
+        new_content = user_text + image_contents
+    else:
+        # Convert to multipart
+        new_content = [{"type": "text", "text": user_text}] + image_contents
+    
+    # Update the message
+    messages[-1] = {
+        'role': 'user',
+        'content': new_content
+    }
+    
+    print(f"[INFO] Injected {len(image_contents)} image(s) into context for visual continuity")
+    return messages
 
 def generate_ai_response_with_retry(profile, user_message, interface="terminal", session_id=None):
     """Generate AI response with retry logic for empty responses"""
