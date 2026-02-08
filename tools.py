@@ -99,6 +99,8 @@ class MultimodalTools:
             if self._is_url_in_code_context(text, url):
                 continue
             
+            url_lower = url.lower()  # Compute once for all checks
+            
             # Parse URL to extract hostname for efficient domain matching
             try:
                 parsed = urlparse(url)
@@ -112,13 +114,11 @@ class MultimodalTools:
                     continue
             except:
                 # Fallback to substring matching if URL parsing fails
-                url_lower = url.lower()
                 if any(domain in url_lower for domain in self._image_domains):
                     image_urls.append(url)
                     continue
             
             # Check for image file extensions
-            url_lower = url.lower()
             if self._image_ext_pattern.search(url_lower):
                 image_urls.append(url)
             elif self._id_pattern.search(url_lower):

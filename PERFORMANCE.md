@@ -124,9 +124,9 @@ self.image_cache = {
 ```
 
 **Benefits**:
-- Reduces cache cleanup from O(2n) to O(n)
+- Reduces cache cleanup overhead by avoiding intermediate list and multiple deletions
 - More Pythonic and readable
-- Better memory efficiency
+- Better memory efficiency with single dict creation
 
 ### 4. Vision Model Checking Optimization (tools.py)
 
