@@ -108,6 +108,10 @@
     border-radius: 8px;
     font-size: 1rem;
     outline: none;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 44px;
+    max-height: 200px;
 }
 
 #messageInput:focus {

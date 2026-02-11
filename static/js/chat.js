@@ -76,6 +76,7 @@ async function sendMessage(message) {
     // Show user message immediately
     appendMessage('user', message);
     messageInput.value = '';
+    messageInput.style.height = 'auto';  // Reset height
 
     try {
         const response = await fetch('/api/send_message', {
@@ -122,6 +123,14 @@ messageInput.addEventListener('keypress', (e) => {
         const message = messageInput.value;
         sendMessage(message);
     }
+});
+
+/**
+ * Auto-resize textarea as user types
+ */
+messageInput.addEventListener('input', () => {
+    messageInput.style.height = 'auto';
+    messageInput.style.height = Math.min(messageInput.scrollHeight, 200) + 'px';
 });
 
 // Load chat history on page load
