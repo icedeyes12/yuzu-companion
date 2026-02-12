@@ -187,7 +187,8 @@ async function loadChatHistory() {
         console.log(`Loaded ${allMessages.length} messages`);
         
         // Update session name
-        updateSessionName(data.active_session_name);
+        const sessionName = data.active_session?.name || 'Default Session';
+        updateSessionName(sessionName);
         
         // Display last 30 messages
         displayedMessageCount = 0;
@@ -430,12 +431,14 @@ function setupScrollDetection() {
 // ==================== SESSION MANAGEMENT ====================
 async function createNewSession() {
     try {
-        const response = await fetch('/api/create_session', {
+        const response = await fetch('/api/sessions/create', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({})
+            body: JSON.stringify({
+                name: 'New Chat'
+            })
         });
         
         if (response.ok) {
