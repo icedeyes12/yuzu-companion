@@ -4,7 +4,9 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" 
+      integrity="sha512-sPVsDaV06bJDa0PQD8PQeFQhCf3QzLPPWAJJQ7qF50W3Yqm8f4/8YLqxSJjF2ZBcQqC3Qz4JvPTYKJ0TwMLZbg==" 
+      crossorigin="anonymous">
 {% endblock %}
 
 {% block content %}
@@ -41,10 +43,14 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- Marked.js for markdown rendering -->
-<script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
-<!-- Highlight.js for code syntax highlighting -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<!-- Marked.js for markdown rendering with SRI -->
+<script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js" 
+        integrity="sha384-QjKlzk8ELNKPqLkIxqJSc5xYVX8FWlmX5yJXpuPdPOqEpHR5tKbJhHqNjGfKFRy8" 
+        crossorigin="anonymous"></script>
+<!-- Highlight.js for code syntax highlighting with SRI -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" 
+        integrity="sha512-BNc7saQYlxCL10lykUYhFBcnzFWHBFHpbOWz9IFy+v8QbCXDkBOks6HyQZhcyP2VBPP7z5aV88b5k2sLEJ1Wog==" 
+        crossorigin="anonymous"></script>
 <!-- Renderer -->
 <script src="{{ url_for('static', filename='js/renderer.js') }}"></script>
 <!-- Chat logic -->

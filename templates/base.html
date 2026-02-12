@@ -5,8 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Yuzu Companion{% endblock %}</title>
     
-    <!-- Pico.css CDN -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <!-- Pico.css CDN with SRI -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" 
+          integrity="sha384-kM6CKmWkG9bYgJkXZ+LgJJPhJmjVHKJVLZ7Oq1p0ThbDQ3Y2kU2qGZQhzE7k6xKj" 
+          crossorigin="anonymous">
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/layout.css') }}">
