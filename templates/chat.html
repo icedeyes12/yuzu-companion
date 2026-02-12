@@ -16,6 +16,12 @@
     <title>Chat | Yuzu Companion</title>
     
     <!-- CSS Imports -->
+    <!-- Tailwind CSS (Primary: CDN, Fallback: Local) -->
+    <script src="https://cdn.tailwindcss.com" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.local.css') }}" media="print" onload="this.media='all'; this.onload=null;">
+    <noscript><link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.local.css') }}"></noscript>
+    
+    <!-- Theme and Custom Styles (Preserved) -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sidebar.css') }}">
@@ -116,13 +122,13 @@
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 
     <!-- MAIN WRAPPER -->
-    <div class="chat-app">
-        <header class="chat-header">
-            <div class="header-left">
+    <div class="chat-app flex flex-col min-h-screen">
+        <header class="chat-header flex items-center justify-between p-4">
+            <div class="header-left flex flex-col">
                 <h1 class="partner-name">{{ profile.partner_name }}</h1>
                 <div class="session-name" id="sessionName"></div>
             </div>
-            <div class="affection-display">
+            <div class="affection-display flex items-center gap-2">
                 <span class="affection-icon"></span>
                 <div class="affection-bar">
                     <div class="affection-fill" style="width: {{ profile.affection }}%;"></div>
@@ -130,27 +136,27 @@
             </div>
         </header>
 
-        <main class="chat-container" id="chatContainer">
+        <main class="chat-container flex-1 overflow-auto" id="chatContainer">
             <!-- messages will appear here -->
         </main>
 
         <!-- TYPING INDICATOR -->
-        <div id="typingIndicator" class="typing-indicator hidden">
+        <div id="typingIndicator" class="typing-indicator hidden flex gap-2 p-2">
             <span></span>
             <span></span>
             <span></span>
         </div>
 
         <!-- SCROLL TO BOTTOM BUTTON -->
-        <button id="scrollToBottomBtn" class="scroll-to-bottom-btn hidden" onclick="scrollToBottom()">
+        <button id="scrollToBottomBtn" class="scroll-to-bottom-btn hidden fixed rounded-full shadow-lg transition" onclick="scrollToBottom()">
             <span class="scroll-icon">↓</span>
         </button>
 
         <!-- CLEAN INPUT AREA - WITH MULTIMODAL SUPPORT -->
-        <div class="input-area">
+        <div class="input-area flex gap-2 p-4">
             <!-- Multimodal toggle button will be inserted here by JavaScript -->
-            <textarea id="messageInput" placeholder="Type your message ..." rows="1"></textarea>
-            <button id="sendButton">Send</button>
+            <textarea id="messageInput" placeholder="Type your message ..." rows="1" class="flex-1 rounded"></textarea>
+            <button id="sendButton" class="rounded px-4 py-2">Send</button>
         </div>
     </div>
     
