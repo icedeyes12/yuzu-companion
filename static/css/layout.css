@@ -1,0 +1,167 @@
+/* Layout CSS - Page structure and chat container layout */
+
+/* Chat wrapper - full height layout */
+.chat-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 100px);
+    max-height: calc(100vh - 100px);
+    position: relative;
+}
+
+/* Chat header */
+.chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid var(--muted-border-color);
+    flex-shrink: 0;
+}
+
+.chat-header h2 {
+    margin: 0;
+}
+
+.chat-header p {
+    margin: 0;
+    opacity: 0.7;
+    font-size: 0.9rem;
+}
+
+.affection-display {
+    text-align: right;
+}
+
+/* Chat container - scrollable messages area */
+.chat-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* Input area - sticky at bottom */
+.input-area {
+    display: flex;
+    gap: 0.5rem;
+    padding: 1rem;
+    border-top: 1px solid var(--muted-border-color);
+    background: var(--card-background-color);
+    flex-shrink: 0;
+}
+
+.input-area textarea {
+    flex: 1;
+    resize: none;
+    min-height: 50px;
+    max-height: 150px;
+    font-family: inherit;
+}
+
+.input-area button {
+    align-self: flex-end;
+    height: 50px;
+    min-width: 80px;
+    margin: 0;
+}
+
+/* Scroll to bottom button */
+.scroll-to-bottom {
+    position: fixed;
+    bottom: 120px;
+    right: 2rem;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    font-size: 1.5rem;
+    padding: 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: opacity 0.3s, transform 0.3s;
+    z-index: 100;
+}
+
+.scroll-to-bottom.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(10px);
+}
+
+.scroll-to-bottom:hover {
+    transform: translateY(-2px);
+}
+
+/* Typing indicator */
+.typing-indicator {
+    display: flex;
+    gap: 0.3rem;
+    padding: 0.5rem 1rem;
+    margin: 0 0 0.5rem 0;
+}
+
+.typing-indicator.hidden {
+    display: none;
+}
+
+.typing-indicator span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--primary);
+    opacity: 0.6;
+    animation: typing 1.4s infinite;
+}
+
+.typing-indicator span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typing {
+    0%, 60%, 100% {
+        transform: translateY(0);
+        opacity: 0.6;
+    }
+    30% {
+        transform: translateY(-10px);
+        opacity: 1;
+    }
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .chat-wrapper {
+        height: calc(100vh - 80px);
+        max-height: calc(100vh - 80px);
+    }
+
+    .chat-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .affection-display {
+        text-align: left;
+    }
+
+    .scroll-to-bottom {
+        bottom: 100px;
+        right: 1rem;
+        width: 45px;
+        height: 45px;
+    }
+
+    .input-area {
+        padding: 0.75rem;
+    }
+
+    .input-area button {
+        min-width: 60px;
+    }
+}
