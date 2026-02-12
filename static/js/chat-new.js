@@ -33,6 +33,9 @@ function renderMessageContent(text) {
     // Pre-process: Fix broken image markdown (line breaks between ![alt] and (url))
     text = String(text).replace(/!\[([^\]]*)\]\s*\n\s*\(([^)]+)\)/g, '![$1]($2)');
     
+    // Pre-process: Fix image paths to ensure they start with /
+    text = String(text).replace(/!\[([^\]]*)\]\((static\/[^)]+)\)/g, '![$1](/$2)');
+    
     // Use markdown-it if available
     if (md) {
         let html = md.render(text);
@@ -53,6 +56,9 @@ function renderMessageContent(text) {
             </div>`;
         });
         
+        // Post-process: Fix any image src that doesn't start with /
+        html = html.replace(/<img([^>]+)src="(static\/[^"]+)"/g, '<img$1src="/$2"');
+        
         return html;
     }
     
@@ -68,11 +74,16 @@ function renderMessageContent(text) {
     // Fix broken image markdown first
     text = text.replace(/!\[([^\]]*)\]\s*\n\s*\(([^)]+)\)/g, '![$1]($2)');
     
+    // Fix image paths
+    text = text.replace(/!\[([^\]]*)\]\((static\/[^)]+)\)/g, '![$1](/$2)');
+    
     // Extract and temporarily store images
     const images = [];
     text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
         const placeholder = `__IMAGE_${images.length}__`;
-        images.push(`<img src="${src}" alt="${alt}" class="markdown-image">`);
+        // Ensure src starts with /
+        const fixedSrc = src.startsWith('/') ? src : (src.startsWith('static/') ? `/${src}` : src);
+        images.push(`<img src="${fixedSrc}" alt="${alt}" class="markdown-image">`);
         return placeholder;
     });
     
