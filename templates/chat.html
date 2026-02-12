@@ -4,7 +4,6 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
 {% endblock %}
 
 {% block content %}
@@ -34,12 +33,8 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- Markdown-it -->
-<script src="https://unpkg.com/markdown-it/dist/markdown-it.min.js"></script>
-<!-- Highlight.js -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <!-- Our scripts -->
-<script src="{{ url_for('static', filename='js/renderer.js') }}"></script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="{{ url_for('static', filename='js/renderer.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 {% endblock %}
