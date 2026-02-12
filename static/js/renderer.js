@@ -66,14 +66,14 @@ function renderMessageContent(text) {
         const block = codeBlocks[parseInt(index)];
         const codeMatch = block.match(/```(\w+)?\s*([\s\S]*?)```/);
         if (codeMatch) {
-            const code = codeMatch[2].trim()
-                .replace(/&amp;/g, '&')
-                .replace(/&lt;/g, '<')
-                .replace(/&gt;/g, '>')
+            // Extract code content (not yet HTML-escaped)
+            const rawCode = codeMatch[2].trim();
+            // Escape HTML entities for safe display
+            const escapedCode = rawCode
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
-            return `<pre><code>${code}</code></pre>`;
+            return `<pre><code>${escapedCode}</code></pre>`;
         }
         return block;
     });
