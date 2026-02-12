@@ -1,0 +1,110 @@
+/* layout.css - Mobile-First Layout */
+
+/* Header */
+.header {
+    background: var(--header-bg);
+    border-bottom: 1px solid var(--border-lavender);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 0;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.logo {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0;
+}
+
+/* Navigation */
+.nav {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.nav-link {
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    color: var(--text-color);
+    transition: background 0.3s ease;
+}
+
+.nav-link:hover {
+    background: var(--user-bubble);
+    text-decoration: none;
+}
+
+.nav-link.active {
+    background: var(--accent-color);
+    color: var(--button-text);
+}
+
+/* Main Content */
+.main {
+    min-height: calc(100vh - 64px);
+    padding: 2rem 0;
+}
+
+/* Cards */
+.card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    box-shadow: var(--shadow-soft);
+}
+
+/* Grid Layout */
+.grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+    .grid-2 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .grid-3 {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* Form Group */
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .header-content {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .nav {
+        width: 100%;
+    }
+    
+    .nav-link {
+        flex: 1;
+        text-align: center;
+    }
+}

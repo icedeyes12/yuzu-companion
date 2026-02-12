@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Yuzu Companion{% endblock %}</title>
+    
+    <!-- Theme CSS (preserved) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+    <!-- Base CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <!-- Layout CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/layout.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Header with Navigation -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <h1 class="logo">Yuzu Companion</h1>
+                <nav class="nav">
+                    <a href="/" class="nav-link {% if request.endpoint == 'home' %}active{% endif %}">Home</a>
+                    <a href="/chat" class="nav-link {% if request.endpoint == 'chat' %}active{% endif %}">Chat</a>
+                    <a href="/config" class="nav-link {% if request.endpoint == 'config' %}active{% endif %}">Config</a>
+                    <a href="/about" class="nav-link {% if request.endpoint == 'about' %}active{% endif %}">About</a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Global Scripts -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
