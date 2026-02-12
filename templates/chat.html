@@ -63,24 +63,28 @@
     </div>
 </div>
 
-<!-- Hamburger Menu -->
-<button class="hamburger-menu" onclick="toggleSidebar()">
-    <span></span>
-    <span></span>
-    <span></span>
-</button>
-
 <!-- Sidebar Overlay -->
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 
 <div class="chat-layout">
     <div class="chat-header">
-        <div class="assistant-name">{{ profile.partner_name }}</div>
-        <div class="session-name" id="sessionName">Active Session</div>
-        <div class="affection-bar-container">
-            <div class="affection-label">Affection: {{ profile.affection }}%</div>
-            <div class="affection-bar">
-                <div class="affection-fill" style="width: {{ profile.affection }}%"></div>
+        <div class="header-left">
+            <button class="hamburger-menu-inline" onclick="toggleSidebar()">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <div class="header-info">
+                <div class="assistant-name">{{ profile.partner_name }}</div>
+                <div class="session-name" id="sessionName">Active Session</div>
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="affection-bar-container">
+                <div class="affection-label">{{ profile.affection }}%</div>
+                <div class="affection-bar">
+                    <div class="affection-fill" style="width: {{ profile.affection }}%"></div>
+                </div>
             </div>
         </div>
     </div>
