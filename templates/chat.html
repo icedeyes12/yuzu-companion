@@ -11,6 +11,7 @@
     <!-- Theme CSS (existing themes) -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sidebar.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/multimodal.css') }}">
     
     <!-- Highlight.js for syntax highlighting -->
     <link 
@@ -81,7 +82,7 @@
         
         /* Chat container background - slightly different from body */
         #chatContainer {
-            background-color: rgba(0, 0, 0, 0.08);
+            background-color: rgba(0, 0, 0, 0.12);
         }
         
         @media (min-width: 768px) {
@@ -104,7 +105,7 @@
             border-left: 3px solid var(--border-user);
         }
         
-        /* AI messages - full width, no bubble background */
+        /* AI messages - full width, completely flat (no bubble) */
         .message-bubble.ai {
             max-width: 100%;
             background-color: transparent;
@@ -113,11 +114,10 @@
             padding: 0;
         }
         
-        /* AI message content has subtle background for contrast */
+        /* AI message content - no background, completely flat */
         .message-bubble.ai .markdown-content {
-            background-color: rgba(255, 255, 255, 0.03);
-            padding: 16px;
-            border-radius: 8px;
+            background-color: transparent;
+            padding: 0;
         }
         
         /* Markdown content styles */
@@ -377,33 +377,33 @@
             border-bottom: 1px solid var(--border-lavender);
         }
         
-        /* Hamburger menu inside header - subtle utility control */
+        /* Hamburger menu inside header - very subtle utility control */
         .hamburger-menu-inline {
-            background-color: rgba(0, 0, 0, 0.05);
-            border: 1px solid var(--border-lavender);
-            padding: 6px;
-            border-radius: 6px;
+            background-color: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 4px;
+            border-radius: 4px;
             cursor: pointer;
             display: flex;
             flex-direction: column;
-            gap: 3px;
+            gap: 2px;
             transition: all 0.3s;
-            opacity: 0.7;
+            opacity: 0.5;
             flex-shrink: 0;
         }
         
         .hamburger-menu-inline span {
-            width: 20px;
+            width: 18px;
             height: 2px;
             background-color: var(--text-color);
-            border-radius: 2px;
+            border-radius: 1px;
             transition: all 0.3s;
-            opacity: 0.8;
+            opacity: 0.6;
         }
         
         .hamburger-menu-inline:hover {
-            opacity: 1;
-            background-color: rgba(0, 0, 0, 0.1);
+            opacity: 0.8;
+            background-color: rgba(255, 255, 255, 0.05);
         }
         
         /* Old fixed hamburger menu - hide it */
@@ -595,7 +595,10 @@
     <!-- Fallback markdown parser (loaded before chat-new.js) -->
     <script src="{{ url_for('static', filename='js/markdown.js') }}"></script>
     
-    <!-- New Chat Script -->
+    <!-- Original chat script for multimodal support -->
+    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+    
+    <!-- New Chat Script (override specific functions) -->
     <script src="{{ url_for('static', filename='js/chat-new.js') }}"></script>
 </body>
 </html>
