@@ -2,6 +2,193 @@
 /* User messages: bubble style */
 /* AI messages: flat container (GPT-style) */
 
+/* ========================================
+   CORE LAYOUT (CRITICAL)
+   ======================================== */
+
+html, body {
+  overflow: hidden;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.chat-app {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-color);
+  position: relative;
+}
+
+.chat-header {
+  position: relative;
+  z-index: 10;
+  background: var(--header-bg, var(--bg-color));
+  border-bottom: 1px solid var(--border-color, #444);
+  flex-shrink: 0;
+  min-height: 48px;
+}
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 0.1rem;
+}
+
+.partner-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--accent-lavender, #8a6de9);
+  text-shadow: 0 1px 4px var(--shadow-lavender, rgba(138, 109, 233, 0.3));
+  transition: all 0.3s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.1;
+}
+
+.session-name {
+  font-size: 0.65rem;
+  color: var(--text-secondary, #999);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1;
+  opacity: 0.8;
+}
+
+.affection-display {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.affection-icon {
+  font-size: 0.8rem;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+.affection-icon::before {
+  content: '💖';
+}
+
+.affection-bar {
+  width: 90px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+.affection-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-pink, #ff6b9d), var(--accent-lavender, #8a6de9));
+  border-radius: 2px;
+  transition: width 0.5s ease, background 0.3s ease;
+  box-shadow: 0 0 9px var(--shadow-pink, rgba(255, 107, 157, 0.4));
+}
+
+.chat-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  padding: 1rem 0.6rem 6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  background: var(--bg-color);
+  -webkit-overflow-scrolling: touch;
+  overflow-anchor: auto;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.input-area {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 90;
+  background: var(--header-bg, var(--bg-color));
+  border-top: 1.5px solid var(--border-color, #444);
+  box-shadow: 0 -4px 25px var(--shadow-dark, rgba(0, 0, 0, 0.3));
+  min-height: 54px;
+  backdrop-filter: var(--backdrop-blur, blur(10px));
+  flex-shrink: 0;
+}
+
+#messageInput {
+  flex: 1;
+  min-height: 36px;
+  max-height: 400px;
+  padding: 0.55rem 0.9rem;
+  border: 1.5px solid var(--border-lavender, #8a6de9);
+  border-radius: 14px;
+  background: var(--input-bg, rgba(255, 255, 255, 0.05));
+  color: var(--text-color, #fff);
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+#messageInput:focus {
+  border-color: var(--accent-pink, #ff6b9d);
+  box-shadow: 0 0 0 2px rgba(255, 107, 157, 0.2);
+}
+
+#sendButton {
+  padding: 0.6rem 1.2rem;
+  min-width: 60px;
+  height: 38px;
+  background: var(--accent-pink, #ff6b9d);
+  color: white;
+  border: none;
+  border-radius: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.95rem;
+}
+
+#sendButton:hover {
+  background: var(--accent-pink-hover, #ff4d7a);
+  transform: scale(1.05);
+}
+
+#sendButton:disabled {
+  background: rgba(255, 107, 157, 0.3);
+  cursor: not-allowed;
+}
+
+.typing-indicator {
+  position: relative;
+  padding: 0.5rem 1rem;
+  background: var(--bg-color);
+  border-top: 1px solid var(--border-color, #444);
+}
+
+/* ========================================
+   MESSAGE STYLES
+   ======================================== */
+
 /* Message base styles */
 .message {
   max-width: 90%;
@@ -166,7 +353,7 @@
 /* Scroll to bottom button */
 .scroll-to-bottom-btn {
   position: fixed;
-  bottom: 100px;
+  bottom: 70px;
   right: 30px;
   width: 48px;
   height: 48px;
