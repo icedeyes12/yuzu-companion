@@ -16,29 +16,51 @@ function renderMessageContent(text) {
         return `\x00CODEBLOCK${codeBlocks.length - 1}\x00`;
     });
     
+    // Store inline code temporarily
+    const inlineCodes = [];
+    html = html.replace(/`([^`]+)`/g, (match, code) => {
+        inlineCodes.push(code);
+        return `\x00INLINECODE${inlineCodes.length - 1}\x00`;
+    });
+    
+    // Store images and links temporarily to protect URLs from markdown processing
+    const images = [];
+    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
+        images.push({ alt, url });
+        return `\x00IMAGE${images.length - 1}\x00`;
+    });
+    
+    const links = [];
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+        links.push({ text, url });
+        return `\x00LINK${links.length - 1}\x00`;
+    });
+    
     // Escape HTML 
     html = html.replace(/&/g, '&amp;')
                .replace(/</g, '&lt;')
                .replace(/>/g, '&gt;');
     
-    // Images ![alt](url)
-    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
-    
-    // Links [text](url)
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-    
     // Bold **text** or __text__
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
     
-    // Italic *text* or _text_
-    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+    // Italic *text* or _text_ (but not inside words or numbers)
+    html = html.replace(/(?:^|[^a-zA-Z0-9_])\*(.+?)\*(?:[^a-zA-Z0-9_]|$)/g, (match, content) => {
+        const before = match[0] !== '*' ? match[0] : '';
+        const after = match[match.length - 1] !== '*' ? match[match.length - 1] : '';
+        return `${before}<em>${content}</em>${after}`;
+    });
+    html = html.replace(/(?:^|[^a-zA-Z0-9_])_(.+?)_(?:[^a-zA-Z0-9_]|$)/g, (match, content) => {
+        const before = match[0] !== '_' ? match[0] : '';
+        const after = match[match.length - 1] !== '_' ? match[match.length - 1] : '';
+        return `${before}<em>${content}</em>${after}`;
+    });
     
-    // Inline code `code`
-    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-    
-    // Headers
+    // Headers (all levels H1-H6)
+    html = html.replace(/^###### (.+)$/gm, '<h6>$1</h6>');
+    html = html.replace(/^##### (.+)$/gm, '<h5>$1</h5>');
+    html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
     html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
     html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
     html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
@@ -60,6 +82,23 @@ function renderMessageContent(text) {
     
     // Line breaks
     html = html.replace(/\n/g, '<br>');
+    
+    // Restore images
+    html = html.replace(/\x00IMAGE(\d+)\x00/g, (match, index) => {
+        const img = images[parseInt(index)];
+        return `<img src="${img.url}" alt="${img.alt}">`;
+    });
+    
+    // Restore links
+    html = html.replace(/\x00LINK(\d+)\x00/g, (match, index) => {
+        const link = links[parseInt(index)];
+        return `<a href="${link.url}" target="_blank">${link.text}</a>`;
+    });
+    
+    // Restore inline code
+    html = html.replace(/\x00INLINECODE(\d+)\x00/g, (match, index) => {
+        return `<code>${inlineCodes[parseInt(index)]}</code>`;
+    });
     
     // Restore code blocks and render them
     html = html.replace(/\x00CODEBLOCK(\d+)\x00/g, (match, index) => {
