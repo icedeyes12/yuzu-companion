@@ -18,6 +18,8 @@
     padding: 1rem;
     border-bottom: 1px solid var(--border-lavender);
     flex-shrink: 0;
+    position: relative;
+    z-index: 1000;
 }
 
 .chat-header .assistant-name {
