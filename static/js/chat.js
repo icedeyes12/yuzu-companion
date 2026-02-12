@@ -221,7 +221,10 @@ class MultimodalManager {
         this.setSendButtonState('sending');
 
         try {
-            addMessage("user", text || "Analyze these images");
+            // Only add text message if user provided text
+            if (text) {
+                addMessage("user", text);
+            }
             
             this.selectedImages.forEach((image) => {
                 const imageUrl = URL.createObjectURL(image);
