@@ -97,18 +97,27 @@
             overflow-wrap: break-word;
         }
         
+        /* User messages - keep bubble style */
         .message-bubble.user {
             background-color: var(--message-user-bg);
             color: var(--text-color);
             border-left: 3px solid var(--border-user);
         }
         
+        /* AI messages - full width, no bubble background */
         .message-bubble.ai {
-            background-color: var(--message-ai-bg);
+            max-width: 100%;
+            background-color: transparent;
             color: var(--text-color);
-            border-left: 3px solid var(--border-ai);
-            /* Improved contrast - lighter background for AI messages */
-            filter: brightness(1.15);
+            border-left: none;
+            padding: 0;
+        }
+        
+        /* AI message content has subtle background for contrast */
+        .message-bubble.ai .markdown-content {
+            background-color: rgba(255, 255, 255, 0.03);
+            padding: 16px;
+            border-radius: 8px;
         }
         
         /* Markdown content styles */
@@ -368,13 +377,9 @@
             border-bottom: 1px solid var(--border-lavender);
         }
         
-        /* Hamburger menu positioning - subtle utility control */
-        .hamburger-menu {
-            position: fixed;
-            top: 16px;
-            left: 16px;
-            z-index: 60;
-            background-color: rgba(0, 0, 0, 0.1);
+        /* Hamburger menu inside header - subtle utility control */
+        .hamburger-menu-inline {
+            background-color: rgba(0, 0, 0, 0.05);
             border: 1px solid var(--border-lavender);
             padding: 6px;
             border-radius: 6px;
@@ -384,9 +389,10 @@
             gap: 3px;
             transition: all 0.3s;
             opacity: 0.7;
+            flex-shrink: 0;
         }
         
-        .hamburger-menu span {
+        .hamburger-menu-inline span {
             width: 20px;
             height: 2px;
             background-color: var(--text-color);
@@ -395,9 +401,14 @@
             opacity: 0.8;
         }
         
-        .hamburger-menu:hover {
+        .hamburger-menu-inline:hover {
             opacity: 1;
-            background-color: rgba(0, 0, 0, 0.15);
+            background-color: rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Old fixed hamburger menu - hide it */
+        .hamburger-menu {
+            display: none;
         }
         
         /* Details/summary support with nested hierarchy */
@@ -501,21 +512,18 @@
       </div>
     </div>
 
-    <!-- Hamburger Menu -->
-    <button class="hamburger-menu" id="hamburgerMenu" onclick="toggleSidebar()">
-      <span></span>
-      <span></span>
-      <span></span>
-    </button>
-
-    <!-- Overlay -->
-    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
-
     <!-- Main Chat Wrapper -->
     <div class="chat-wrapper flex flex-col h-screen">
         <!-- Header -->
         <header class="chat-header px-6 py-4 flex items-center justify-between flex-shrink-0">
-            <div class="flex flex-col">
+            <!-- Hamburger Menu inside header -->
+            <button class="hamburger-menu-inline" id="hamburgerMenu" onclick="toggleSidebar()">
+              <span></span>
+              <span></span>
+              <span></span>
+            </button>
+            
+            <div class="flex flex-col flex-1 ml-4">
                 <h1 class="text-xl font-semibold">{{ profile.partner_name }}</h1>
                 <div class="text-sm opacity-75" id="sessionName">Loading session...</div>
             </div>
@@ -527,6 +535,9 @@
                 <span class="text-sm font-medium">{{ profile.affection }}%</span>
             </div>
         </header>
+
+        <!-- Overlay -->
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 
         <!-- Chat Messages Container -->
         <main id="chatContainer" class="flex-1 overflow-y-auto px-6 py-4 space-y-4">

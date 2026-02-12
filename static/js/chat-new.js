@@ -115,7 +115,14 @@ window.copyCode = copyCode;
 // ==================== MESSAGE CREATION ====================
 function createMessageElement(role, content, timestamp = null) {
     const messageDiv = document.createElement('div');
-    messageDiv.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'} mb-4`;
+    
+    // User messages: right-aligned with bubble
+    // AI messages: full-width, no bubble background
+    if (role === 'user') {
+        messageDiv.className = 'flex justify-end mb-4';
+    } else {
+        messageDiv.className = 'flex justify-start mb-4 w-full';
+    }
     
     const bubble = document.createElement('div');
     bubble.className = `message-bubble ${role} rounded-lg p-4 shadow-sm`;
