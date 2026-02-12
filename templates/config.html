@@ -30,45 +30,33 @@
 
     <div class="card">
         <h2>AI Provider Settings</h2>
-        <p>Configure your AI provider and model settings here.</p>
-        <p><em>Provider management coming soon...</em></p>
+        <form id="providerForm">
+            <div class="form-group">
+                <label for="provider-select">Preferred AI Provider:</label>
+                <select id="provider-select">
+                    <option value="">Loading providers...</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="model-select">Preferred Model:</label>
+                <select id="model-select">
+                    <option value="">Select provider first...</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <p><strong>Current:</strong> <span id="current-provider">Loading...</span></p>
+                <p><strong>Status:</strong> <span id="status-text">Checking...</span></p>
+            </div>
+
+            <button type="button" id="test-connection" class="btn">Test Connection</button>
+            <button type="button" id="save-provider" class="btn">Save Provider Settings</button>
+        </form>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const affectionSlider = document.getElementById('affection-level');
-    const affectionValue = document.getElementById('affection-value');
-    const saveButton = document.getElementById('save-profile');
-
-    if (affectionSlider && affectionValue) {
-        affectionSlider.addEventListener('input', (e) => {
-            affectionValue.textContent = e.target.value;
-        });
-    }
-
-    if (saveButton) {
-        saveButton.addEventListener('click', async () => {
-            const data = {
-                display_name: document.getElementById('display-name').value,
-                partner_name: document.getElementById('partner-name').value,
-                affection: parseInt(document.getElementById('affection-level').value)
-            };
-
-            try {
-                await apiCall('/api/update_profile', {
-                    method: 'POST',
-                    body: JSON.stringify(data)
-                });
-                showNotification('Profile saved successfully', 'success');
-            } catch (error) {
-                console.error('Failed to save profile:', error);
-                showNotification('Failed to save profile', 'error');
-            }
-        });
-    }
-});
-</script>
+<script src="{{ url_for('static', filename='js/config.js') }}"></script>
 {% endblock %}

@@ -5,6 +5,7 @@ let isLoading = false;
 let hasMoreMessages = true;
 let allMessages = []; // Store all loaded messages
 let displayedMessageCount = 0;
+let currentSessionName = 'Active Session';
 
 // Initialize chat
 document.addEventListener('DOMContentLoaded', () => {
@@ -18,8 +19,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    // Load initial messages
+    // Load initial messages and session info
     loadMessages();
+    loadCurrentSession();
 
     // Input handling - Enter = newline, Ctrl+Enter = send
     messageInput.addEventListener('keydown', (e) => {
@@ -63,6 +65,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+// Load current session info
+async function loadCurrentSession() {
+    try {
+        const data = await apiCall('/api/sessions/list');
+        
+        if (data && data.sessions) {
+            const activeSession = data.sessions.find(s => s.is_active);
+            if (activeSession) {
+                currentSessionName = activeSession.name || `Session ${activeSession.id}`;
+                const sessionNameEl = document.getElementById('sessionName');
+                if (sessionNameEl) {
+                    sessionNameEl.textContent = currentSessionName;
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load session info:', error);
+    }
+}
 
 // Load initial messages (last 30)
 async function loadMessages() {

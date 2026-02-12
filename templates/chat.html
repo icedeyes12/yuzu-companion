@@ -1,10 +1,13 @@
 {% extends "base.html" %}
+{% set hide_header = true %}
 
 {% block title %}Chat - Yuzu Companion{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+<!-- Highlight.js for syntax highlighting -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
 {% endblock %}
 
 {% block content %}
@@ -72,8 +75,14 @@
 
 <div class="chat-layout">
     <div class="chat-header">
-        <h1>{{ profile.partner_name }}</h1>
-        <div>Affection: {{ profile.affection }}%</div>
+        <div class="assistant-name">{{ profile.partner_name }}</div>
+        <div class="session-name" id="sessionName">Active Session</div>
+        <div class="affection-bar-container">
+            <div class="affection-label">Affection: {{ profile.affection }}%</div>
+            <div class="affection-bar">
+                <div class="affection-fill" style="width: {{ profile.affection }}%"></div>
+            </div>
+        </div>
     </div>
 
     <div class="chat-container" id="chatContainer">
@@ -98,6 +107,8 @@
 {% block scripts %}
 <!-- markdown-it library (required by project rules) -->
 <script src="https://unpkg.com/markdown-it@14/dist/markdown-it.min.js"></script>
+<!-- Highlight.js for syntax highlighting -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="{{ url_for('static', filename='js/renderer.js') }}"></script>
 <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chat.js') }}"></script>

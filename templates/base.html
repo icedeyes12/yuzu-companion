@@ -14,6 +14,7 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+    {% if not hide_header %}
     <!-- Header with Navigation -->
     <header class="header">
         <div class="container">
@@ -28,9 +29,10 @@
             </div>
         </div>
     </header>
+    {% endif %}
 
     <!-- Main Content -->
-    <main class="main">
+    <main class="main{% if hide_header %} no-header{% endif %}">
         {% block content %}{% endblock %}
     </main>
 

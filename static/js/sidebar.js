@@ -31,7 +31,7 @@ function loadSavedTheme() {
 // Load sessions
 async function loadSessions() {
     try {
-        const data = await apiCall('/api/get_sessions');
+        const data = await apiCall('/api/sessions/list');
         const sessionsList = document.getElementById('sessionsList');
         
         if (!sessionsList) return;
@@ -45,7 +45,7 @@ async function loadSessions() {
                 sessionItem.onclick = () => switchSession(session.id);
                 
                 sessionItem.innerHTML = `
-                    <div class="session-name">Session ${session.id}</div>
+                    <div class="session-name">${session.name || `Session ${session.id}`}</div>
                     <div class="session-preview">${session.preview || 'No messages yet'}</div>
                 `;
                 
@@ -58,7 +58,7 @@ async function loadSessions() {
         console.error('Failed to load sessions:', error);
         const sessionsList = document.getElementById('sessionsList');
         if (sessionsList) {
-            sessionsList.innerHTML = '<div style="padding: 0.5rem; color: var(--text-secondary);">Failed to load</div>';
+            sessionsList.innerHTML = '<div style="padding: 0.5rem; color: var(--text-secondary);">Error loading sessions</div>';
         }
     }
 }
@@ -66,7 +66,7 @@ async function loadSessions() {
 // Create new session
 async function createNewSession() {
     try {
-        const data = await apiCall('/api/create_session', {
+        const data = await apiCall('/api/sessions/create', {
             method: 'POST'
         });
         
@@ -84,7 +84,7 @@ async function createNewSession() {
 // Switch session
 async function switchSession(sessionId) {
     try {
-        await apiCall('/api/switch_session', {
+        await apiCall('/api/sessions/switch', {
             method: 'POST',
             body: JSON.stringify({ session_id: sessionId })
         });
