@@ -991,8 +991,7 @@ function initializeInputBehavior() {
 function initializeChat() {
     console.log("Initializing OPTIMIZED chat system...");
     
-    // Initialize scroll system
-    createPermanentScrollButton();
+    // Initialize scroll system (button now in HTML)
     initializeScrollButtonAutoHide();
     
     // Initialize input behavior
