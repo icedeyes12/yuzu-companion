@@ -3,10 +3,73 @@
 {% block title %}Chat - Yuzu Companion{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
 {% endblock %}
 
 {% block content %}
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+        <h2>Yuzu Companion</h2>
+        <button class="close-sidebar" onclick="toggleSidebar()">×</button>
+    </div>
+    
+    <div class="sidebar-content">
+        <!-- Navigation -->
+        <div class="sidebar-section">
+            <h3>Navigation</h3>
+            <a href="/" class="sidebar-link">
+                <span>🏠</span> Home
+            </a>
+            <a href="/chat" class="sidebar-link active">
+                <span>💬</span> Chat
+            </a>
+            <a href="/config" class="sidebar-link">
+                <span>⚙️</span> Config
+            </a>
+            <a href="/about" class="sidebar-link">
+                <span>ℹ️</span> About
+            </a>
+        </div>
+        
+        <!-- Theme Selector -->
+        <div class="sidebar-section">
+            <h3>Theme</h3>
+            <select class="theme-select" id="themeSelect" onchange="changeTheme(this.value)">
+                <option value="dark">Dark Blue</option>
+                <option value="light">Soft Light</option>
+                <option value="lavender">Pastel Lavender</option>
+                <option value="mint">Pastel Mint</option>
+                <option value="peach">Pastel Peach</option>
+                <option value="dark-lavender">Dark Lavender</option>
+                <option value="vanilla-orange">Vanilla Orange</option>
+            </select>
+        </div>
+        
+        <!-- Session Management -->
+        <div class="sidebar-section">
+            <h3>Sessions</h3>
+            <button class="sidebar-btn" onclick="createNewSession()">
+                <span>➕</span> New Chat
+            </button>
+            <div class="sessions-list" id="sessionsList">
+                <div class="loading">Loading sessions...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hamburger Menu -->
+<button class="hamburger-menu" onclick="toggleSidebar()">
+    <span></span>
+    <span></span>
+    <span></span>
+</button>
+
+<!-- Sidebar Overlay -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
 <div class="chat-layout">
     <div class="chat-header">
         <h1>{{ profile.partner_name }}</h1>
@@ -36,5 +99,6 @@
 <!-- markdown-it library (required by project rules) -->
 <script src="https://unpkg.com/markdown-it@14/dist/markdown-it.min.js"></script>
 <script src="{{ url_for('static', filename='js/renderer.js') }}"></script>
+<script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 {% endblock %}

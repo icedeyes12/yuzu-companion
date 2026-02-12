@@ -27,9 +27,12 @@ function initMarkdownRenderer() {
                 if (!text) return '';
                 let html = String(text);
                 
-                // Code blocks
+                // Protect code blocks first
+                const codeBlocks = [];
                 html = html.replace(/```(\w*)\n([\s\S]*?)\n```/g, (match, lang, code) => {
-                    return createCodeBlock(lang || 'text', code.trim());
+                    const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+                    codeBlocks.push({ lang: lang || 'text', code: code.trim() });
+                    return placeholder;
                 });
                 
                 // Inline code
@@ -39,8 +42,12 @@ function initMarkdownRenderer() {
                 html = html.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
                 html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
                 html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+                html = html.replace(/~~(.*?)~~/g, '<del>$1</del>');
                 
                 // Headings
+                html = html.replace(/^###### (.*?)$/gm, '<h6>$1</h6>');
+                html = html.replace(/^##### (.*?)$/gm, '<h5>$1</h5>');
+                html = html.replace(/^#### (.*?)$/gm, '<h4>$1</h4>');
                 html = html.replace(/^### (.*?)$/gm, '<h3>$1</h3>');
                 html = html.replace(/^## (.*?)$/gm, '<h2>$1</h2>');
                 html = html.replace(/^# (.*?)$/gm, '<h1>$1</h1>');
@@ -48,15 +55,22 @@ function initMarkdownRenderer() {
                 // Links
                 html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
                 
+                // Images
+                html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" />');
+                
                 // Lists
-                html = html.replace(/^[-*] (.*?)$/gm, '<li>$1</li>');
+                html = html.replace(/^[-*+] (.*?)$/gm, '<li>$1</li>');
                 html = html.replace(/(<li>.*?<\/li>\n?)+/g, '<ul>$&</ul>');
+                
+                // Numbered lists
+                html = html.replace(/^\d+\. (.*?)$/gm, '<li>$1</li>');
                 
                 // Blockquotes
                 html = html.replace(/^> (.*?)$/gm, '<blockquote>$1</blockquote>');
                 
                 // HR
                 html = html.replace(/^---$/gm, '<hr>');
+                html = html.replace(/^\*\*\*$/gm, '<hr>');
                 
                 // Tables (basic)
                 html = html.replace(/\|(.+)\|\n\|[-:\s|]+\|\n((?:\|.+\|\n?)+)/g, (match, header, body) => {
@@ -68,6 +82,12 @@ function initMarkdownRenderer() {
                     return `<table><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
                 });
                 
+                // Restore code blocks
+                codeBlocks.forEach((block, i) => {
+                    const codeHtml = createCodeBlock(block.lang, block.code);
+                    html = html.replace(`__CODE_BLOCK_${i}__`, codeHtml);
+                });
+                
                 // Line breaks
                 html = html.replace(/\n/g, '<br>');
                 
@@ -77,7 +97,7 @@ function initMarkdownRenderer() {
     }
 }
 
-// Create code block HTML
+// Create code block HTML with proper styling
 function createCodeBlock(lang, code) {
     const escapedCode = code
         .replace(/&/g, '&amp;')
@@ -89,16 +109,40 @@ function createCodeBlock(lang, code) {
             <span class="code-lang">${lang.toUpperCase()}</span>
             <button class="copy-btn" onclick="copyCode(this)">Copy</button>
         </div>
-        <pre><code>${escapedCode}</code></pre>
+        <pre><code class="language-${lang}">${escapedCode}</code></pre>
     </div>`;
 }
 
-// Render markdown
+// Render markdown with proper container styling
 function renderMarkdown(text) {
     if (!window.md) {
         initMarkdownRenderer();
     }
-    return window.md.render(text);
+    
+    let html = window.md.render(text);
+    
+    // Wrap tables in a scrollable container
+    html = html.replace(/<table>/g, '<div class="table-container"><table>');
+    html = html.replace(/<\/table>/g, '</table></div>');
+    
+    // Wrap blockquotes properly
+    html = html.replace(/<blockquote>/g, '<blockquote class="markdown-blockquote">');
+    
+    // Add copy buttons to code blocks if markdown-it generated them
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    
+    tempDiv.querySelectorAll('pre code').forEach((codeElement) => {
+        const pre = codeElement.parentElement;
+        if (!pre.parentElement.classList.contains('code-block')) {
+            const lang = codeElement.className.match(/language-(\w+)/)?.[1] || 'text';
+            const code = codeElement.textContent;
+            const codeBlockHtml = createCodeBlock(lang, code);
+            pre.outerHTML = codeBlockHtml;
+        }
+    });
+    
+    return tempDiv.innerHTML;
 }
 
 // Copy code to clipboard

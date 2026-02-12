@@ -3,6 +3,8 @@
 let currentPage = 1;
 let isLoading = false;
 let hasMoreMessages = true;
+let allMessages = []; // Store all loaded messages
+let displayedMessageCount = 0;
 
 // Initialize chat
 document.addEventListener('DOMContentLoaded', () => {
@@ -54,28 +56,36 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Pagination - load older messages when scrolled to top
+    // Pagination - load older messages when scrolled near top
     chatContainer.addEventListener('scroll', () => {
-        if (chatContainer.scrollTop === 0 && hasMoreMessages && !isLoading) {
+        if (chatContainer.scrollTop < 100 && hasMoreMessages && !isLoading) {
             loadMoreMessages();
         }
     });
 });
 
-// Load messages
+// Load initial messages (last 30)
 async function loadMessages() {
     try {
         isLoading = true;
         const data = await apiCall('/api/get_profile');
 
-        if (data && data.chat_history) {
+        if (data && data.chat_history && data.chat_history.length > 0) {
+            allMessages = data.chat_history;
             const chatContainer = document.getElementById('chatContainer');
             chatContainer.innerHTML = '';
             
-            data.chat_history.slice(-30).forEach(msg => {
+            // Display last 30 messages
+            const messagesToShow = allMessages.slice(-30);
+            displayedMessageCount = messagesToShow.length;
+            
+            messagesToShow.forEach(msg => {
                 appendMessage(msg.role, msg.content, false);
             });
 
+            // Check if there are more messages
+            hasMoreMessages = allMessages.length > displayedMessageCount;
+            
             scrollToBottom();
         }
     } catch (error) {
@@ -88,16 +98,37 @@ async function loadMessages() {
 
 // Load more messages (pagination)
 async function loadMoreMessages() {
+    if (!hasMoreMessages || isLoading) return;
+    
     try {
         isLoading = true;
         const chatContainer = document.getElementById('chatContainer');
         const oldScrollHeight = chatContainer.scrollHeight;
+        const oldScrollTop = chatContainer.scrollTop;
 
-        currentPage++;
-        // Pagination would need a proper endpoint
-        // For now, just preventing multiple loads
-
-        hasMoreMessages = false;
+        // Calculate how many more messages to load
+        const startIndex = Math.max(0, allMessages.length - displayedMessageCount - 30);
+        const endIndex = allMessages.length - displayedMessageCount;
+        const olderMessages = allMessages.slice(startIndex, endIndex);
+        
+        if (olderMessages.length > 0) {
+            // Prepend older messages
+            olderMessages.reverse().forEach(msg => {
+                const messageEl = createMessageElement(msg.role, msg.content);
+                chatContainer.insertBefore(messageEl, chatContainer.firstChild);
+            });
+            
+            displayedMessageCount += olderMessages.length;
+            
+            // Preserve scroll position
+            const newScrollHeight = chatContainer.scrollHeight;
+            chatContainer.scrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight);
+            
+            // Check if there are more messages
+            hasMoreMessages = displayedMessageCount < allMessages.length;
+        } else {
+            hasMoreMessages = false;
+        }
     } catch (error) {
         console.error('Failed to load more messages:', error);
     } finally {
