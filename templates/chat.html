@@ -141,6 +141,11 @@
             <span></span>
         </div>
 
+        <!-- SCROLL TO BOTTOM BUTTON -->
+        <button id="scrollToBottomBtn" class="scroll-to-bottom-btn hidden" onclick="scrollToBottom()">
+            <span class="scroll-icon">↓</span>
+        </button>
+
         <!-- CLEAN INPUT AREA - WITH MULTIMODAL SUPPORT -->
         <div class="input-area">
             <!-- Multimodal toggle button will be inserted here by JavaScript -->
@@ -149,8 +154,18 @@
         </div>
     </div>
     
-    <!-- Load Highlight.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- Script loading order: sidebar → marked → highlight → renderer → chat -->
+    
+    <!-- 1. Sidebar -->
+    <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
+    
+    <!-- 2. marked.js (CDN with fallback) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js" 
+            onerror="this.onerror=null; this.src='{{ url_for('static', filename='js/lib/marked.min.js') }}'"></script>
+    
+    <!-- 3. highlight.js (CDN with fallback) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"
+            onerror="this.onerror=null; this.src='{{ url_for('static', filename='js/lib/highlight.min.js') }}'"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
@@ -166,10 +181,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/typescript.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/markdown.min.js"></script>
-
-    <!-- Our scripts -->
-    <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/markdown.js') }}"></script>
+    
+    <!-- 4. Renderer (marked.js + highlight.js integration) -->
+    <script src="{{ url_for('static', filename='js/renderer.js') }}"></script>
+    
+    <!-- 5. Chat (main application logic) -->
     <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 </body>
 </html>

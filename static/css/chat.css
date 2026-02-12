@@ -1454,3 +1454,192 @@ abbr {
     padding: 0.15rem 0.3rem !important;
   }
 }
+
+/* ========================================
+   SCROLL TO BOTTOM BUTTON
+   ======================================== */
+.scroll-to-bottom-btn {
+  position: fixed;
+  bottom: 100px;
+  right: 30px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--accent-pink);
+  color: var(--text-color);
+  border: 2px solid var(--border-color);
+  cursor: pointer;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+  opacity: 1;
+  visibility: visible;
+}
+
+.scroll-to-bottom-btn:hover {
+  background: var(--accent-pink-hover);
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.scroll-to-bottom-btn.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.scroll-icon {
+  display: block;
+  line-height: 1;
+}
+
+/* ========================================
+   CODE BLOCK CONTAINER & COPY BUTTONS
+   ======================================== */
+.code-block-container {
+  position: relative;
+  margin: 1rem 0;
+  border-radius: 8px;
+  background: var(--code-bg, #1e1e1e);
+  overflow: hidden;
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: var(--code-header-bg, rgba(0, 0, 0, 0.3));
+  border-bottom: 1px solid var(--border-color);
+}
+
+.code-lang {
+  font-size: 0.85rem;
+  color: var(--text-muted, #888);
+  font-family: monospace;
+  text-transform: uppercase;
+}
+
+.copy-code-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  background: var(--button-bg, rgba(255, 255, 255, 0.1));
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-color);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+}
+
+.copy-code-btn:hover {
+  background: var(--button-hover-bg, rgba(255, 255, 255, 0.2));
+  transform: scale(1.05);
+}
+
+.copy-code-btn.copied {
+  background: var(--success-bg, #28a745);
+  color: white;
+}
+
+.copy-icon {
+  font-size: 1rem;
+}
+
+.code-block-container pre {
+  margin: 0;
+  border-radius: 0 0 8px 8px;
+}
+
+.code-block-container pre code {
+  display: block;
+  padding: 1rem;
+  overflow-x: auto;
+  font-family: 'Courier New', Consolas, Monaco, monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* ========================================
+   COPY MESSAGE BUTTON (for AI messages)
+   ======================================== */
+.copy-message-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 0.4rem 0.8rem;
+  background: var(--button-bg, rgba(255, 255, 255, 0.1));
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-color);
+  cursor: pointer;
+  font-size: 0.85rem;
+  opacity: 0;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.message.ai:hover .copy-message-btn {
+  opacity: 1;
+}
+
+.copy-message-btn:hover {
+  background: var(--button-hover-bg, rgba(255, 255, 255, 0.2));
+  transform: scale(1.05);
+}
+
+.copy-message-btn.copied {
+  background: var(--success-bg, #28a745);
+  color: white;
+}
+
+/* ========================================
+   MARKDOWN IMAGE STYLING
+   ======================================== */
+.markdown-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 0.5rem 0;
+  display: block;
+}
+
+/* Ensure images in messages stay within container */
+.message img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+/* ========================================
+   RESPONSIVE ADJUSTMENTS
+   ======================================== */
+@media (max-width: 768px) {
+  .scroll-to-bottom-btn {
+    bottom: 80px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+  }
+  
+  .code-block-header {
+    padding: 0.4rem 0.8rem;
+  }
+  
+  .copy-code-btn {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.8rem;
+  }
+  
+  .code-block-container pre code {
+    font-size: 0.85rem;
+    padding: 0.8rem;
+  }
+}

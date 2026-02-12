@@ -571,25 +571,10 @@ class MultimodalManager {
 }
 
 // ==================== OPTIMIZED SCROLL SYSTEM ====================
-function createPermanentScrollButton() {
-    const existingBtn = document.getElementById("scrollToBottom");
-    if (existingBtn) existingBtn.remove();
-    
-    const btn = document.createElement("button");
-    btn.id = "scrollToBottom";
-    btn.title = "Scroll to bottom";
-    btn.innerHTML = "↓";
-    btn.classList.add("hidden");
-    btn.onclick = scrollToBottom;
-    
-    document.body.appendChild(btn);
-    console.log("Scroll button created");
-    return btn;
-}
-
+// Note: Scroll button now defined in HTML, no need to create dynamically
 function initializeScrollButtonAutoHide() {
     const chatContainer = document.getElementById("chatContainer");
-    const scrollBtn = document.getElementById("scrollToBottom");
+    const scrollBtn = document.getElementById("scrollToBottomBtn");
     
     if (!chatContainer || !scrollBtn) return;
     
@@ -623,7 +608,7 @@ function initializeScrollButtonAutoHide() {
 
 function monitorScrollSystem() {
     const chatContainer = document.getElementById("chatContainer");
-    const scrollBtn = document.getElementById("scrollToBottom");
+    const scrollBtn = document.getElementById("scrollToBottomBtn");
     
     if (!chatContainer) {
         console.error("Chat container not found!");
@@ -631,11 +616,12 @@ function monitorScrollSystem() {
     }
     
     if (!scrollBtn) {
-        createPermanentScrollButton();
-        initializeScrollButtonAutoHide();
+        console.warn("Scroll button not found in HTML!");
         return false;
     }
     
+    // Button exists in HTML, just initialize auto-hide
+    initializeScrollButtonAutoHide();
     return true;
 }
 
@@ -667,7 +653,7 @@ function scrollToBottom() {
         behavior: 'smooth'
     });
     
-    const scrollBtn = document.getElementById("scrollToBottom");
+    const scrollBtn = document.getElementById("scrollToBottomBtn");
     if (scrollBtn) {
         scrollBtn.classList.add("hidden");
     }
@@ -695,6 +681,19 @@ function createMessageElement(role, content, timestamp = null) {
     contentContainer.appendChild(timeDiv);
 
     msg.appendChild(contentContainer);
+    
+    // Add copy message button for AI messages
+    if (role === 'ai') {
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "copy-message-btn";
+        copyBtn.innerHTML = '<span class="copy-icon">📋</span> <span class="copy-text">Copy</span>';
+        copyBtn.onclick = function() {
+            copyFullMessage(content, copyBtn);
+        };
+        msg.style.position = 'relative';
+        msg.appendChild(copyBtn);
+    }
+    
     return msg;
 }
 
@@ -932,6 +931,24 @@ function copyCodeToClipboard(button) {
         }, 2000);
     }).catch(err => {
         console.error('Copy failed:', err);
+    });
+}
+
+// Copy full message content (for AI messages)
+function copyFullMessage(content, button) {
+    navigator.clipboard.writeText(content).then(() => {
+        const copyText = button.querySelector('.copy-text');
+        const originalText = copyText.textContent;
+        
+        copyText.textContent = 'Copied!';
+        button.classList.add('copied');
+        
+        setTimeout(() => {
+            copyText.textContent = originalText;
+            button.classList.remove('copied');
+        }, 2000);
+    }).catch(err => {
+        console.error('Copy message failed:', err);
     });
 }
 
