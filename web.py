@@ -740,5 +740,127 @@ def api_update_global_knowledge():
         print(f"Error updating global knowledge: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/get_messages', methods=['GET'])
+def api_get_messages():
+    try:
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 30))
+        
+        active_session = Database.get_active_session()
+        chat_history = Database.get_chat_history(session_id=active_session['id'])
+        
+        # Reverse to get newest first, then slice for pagination
+        total = len(chat_history)
+        start = (page - 1) * per_page
+        end = start + per_page
+        
+        messages = chat_history[start:end]
+        has_more = end < total
+        
+        return jsonify({
+            'messages': messages,
+            'total': total,
+            'page': page,
+            'has_more': has_more
+        })
+    except Exception as e:
+        print(f"Error getting messages: {e}")
+        return jsonify({'error': str(e), 'messages': []}), 500
+
+@app.route('/api/get_providers', methods=['GET'])
+def api_get_providers():
+    try:
+        ai_manager = get_ai_manager()
+        providers = ai_manager.get_available_providers()
+        
+        profile = Database.get_profile()
+        providers_config = profile.get('providers_config', {})
+        current_provider = providers_config.get('preferred_provider', 'ollama')
+        
+        provider_list = [{'name': p, 'display_name': p.title()} for p in providers]
+        
+        return jsonify({
+            'providers': provider_list,
+            'current_provider': current_provider
+        })
+    except Exception as e:
+        print(f"Error getting providers: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get_models', methods=['GET'])
+def api_get_models():
+    try:
+        provider = request.args.get('provider', 'ollama')
+        ai_manager = get_ai_manager()
+        models = ai_manager.get_models(provider)
+        
+        profile = Database.get_profile()
+        providers_config = profile.get('providers_config', {})
+        current_model = providers_config.get('preferred_model', '')
+        
+        return jsonify({
+            'models': models,
+            'current_model': current_model
+        })
+    except Exception as e:
+        print(f"Error getting models: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/set_provider', methods=['POST'])
+def api_set_provider():
+    try:
+        data = request.get_json()
+        provider = data.get('provider')
+        model = data.get('model')
+        
+        if not provider or not model:
+            return jsonify({'error': 'Provider and model required'}), 400
+        
+        set_preferred_provider(provider, model)
+        
+        return jsonify({'status': 'success', 'message': 'Provider settings saved'})
+    except Exception as e:
+        print(f"Error setting provider: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/test_provider', methods=['POST'])
+def api_test_provider():
+    try:
+        data = request.get_json()
+        provider = data.get('provider', 'ollama')
+        
+        ai_manager = get_ai_manager()
+        # Try to get models as a simple test
+        models = ai_manager.get_models(provider)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Connected to {provider}',
+            'models_count': len(models)
+        })
+    except Exception as e:
+        print(f"Error testing provider: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/get_api_keys', methods=['GET'])
+def api_get_api_keys():
+    try:
+        keys = Database.get_api_keys()
+        
+        # Return preview of keys
+        key_list = []
+        for provider, key in keys.items():
+            if key:
+                preview = key[:4] + '...' + key[-4:] if len(key) > 8 else '***'
+                key_list.append({
+                    'provider': provider,
+                    'key_preview': preview
+                })
+        
+        return jsonify({'keys': key_list})
+    except Exception as e:
+        print(f"Error getting API keys: {e}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=5000)
