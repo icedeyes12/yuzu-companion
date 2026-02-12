@@ -89,8 +89,8 @@ async function sendMessage(message) {
 
         const data = await response.json();
 
-        if (data.response) {
-            appendMessage('ai', data.response);
+        if (data.reply) {
+            appendMessage('ai', data.reply);
         } else if (data.error) {
             console.error('API error:', data.error);
             appendMessage('ai', 'Sorry, there was an error processing your message.');
