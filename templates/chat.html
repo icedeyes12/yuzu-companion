@@ -111,23 +111,26 @@
       </div>
     </div>
 
-    <!-- Hamburger Menu -->
-    <button class="hamburger-menu" id="hamburgerMenu" onclick="toggleSidebar()">
-      <span></span>
-      <span></span>
-      <span></span>
-    </button>
-
     <!-- Overlay -->
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 
     <!-- MAIN WRAPPER -->
     <div class="chat-app flex flex-col min-h-screen">
         <header class="chat-header flex items-center justify-between p-4">
+            <!-- Hamburger Menu (Left) -->
+            <button class="hamburger-menu" id="hamburgerMenu" onclick="toggleSidebar()">
+              <span></span>
+              <span></span>
+              <span></span>
+            </button>
+            
+            <!-- Center: Title + Subtitle -->
             <div class="header-left flex flex-col">
                 <h1 class="partner-name">{{ profile.partner_name }}</h1>
                 <div class="session-name" id="sessionName"></div>
             </div>
+            
+            <!-- Right: Affection Bar -->
             <div class="affection-display flex items-center gap-2">
                 <span class="affection-icon"></span>
                 <div class="affection-bar">
