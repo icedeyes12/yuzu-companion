@@ -30,9 +30,12 @@ if (typeof markdownit !== 'undefined') {
 function renderMessageContent(text) {
     if (!text) return '';
     
+    // Pre-process: Fix broken image markdown (line breaks between ![alt] and (url))
+    text = String(text).replace(/!\[([^\]]*)\]\s*\n\s*\(([^)]+)\)/g, '![$1]($2)');
+    
     // Use markdown-it if available
     if (md) {
-        let html = md.render(String(text));
+        let html = md.render(text);
         
         // Post-process code blocks to add copy buttons
         html = html.replace(/<pre><code class="language-(\w+)">([\s\S]*?)<\/code><\/pre>/g, (match, lang, code) => {
@@ -56,15 +59,35 @@ function renderMessageContent(text) {
     // Fallback 1: Use existing MarkdownParser if available
     if (typeof MarkdownParser !== 'undefined' && MarkdownParser.parse) {
         console.log('Using MarkdownParser fallback');
-        return MarkdownParser.parse(String(text));
+        return MarkdownParser.parse(text);
     }
     
     // Fallback 2: Basic text with line breaks
     console.warn('No markdown parser available, using basic formatting');
-    return String(text).replace(/&/g, '&amp;')
-                       .replace(/</g, '&lt;')
-                       .replace(/>/g, '&gt;')
-                       .replace(/\n/g, '<br>');
+    
+    // Fix broken image markdown first
+    text = text.replace(/!\[([^\]]*)\]\s*\n\s*\(([^)]+)\)/g, '![$1]($2)');
+    
+    // Extract and temporarily store images
+    const images = [];
+    text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
+        const placeholder = `__IMAGE_${images.length}__`;
+        images.push(`<img src="${src}" alt="${alt}" class="markdown-image">`);
+        return placeholder;
+    });
+    
+    // Escape HTML and convert newlines
+    text = text.replace(/&/g, '&amp;')
+               .replace(/</g, '&lt;')
+               .replace(/>/g, '&gt;')
+               .replace(/\n/g, '<br>');
+    
+    // Restore images
+    images.forEach((img, i) => {
+        text = text.replace(`__IMAGE_${i}__`, img);
+    });
+    
+    return text;
 }
 
 // ==================== CODE COPY FUNCTIONALITY ====================
