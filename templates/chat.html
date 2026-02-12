@@ -624,10 +624,7 @@
     <!-- Fallback markdown parser -->
     <script src="{{ url_for('static', filename='js/markdown.js') }}"></script>
     
-    <!-- Original chat script for multimodal and other features -->
-    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
-    
-    <!-- New Chat Script - overrides message rendering only -->
-    <script src="{{ url_for('static', filename='js/chat-new.js') }}"></script>
+    <!-- Unified Chat Script (single controller) -->
+    <script src="{{ url_for('static', filename='js/chat-unified.js') }}"></script>
 </body>
 </html>
