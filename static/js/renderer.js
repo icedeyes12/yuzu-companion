@@ -25,6 +25,7 @@
             gfm: true,
             headerIds: false,
             mangle: false,
+            sanitize: false, // Allow HTML (needed for images)
             highlight: function(code, lang) {
                 if (hasHighlight && lang) {
                     try {
@@ -101,8 +102,11 @@
             return `<div class="code-block-container">
                 <div class="code-block-header">
                     ${lang ? `<span class="code-lang">${lang}</span>` : ''}
-                    <button class="copy-code-btn" onclick="copyCodeBlock(this)" data-code-id="${codeId}">
-                        <span class="copy-icon">📋</span>
+                    <button class="copy-code-btn" onclick="copyCodeBlock(this)" data-code-id="${codeId}" title="Copy code">
+                        <svg class="copy-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2Z"/>
+                            <path d="M2 6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2H6a3 3 0 0 1-3-3V6H2Z"/>
+                        </svg>
                         <span class="copy-text">Copy</span>
                     </button>
                 </div>

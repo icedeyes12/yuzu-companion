@@ -686,11 +686,13 @@ function createMessageElement(role, content, timestamp = null) {
     if (role === 'ai') {
         const copyBtn = document.createElement("button");
         copyBtn.className = "copy-message-btn";
-        copyBtn.innerHTML = '<span class="copy-icon">📋</span> <span class="copy-text">Copy</span>';
+        copyBtn.innerHTML = `<svg class="copy-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2Z"/>
+            <path d="M2 6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2H6a3 3 0 0 1-3-3V6H2Z"/>
+        </svg><span class="copy-text">Copy message</span>`;
         copyBtn.onclick = function() {
             copyFullMessage(content, copyBtn);
         };
-        msg.style.position = 'relative';
         msg.appendChild(copyBtn);
     }
     
