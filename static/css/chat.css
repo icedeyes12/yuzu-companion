@@ -92,6 +92,28 @@
     background-color: rgba(255, 255, 255, 0.2);
 }
 
+.message blockquote {
+    border-left: 4px solid #4a90e2;
+    padding-left: 1rem;
+    margin: 0.5rem 0;
+    color: #666;
+}
+
+.message.user blockquote {
+    border-left-color: rgba(255, 255, 255, 0.6);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.message hr {
+    border: none;
+    border-top: 1px solid #ddd;
+    margin: 1rem 0;
+}
+
+.message.user hr {
+    border-top-color: rgba(255, 255, 255, 0.3);
+}
+
 .input-bar {
     display: flex;
     gap: 0.5rem;

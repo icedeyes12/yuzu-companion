@@ -1,6 +1,6 @@
 /**
  * Simple markdown renderer
- * Supports: bold, italic, code blocks, inline code, images, links, lists, headings, tables
+ * Supports: bold, italic, code blocks, inline code, images, links, lists, headings, tables, blockquotes, hr
  * @param {string} text - The markdown text to render
  * @returns {string} - The rendered HTML
  */
@@ -8,6 +8,13 @@ function renderMessageContent(text) {
     if (!text) return '';
     
     let html = String(text);
+    
+    // Pre-process: Remove blockquote markers (>) from code blocks
+    // This handles code blocks inside blockquotes correctly
+    html = html.replace(/((?:^> .*\n)*)(^> ```[\s\S]*?^> ```$)((?:\n^> .*)*)/gm, (match) => {
+        // Remove the > prefix from each line in the code block
+        return match.split('\n').map(line => line.replace(/^> ?/, '')).join('\n');
+    });
     
     // Store code blocks temporarily to prevent interference with other replacements
     const codeBlocks = [];
@@ -40,6 +47,16 @@ function renderMessageContent(text) {
     html = html.replace(/&/g, '&amp;')
                .replace(/</g, '&lt;')
                .replace(/>/g, '&gt;');
+    
+    // Horizontal rules (---, ***, ___)
+    html = html.replace(/^(?:---|\*\*\*|___)\s*$/gm, '<hr>');
+    
+    // Blockquotes (> text, can be multi-line)
+    html = html.replace(/((?:^&gt; .+$\n?)+)/gm, (match) => {
+        const lines = match.trim().split('\n');
+        const content = lines.map(line => line.replace(/^&gt; /, '')).join('<br>');
+        return `<blockquote>${content}</blockquote>`;
+    });
     
     // Bold **text** or __text__
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
