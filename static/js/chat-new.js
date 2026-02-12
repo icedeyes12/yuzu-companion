@@ -138,6 +138,20 @@ function createMessageElement(role, content, timestamp = null) {
     const bubble = document.createElement('div');
     bubble.className = `message-bubble ${role} rounded-lg p-4 shadow-sm`;
     
+    // Add copy button for AI messages
+    if (role === 'ai') {
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-message-btn';
+        copyBtn.title = 'Copy message';
+        copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+        </svg>`;
+        copyBtn.onclick = function() {
+            copyEntireMessage(content, this);
+        };
+        bubble.appendChild(copyBtn);
+    }
+    
     const contentDiv = document.createElement('div');
     contentDiv.className = 'markdown-content';
     contentDiv.innerHTML = renderMessageContent(content);
@@ -156,6 +170,31 @@ function createMessageElement(role, content, timestamp = null) {
     
     return messageDiv;
 }
+
+// ==================== COPY MESSAGE FUNCTION ====================
+function copyEntireMessage(text, button) {
+    // Strip markdown and HTML for plain text copy
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = text.replace(/```[\s\S]*?```/g, '[code block]');
+    const plainText = tempDiv.textContent || tempDiv.innerText || text;
+    
+    navigator.clipboard.writeText(plainText).then(() => {
+        const originalHTML = button.innerHTML;
+        button.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+        </svg>`;
+        button.classList.add('copied');
+        
+        setTimeout(() => {
+            button.innerHTML = originalHTML;
+            button.classList.remove('copied');
+        }, 2000);
+    }).catch(err => {
+        console.error('Copy failed:', err);
+    });
+}
+
+window.copyEntireMessage = copyEntireMessage;
 
 // ==================== TIMESTAMP FORMATTING ====================
 function formatTimestamp(timestamp) {
@@ -444,6 +483,9 @@ function setupInputHandlers() {
     input.addEventListener('input', function() {
         this.style.height = 'auto';
         this.style.height = Math.min(this.scrollHeight, 200) + 'px';
+        
+        // Update scroll button position
+        updateScrollButtonPosition();
     });
     
     // Keyboard shortcuts
@@ -458,7 +500,21 @@ function setupInputHandlers() {
     
     // Send button click
     sendButton.addEventListener('click', sendMessage);
+    
+    // Initial scroll button position
+    updateScrollButtonPosition();
 }
+
+// Update scroll-to-bottom button position based on input area height
+function updateScrollButtonPosition() {
+    const inputArea = document.querySelector('.input-area');
+    if (inputArea) {
+        const inputHeight = inputArea.offsetHeight;
+        document.documentElement.style.setProperty('--input-height', `${inputHeight - 80}px`);
+    }
+}
+
+window.addEventListener('resize', updateScrollButtonPosition);
 
 // ==================== SCROLL DETECTION ====================
 function setupScrollDetection() {
