@@ -532,6 +532,9 @@
     <!-- Sidebar script (existing) -->
     <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
     
+    <!-- Fallback markdown parser (loaded before chat-new.js) -->
+    <script src="{{ url_for('static', filename='js/markdown.js') }}"></script>
+    
     <!-- New Chat Script -->
     <script src="{{ url_for('static', filename='js/chat-new.js') }}"></script>
 </body>

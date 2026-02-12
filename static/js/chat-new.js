@@ -53,7 +53,14 @@ function renderMessageContent(text) {
         return html;
     }
     
-    // Fallback: basic escaping
+    // Fallback 1: Use existing MarkdownParser if available
+    if (typeof MarkdownParser !== 'undefined' && MarkdownParser.parse) {
+        console.log('Using MarkdownParser fallback');
+        return MarkdownParser.parse(String(text));
+    }
+    
+    // Fallback 2: Basic text with line breaks
+    console.warn('No markdown parser available, using basic formatting');
     return String(text).replace(/&/g, '&amp;')
                        .replace(/</g, '&lt;')
                        .replace(/>/g, '&gt;')
