@@ -80,7 +80,7 @@ function initProviderSettings() {
             testButton.disabled = true;
 
             try {
-                const response = await API.post('/api/test_provider', {
+                const response = await API.post('/api/providers/test_connection', {
                     provider: provider,
                     model: model
                 });
@@ -117,7 +117,7 @@ function initProviderSettings() {
             }
 
             try {
-                const response = await API.post('/api/update_provider', {
+                const response = await API.post('/api/providers/set_preferred', {
                     provider: provider,
                     model: model
                 });
@@ -135,7 +135,7 @@ function initProviderSettings() {
 
 async function loadProviders() {
     try {
-        const response = await API.get('/api/providers');
+        const response = await API.get('/api/providers/list');
         const providerSelect = document.getElementById('ai-provider');
         const currentProviderSpan = document.getElementById('current-provider');
 

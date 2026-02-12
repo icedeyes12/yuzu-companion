@@ -117,12 +117,12 @@ class ChatManager {
      */
     async loadSession() {
         try {
-            // Get current session or create new one
-            const response = await API.get('/api/current_session');
+            // Get active session from backend
+            const profileResponse = await API.get('/api/get_profile');
             
-            if (response.session_id) {
-                this.currentSessionId = response.session_id;
-                this.sessionName.textContent = response.session_name || 'Chat Session';
+            if (profileResponse && profileResponse.active_session) {
+                this.currentSessionId = profileResponse.active_session.id;
+                this.sessionName.textContent = profileResponse.active_session.name || 'Chat Session';
                 
                 // Load messages
                 await this.loadMessages();
@@ -132,7 +132,8 @@ class ChatManager {
             }
         } catch (error) {
             console.error('Error loading session:', error);
-            Utils.showNotification('Error loading chat session', 'error');
+            // Try to create new session on error
+            await this.createNewSession();
         }
     }
 
@@ -141,13 +142,13 @@ class ChatManager {
      */
     async createNewSession() {
         try {
-            const response = await API.post('/api/new_session', {
+            const response = await API.post('/api/sessions/create', {
                 name: 'New Chat'
             });
             
-            if (response.session_id) {
+            if (response.session_id || response.status === 'success') {
                 this.currentSessionId = response.session_id;
-                this.sessionName.textContent = response.session_name || 'New Chat';
+                this.sessionName.textContent = 'New Chat';
                 this.chatContainer.innerHTML = '';
                 this.messagesLoaded = 0;
                 this.allMessagesLoaded = false;
@@ -167,22 +168,23 @@ class ChatManager {
         this.isLoading = true;
         
         try {
-            const response = await API.get(
-                `/api/messages?session_id=${this.currentSessionId}&limit=${limit}&offset=${offset}`
-            );
+            // Get profile which includes chat history
+            const response = await API.get('/api/get_profile');
             
-            if (response.messages && response.messages.length > 0) {
+            if (response && response.chat_history && response.chat_history.length > 0) {
+                // Get last N messages
+                const messages = response.chat_history.slice(-limit);
+                
                 // Add messages to UI
-                response.messages.forEach(msg => {
-                    this.addMessageToUI(msg.role, msg.content, false);
+                messages.forEach(msg => {
+                    // Skip system messages if they exist
+                    if (msg.role !== 'system') {
+                        this.addMessageToUI(msg.role, msg.content, false);
+                    }
                 });
                 
-                this.messagesLoaded += response.messages.length;
-                
-                // Check if all messages loaded
-                if (response.messages.length < limit) {
-                    this.allMessagesLoaded = true;
-                }
+                this.messagesLoaded = messages.length;
+                this.allMessagesLoaded = true; // For now, load all at once
                 
                 // Scroll to bottom on initial load
                 if (offset === 0) {
@@ -203,51 +205,9 @@ class ChatManager {
      * Load older messages (pagination)
      */
     async loadOlderMessages() {
-        if (this.isLoading || this.allMessagesLoaded) return;
-        
-        // Save current scroll position
-        const container = this.chatContainer;
-        const oldScrollHeight = container.scrollHeight;
-        
-        this.isLoading = true;
-        
-        try {
-            const response = await API.get(
-                `/api/messages?session_id=${this.currentSessionId}&limit=30&offset=${this.messagesLoaded}`
-            );
-            
-            if (response.messages && response.messages.length > 0) {
-                // Prepend messages (reverse order since we're going backwards)
-                const fragment = document.createDocumentFragment();
-                
-                response.messages.reverse().forEach(msg => {
-                    const messageEl = this.createMessageElement(msg.role, msg.content);
-                    fragment.insertBefore(messageEl, fragment.firstChild);
-                });
-                
-                this.chatContainer.insertBefore(fragment, this.chatContainer.firstChild);
-                
-                this.messagesLoaded += response.messages.length;
-                
-                // Restore scroll position
-                const newScrollHeight = container.scrollHeight;
-                container.scrollTop = newScrollHeight - oldScrollHeight;
-                
-                // Check if all messages loaded
-                if (response.messages.length < 30) {
-                    this.allMessagesLoaded = true;
-                }
-                
-                // Highlight code blocks in new messages
-                Renderer.highlightCodeBlocks(this.chatContainer);
-            } else {
-                this.allMessagesLoaded = true;
-            }
-        } catch (error) {
-            console.error('Error loading older messages:', error);
-        } finally {
-            this.isLoading = false;
-        }
+        // For now, all messages are loaded at once
+        // This can be enhanced later if needed
+        this.allMessagesLoaded = true;
     }
 
     /**
@@ -270,9 +230,8 @@ class ChatManager {
         this.scrollToBottom(true);
         
         try {
-            // Send to API
+            // Send to API (backend uses active session automatically)
             const response = await API.post('/api/send_message', {
-                session_id: this.currentSessionId,
                 message: message
             });
             
