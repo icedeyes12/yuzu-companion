@@ -1,0 +1,92 @@
+/* Page layout tweaks */
+#chatContainer {
+  max-height: 60vh;
+  overflow-y: auto;
+  margin: 1rem 0;
+}
+
+.input-area {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.input-area textarea {
+  flex: 1;
+  min-height: 44px;
+  max-height: 150px;
+}
+
+.input-area button {
+  height: 44px;
+  align-self: flex-start;
+}
+
+#scrollToBottom {
+  position: fixed;
+  bottom: 100px;
+  right: 20px;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: none;
+}
+
+#scrollToBottom:not(.hidden) {
+  display: block;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.typing-indicator {
+  display: flex;
+  gap: 3px;
+  padding: 0.5rem;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted-color);
+  animation: bounce 1.4s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes bounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
+}
+
+/* Code block copy button */
+pre {
+  position: relative;
+}
+
+pre button.copy-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  #chatContainer {
+    max-height: 50vh;
+  }
+}
