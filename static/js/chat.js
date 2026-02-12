@@ -949,6 +949,13 @@ function copyFullMessage(content, button) {
         }, 2000);
     }).catch(err => {
         console.error('Copy message failed:', err);
+        const copyText = button.querySelector('.copy-text');
+        copyText.textContent = 'Error!';
+        button.classList.add('error');
+        setTimeout(() => {
+            copyText.textContent = 'Copy';
+            button.classList.remove('error');
+        }, 2000);
     });
 }
 

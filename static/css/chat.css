@@ -1548,6 +1548,11 @@ abbr {
   color: white;
 }
 
+.copy-code-btn.error {
+  background: var(--error-bg, #dc3545);
+  color: white;
+}
+
 .copy-icon {
   font-size: 1rem;
 }
@@ -1596,6 +1601,11 @@ abbr {
 
 .copy-message-btn.copied {
   background: var(--success-bg, #28a745);
+  color: white;
+}
+
+.copy-message-btn.error {
+  background: var(--error-bg, #dc3545);
   color: white;
 }
 

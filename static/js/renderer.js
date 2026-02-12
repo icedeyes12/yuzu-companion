@@ -84,15 +84,24 @@
             const langMatch = attrs.match(/class="language-(\w+)"/);
             const lang = langMatch ? langMatch[1] : '';
             
+            // Generate unique ID for this code block
+            const codeId = 'code-' + Math.random().toString(36).substr(2, 9);
+            
+            // Store code content in a map for safe retrieval
+            if (!window.codeBlockContents) {
+                window.codeBlockContents = new Map();
+            }
+            
             // Decode HTML entities in code for copying
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = code;
             const decodedCode = tempDiv.textContent || tempDiv.innerText;
+            window.codeBlockContents.set(codeId, decodedCode);
             
             return `<div class="code-block-container">
                 <div class="code-block-header">
                     ${lang ? `<span class="code-lang">${lang}</span>` : ''}
-                    <button class="copy-code-btn" onclick="copyCodeBlock(this)" data-code="${escapeHtml(decodedCode).replace(/"/g, '&quot;')}">
+                    <button class="copy-code-btn" onclick="copyCodeBlock(this)" data-code-id="${codeId}">
                         <span class="copy-icon">📋</span>
                         <span class="copy-text">Copy</span>
                     </button>
@@ -129,12 +138,22 @@
      * Copy code block content (called from HTML onclick)
      */
     window.copyCodeBlock = function(button) {
-        const code = button.getAttribute('data-code');
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = code;
-        const decodedCode = tempDiv.textContent || tempDiv.innerText;
+        const codeId = button.getAttribute('data-code-id');
+        const code = window.codeBlockContents ? window.codeBlockContents.get(codeId) : null;
         
-        navigator.clipboard.writeText(decodedCode).then(() => {
+        if (!code) {
+            console.error('Code content not found for ID:', codeId);
+            const copyText = button.querySelector('.copy-text');
+            copyText.textContent = 'Error!';
+            button.classList.add('error');
+            setTimeout(() => {
+                copyText.textContent = 'Copy';
+                button.classList.remove('error');
+            }, 2000);
+            return;
+        }
+        
+        navigator.clipboard.writeText(code).then(() => {
             const originalText = button.querySelector('.copy-text').textContent;
             button.querySelector('.copy-text').textContent = 'Copied!';
             button.classList.add('copied');
@@ -145,6 +164,13 @@
             }, 2000);
         }).catch(err => {
             console.error('Failed to copy:', err);
+            const copyText = button.querySelector('.copy-text');
+            copyText.textContent = 'Error!';
+            button.classList.add('error');
+            setTimeout(() => {
+                copyText.textContent = 'Copy';
+                button.classList.remove('error');
+            }, 2000);
         });
     };
 
