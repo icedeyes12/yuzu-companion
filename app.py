@@ -591,9 +591,14 @@ def _handle_image_generation(user_message, session_id):
         Database.add_image_tools_message(image_url, session_id=session_id)
         # FIX: Ensure absolute path for web serving
         web_url = f"/{image_url}" if not image_url.startswith('/') else image_url
-        return f"Image generated successfully! Here's your creation:\n\n![Generated Image]({web_url})"
+        image_message = f"Image generated successfully! Here's your creation:\n\n![Generated Image]({web_url})"
+        # Save the message with markdown image to database
+        Database.add_message('assistant', image_message, session_id=session_id)
+        return image_message
     else:
-        return f"Sorry, I couldn't generate an image: {error}"
+        error_message = f"Sorry, I couldn't generate an image: {error}"
+        Database.add_message('assistant', error_message, session_id=session_id)
+        return error_message
 
 def _handle_ai_image_generation(ai_response, session_id):
     """Handle AI responses that start with /imagine"""
@@ -608,7 +613,10 @@ def _handle_ai_image_generation(ai_response, session_id):
             Database.add_image_tools_message(image_url, session_id=session_id)
             # FIX: Ensure absolute path for web serving
             web_url = f"/{image_url}" if not image_url.startswith('/') else image_url
-            return f"I've created that image for you!\n\n![Generated Image]({web_url})"
+            image_message = f"I've created that image for you!\n\n![Generated Image]({web_url})"
+            # Save the message with markdown image to database
+            Database.add_message('assistant', image_message, session_id=session_id)
+            return image_message
         else:
             return f"{ai_response}\n\n*[Image generation failed: {error}]*"
     
