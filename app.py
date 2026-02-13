@@ -589,7 +589,9 @@ def _handle_image_generation(user_message, session_id):
     
     if image_url:
         Database.add_image_tools_message(image_url, session_id=session_id)
-        return f"Image generated successfully! Here's your creation:\n\n![Generated Image]({image_url})"
+        # FIX: Ensure absolute path for web serving
+        web_url = f"/{image_url}" if not image_url.startswith('/') else image_url
+        return f"Image generated successfully! Here's your creation:\n\n![Generated Image]({web_url})"
     else:
         return f"Sorry, I couldn't generate an image: {error}"
 
@@ -604,7 +606,9 @@ def _handle_ai_image_generation(ai_response, session_id):
         
         if image_url:
             Database.add_image_tools_message(image_url, session_id=session_id)
-            return f"I've created that image for you!\n\n![Generated Image]({image_url})"
+            # FIX: Ensure absolute path for web serving
+            web_url = f"/{image_url}" if not image_url.startswith('/') else image_url
+            return f"I've created that image for you!\n\n![Generated Image]({web_url})"
         else:
             return f"{ai_response}\n\n*[Image generation failed: {error}]*"
     
