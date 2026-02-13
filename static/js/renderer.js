@@ -15,8 +15,10 @@
     // Check if marked.js is available (from CDN or local fallback)
     const hasMarked = typeof marked !== 'undefined';
     
-    // Check if highlight.js is available
-    const hasHighlight = typeof hljs !== 'undefined';
+    // Function to check if highlight.js is available (may load after this script)
+    function isHighlightAvailable() {
+        return typeof hljs !== 'undefined' && typeof hljs.highlight === 'function';
+    }
 
     // Configure marked.js if available
     if (hasMarked) {
@@ -27,16 +29,27 @@
             mangle: false,
             sanitize: false, // Allow HTML (needed for images)
             highlight: function(code, lang) {
-                if (hasHighlight && lang) {
+                if (isHighlightAvailable() && lang) {
                     try {
                         return hljs.highlight(code, { language: lang }).value;
                     } catch (e) {
-                        console.warn('Highlight.js error:', e);
+                        console.warn('Highlight.js error for language:', lang, e);
+                        // Return code with language class so it can be highlighted later
+                        return code;
                     }
                 }
                 return code;
             }
         });
+        
+        // Log configuration status
+        console.log('Renderer initialized:', {
+            marked: true,
+            highlight: isHighlightAvailable(),
+            markedVersion: typeof marked.parse === 'function' ? 'modern' : 'legacy'
+        });
+    } else {
+        console.warn('marked.js not loaded - markdown rendering will use fallback');
     }
 
     /**
@@ -57,6 +70,11 @@
                 
                 // Post-process: Fix image rendering
                 html = fixImageRendering(html);
+                
+                // Log for debugging
+                if (html.includes('<img')) {
+                    console.log('Image detected in rendered content');
+                }
                 
                 return html;
             } else {
@@ -119,15 +137,42 @@
      * Fix image rendering - ensure markdown images render as actual <img> tags
      */
     function fixImageRendering(html) {
-        // marked.js should already handle this, but ensure images have proper styling
-        return html.replace(/<img([^>]*)>/g, function(match, attrs) {
-            // Add styling classes if not present
+        // marked.js with sanitize: false should render <img> tags correctly
+        // This function adds styling classes to all images
+        return html.replace(/<img([^>]*)>/gi, function(match, attrs) {
+            // Ensure images have the markdown-image class for styling
             if (!attrs.includes('class=')) {
                 return `<img${attrs} class="markdown-image">`;
+            } else if (!attrs.includes('markdown-image')) {
+                // Add to existing class
+                return match.replace(/class="([^"]*)"/, 'class="$1 markdown-image"');
             }
             return match;
         });
     }
+
+    /**
+     * Apply syntax highlighting to code blocks that may have been missed
+     * This is called after DOM insertion for any dynamically added content
+     */
+    window.applyCodeHighlighting = function(container) {
+        if (!isHighlightAvailable()) {
+            console.log('highlight.js not available for post-processing');
+            return;
+        }
+        
+        const codeBlocks = container.querySelectorAll('pre code');
+        codeBlocks.forEach(block => {
+            // Only highlight if not already highlighted
+            if (!block.classList.contains('hljs')) {
+                try {
+                    hljs.highlightElement(block);
+                } catch (e) {
+                    console.warn('Error highlighting code block:', e);
+                }
+            }
+        });
+    };
 
     /**
      * Escape HTML entities

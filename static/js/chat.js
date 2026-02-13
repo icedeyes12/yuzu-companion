@@ -672,6 +672,12 @@ function createMessageElement(role, content, timestamp = null) {
 
     if (typeof renderMessageContent !== 'undefined') {
         contentContainer.innerHTML = renderMessageContent(String(content));
+        
+        // Apply syntax highlighting to any code blocks that weren't highlighted during render
+        if (typeof applyCodeHighlighting === 'function') {
+            // Use setTimeout to ensure DOM is ready
+            setTimeout(() => applyCodeHighlighting(contentContainer), 0);
+        }
     } else if (typeof MarkdownParser !== 'undefined') {
         contentContainer.innerHTML = MarkdownParser.parseWithEmojis(String(content));
     } else {
