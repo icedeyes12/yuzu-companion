@@ -666,12 +666,25 @@ function createMessageElement(role, content, timestamp = null) {
     const msg = document.createElement("div");
     msg.classList.add("message", role);
     
+    // Debug: Log if content contains image markdown
+    if (content && (content.includes('![') || content.includes('<img'))) {
+        console.log('[IMAGE DEBUG] createMessageElement called with image content');
+        console.log('[IMAGE DEBUG] Role:', role);
+        console.log('[IMAGE DEBUG] Content preview:', content.substring(0, 200));
+    }
+    
     const displayTime = timestamp ? formatTimestamp(timestamp) : getCurrentTime24h();
 
     const contentContainer = document.createElement("div");
 
     if (typeof renderMessageContent !== 'undefined') {
         contentContainer.innerHTML = renderMessageContent(String(content));
+        
+        // Debug: Check if image made it to DOM
+        if (content && (content.includes('![') || content.includes('<img'))) {
+            const imgCount = contentContainer.querySelectorAll('img').length;
+            console.log('[IMAGE DEBUG] After rendering, DOM contains', imgCount, 'image(s)');
+        }
         
         // Apply syntax highlighting to any code blocks that weren't highlighted during render
         if (typeof applyCodeHighlighting === 'function') {

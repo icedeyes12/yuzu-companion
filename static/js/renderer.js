@@ -60,10 +60,20 @@
     window.renderMessageContent = function(text) {
         if (!text) return '';
         
+        // Debug: Log input if it contains image markdown
+        if (text.includes('![') || text.includes('<img')) {
+            console.log('[IMAGE DEBUG] Input text contains image markdown:', text.substring(0, 200));
+        }
+        
         try {
             // Use marked.js if available
             if (hasMarked) {
                 let html = marked.parse(text);
+                
+                // Debug: Log parsed HTML if it should have images
+                if (text.includes('![') || text.includes('<img')) {
+                    console.log('[IMAGE DEBUG] After marked.parse:', html.substring(0, 300));
+                }
                 
                 // Post-process: Add copy buttons to code blocks
                 html = addCopyButtonsToCodeBlocks(html);
@@ -73,7 +83,7 @@
                 
                 // Log for debugging
                 if (html.includes('<img')) {
-                    console.log('Image detected in rendered content');
+                    console.log('[IMAGE DEBUG] Final HTML contains <img> tags');
                 }
                 
                 return html;
@@ -137,16 +147,30 @@
      * Fix image rendering - ensure markdown images render as actual <img> tags
      */
     function fixImageRendering(html) {
+        // Count and log images found
+        const imgMatches = html.match(/<img([^>]*)>/gi);
+        if (imgMatches && imgMatches.length > 0) {
+            console.log(`[IMAGE DEBUG] Found ${imgMatches.length} image(s) in rendered HTML`);
+            imgMatches.forEach((img, idx) => {
+                console.log(`[IMAGE DEBUG] Image ${idx + 1}: ${img.substring(0, 100)}...`);
+            });
+        }
+        
         // marked.js with sanitize: false should render <img> tags correctly
         // This function adds styling classes to all images
         return html.replace(/<img([^>]*)>/gi, function(match, attrs) {
             // Ensure images have the markdown-image class for styling
             if (!attrs.includes('class=')) {
-                return `<img${attrs} class="markdown-image">`;
+                const result = `<img${attrs} class="markdown-image">`;
+                console.log(`[IMAGE DEBUG] Added class to image: ${result.substring(0, 100)}`);
+                return result;
             } else if (!attrs.includes('markdown-image')) {
                 // Add to existing class
-                return match.replace(/class="([^"]*)"/, 'class="$1 markdown-image"');
+                const result = match.replace(/class="([^"]*)"/, 'class="$1 markdown-image"');
+                console.log(`[IMAGE DEBUG] Enhanced existing class: ${result.substring(0, 100)}`);
+                return result;
             }
+            console.log(`[IMAGE DEBUG] Image already has markdown-image class`);
             return match;
         });
     }

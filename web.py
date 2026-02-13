@@ -286,26 +286,36 @@ def api_generate_image():
         
         image_path, error = multimodal_tools.generate_image(prompt)
         
+        print(f"[IMAGE DEBUG] Tool returned: image_path={image_path}, error={error}")
+        
         if image_path:
             if image_path.startswith('static/generated_images/'):
                 filename = os.path.basename(image_path)
                 web_url = f"/static/generated_images/{filename}"
-                image_markdown = f"![Generated Image](static/generated_images/{filename})"
+                # FIX: Add leading slash to markdown path for proper absolute URL
+                image_markdown = f"![Generated Image](/static/generated_images/{filename})"
+                print(f"[IMAGE DEBUG] Case 1: Using direct path - filename={filename}")
             else:
                 import shutil
                 os.makedirs('static/generated_images', exist_ok=True)
                 filename = os.path.basename(image_path)
                 static_path = f"static/generated_images/{filename}"
                 shutil.copy2(image_path, static_path)
-                print(f"Copied {image_path} to {static_path}")
+                print(f"[IMAGE DEBUG] Case 2: Copied {image_path} to {static_path}")
                 
                 web_url = f"/static/generated_images/{filename}"
-                image_markdown = f"![Generated Image](static/generated_images/{filename})"
+                # FIX: Add leading slash to markdown path for proper absolute URL
+                image_markdown = f"![Generated Image](/static/generated_images/{filename})"
+            
+            print(f"[IMAGE DEBUG] Generated markdown: {image_markdown}")
+            print(f"[IMAGE DEBUG] Web URL: {web_url}")
             
             ai_response = f"Image generated successfully! I've created your \"{prompt}\"\n\n{image_markdown}"
             
+            print(f"[IMAGE DEBUG] Full AI response: {ai_response[:200]}...")
+            
             Database.add_message('assistant', ai_response, session_id=session_id)
-            print(f"AI image response with static path saved to database")
+            print(f"[IMAGE DEBUG] AI image response saved to database")
             
             return jsonify({
                 'status': 'success',
