@@ -60,6 +60,10 @@
     window.renderMessageContent = function(text) {
         if (!text) return '';
         
+        // FIX: Remove newlines within markdown image syntax ![alt]\n(url) -> ![alt](url)
+        // This can happen if text is word-wrapped or line-broken incorrectly
+        text = text.replace(/!\[([^\]]*)\]\s*\n\s*\(([^)]+)\)/g, '![$1]($2)');
+        
         // Debug: Log input if it contains image markdown
         if (text.includes('![') || text.includes('<img')) {
             console.log('[IMAGE DEBUG] Input text contains image markdown:', text.substring(0, 200));
