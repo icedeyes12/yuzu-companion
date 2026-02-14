@@ -188,7 +188,7 @@ class MultimodalManager {
         }
     }
 
-    // Send image analysis to /api/analyze_images
+    // Send image message to /api/send_message_with_images
     async sendImageAnalysis(text) {
         if (this.selectedImages.length === 0) {
             alert('Please upload images first');
