@@ -442,17 +442,21 @@ async function loadChatHistory() {
             // Load last 30 messages immediately
             const recentMessages = history.slice(-IMMEDIATE_LOAD_COUNT);
             
-            // Load messages sequentially to handle async rendering
-            for (const msg of recentMessages) {
-                if (msg.role === "user" || msg.role === "assistant") {
-                    await addMessage(
-                        msg.role === "user" ? "user" : "ai",
-                        msg.content,
-                        msg.timestamp,
-                        true
-                    );
-                }
-            }
+            // Create all message elements in parallel for better performance
+            const messagePromises = recentMessages
+                .filter(msg => msg.role === "user" || msg.role === "assistant")
+                .map(msg => createMessageElement(
+                    msg.role === "user" ? "user" : "ai",
+                    msg.content,
+                    msg.timestamp
+                ));
+            
+            const messageElements = await Promise.all(messagePromises);
+            
+            // Append all messages to DOM at once
+            messageElements.forEach(msgElement => {
+                chatContainer.appendChild(msgElement);
+            });
             
             setTimeout(() => {
                 scrollToBottom();
@@ -506,22 +510,27 @@ async function loadOlderMessages(olderMessages, chatContainer) {
     
     await new Promise(resolve => setTimeout(resolve, 100));
     
-    // Load messages sequentially to handle async rendering
-    const firstChild = chatContainer.firstChild;
-    for (const msg of olderMessages) {
-        if (msg.role === "user" || msg.role === "assistant") {
-            const msgElement = await createMessageElement(
-                msg.role === "user" ? "user" : "ai",
-                msg.content,
-                msg.timestamp
-            );
-            chatContainer.insertBefore(msgElement, firstChild);
-        }
-    }
+    // Create all message elements in parallel for better performance
+    const messagePromises = olderMessages
+        .filter(msg => msg.role === "user" || msg.role === "assistant")
+        .map(msg => createMessageElement(
+            msg.role === "user" ? "user" : "ai",
+            msg.content,
+            msg.timestamp
+        ));
     
+    const messageElements = await Promise.all(messagePromises);
+    
+    // Remove loading indicator
     if (loadingIndicator.parentNode) {
         loadingIndicator.parentNode.removeChild(loadingIndicator);
     }
+    
+    // Insert all messages at once
+    const firstChild = chatContainer.firstChild;
+    messageElements.forEach(msgElement => {
+        chatContainer.insertBefore(msgElement, firstChild);
+    });
     
     console.log(`Loaded ${olderMessages.length} older messages`);
 }

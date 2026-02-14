@@ -9,11 +9,20 @@ console.log("Initializing renderer.js - using marked.js and highlight.js");
 
 // Wait for marked and hljs to be available
 function waitForLibraries() {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+        let attempts = 0;
+        const maxAttempts = 100; // 5 seconds max wait
+        
         const checkInterval = setInterval(() => {
+            attempts++;
+            
             if (typeof marked !== 'undefined' && typeof hljs !== 'undefined') {
                 clearInterval(checkInterval);
                 resolve();
+            } else if (attempts >= maxAttempts) {
+                clearInterval(checkInterval);
+                console.error('Failed to load marked.js or highlight.js after 5 seconds');
+                reject(new Error('Libraries failed to load'));
             }
         }, 50);
     });
@@ -21,28 +30,33 @@ function waitForLibraries() {
 
 // Initialize marked configuration
 async function initializeRenderer() {
-    await waitForLibraries();
-    
-    // Configure marked to use highlight.js for code blocks
-    marked.setOptions({
-        highlight: function(code, lang) {
-            if (lang && hljs.getLanguage(lang)) {
-                try {
-                    return hljs.highlight(code, { language: lang }).value;
-                } catch (err) {
-                    console.error('Highlight error:', err);
+    try {
+        await waitForLibraries();
+        
+        // Configure marked to use highlight.js for code blocks
+        marked.setOptions({
+            highlight: function(code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    try {
+                        return hljs.highlight(code, { language: lang }).value;
+                    } catch (err) {
+                        console.error('Highlight error:', err);
+                    }
                 }
-            }
-            return hljs.highlightAuto(code).value;
-        },
-        breaks: true,
-        gfm: true,
-        headerIds: true,
-        mangle: false,
-        pedantic: false
-    });
-    
-    console.log("Renderer initialized with marked.js and highlight.js");
+                return hljs.highlightAuto(code).value;
+            },
+            breaks: true,
+            gfm: true,
+            headerIds: true,
+            mangle: false,
+            pedantic: false
+        });
+        
+        console.log("Renderer initialized with marked.js and highlight.js");
+    } catch (err) {
+        console.error("Failed to initialize renderer:", err);
+        console.warn("Markdown rendering will fall back to plain text");
+    }
 }
 
 // Main render function
