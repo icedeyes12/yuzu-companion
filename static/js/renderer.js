@@ -28,11 +28,18 @@ class MarkdownRenderer {
         // Configure marked.js options
         marked.setOptions({
             highlight: (code, lang) => {
+                // Ensure code is a string
+                if (typeof code !== 'string') {
+                    console.warn('Highlight callback received non-string code:', code);
+                    code = String(code || '');
+                }
+                
                 if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
                     try {
                         return hljs.highlight(code, { language: lang }).value;
                     } catch (err) {
                         console.error('Highlight error:', err);
+                        return code;
                     }
                 }
                 return code;
@@ -71,10 +78,26 @@ class MarkdownRenderer {
 
         // Override code rendering to add copy button
         renderer.code = (code, language) => {
+            // Ensure code is a string
+            if (typeof code !== 'string') {
+                console.warn('Code block received non-string value:', code);
+                code = String(code || '');
+            }
+            
             const lang = language || 'plaintext';
-            const highlighted = typeof hljs !== 'undefined' && hljs.getLanguage(lang)
-                ? hljs.highlight(code, { language: lang }).value
-                : this.escapeHtml(code);
+            let highlighted;
+            
+            // Try to highlight code if hljs is available
+            if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
+                try {
+                    highlighted = hljs.highlight(code, { language: lang }).value;
+                } catch (err) {
+                    console.warn('Highlight.js error:', err);
+                    highlighted = this.escapeHtml(code);
+                }
+            } else {
+                highlighted = this.escapeHtml(code);
+            }
             
             return `<div class="code-block-container">
                 <div class="code-block-header">
@@ -94,6 +117,12 @@ class MarkdownRenderer {
     }
 
     escapeHtml(text) {
+        // Ensure text is a string
+        if (typeof text !== 'string') {
+            console.warn('escapeHtml received non-string value:', text);
+            text = String(text || '');
+        }
+        
         const map = {
             '&': '&amp;',
             '<': '&lt;',
