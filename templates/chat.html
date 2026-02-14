@@ -161,6 +161,8 @@
     </div>
     
     <!-- Load marked.js from CDN with fallback -->
+    <!-- Note: SRI integrity checks can be added for enhanced security -->
+    <!-- For production, generate SRI hash: curl -s URL | openssl dgst -sha384 -binary | openssl base64 -A -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js" 
             onerror="this.onerror=null; this.src='{{ url_for('static', filename='js/lib/marked.min.js') }}'"></script>
     
