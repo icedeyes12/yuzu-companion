@@ -13,9 +13,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat | Yuzu Companion</title>
     
-    <!-- Tailwind CSS CDN with local fallback -->
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.local.css') }}" media="not all" onload="if(media!='all')media='all'">
+    <!-- Tailwind CSS local fallback (load synchronously to avoid FOUC) -->
+    <noscript><link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.local.css') }}"></noscript>
     
     <!-- Existing CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">

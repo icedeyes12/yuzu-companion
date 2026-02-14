@@ -1,9 +1,17 @@
 /* Tailwind CSS Local Fallback */
 /* This file serves as a fallback if the CDN is unavailable */
-/* Download the full Tailwind CSS from: https://cdn.tailwindcss.com */
 
-/* For production, download a static build or use Tailwind CLI to generate a custom build */
-/* This placeholder ensures the system degrades gracefully if CDN fails */
+/* IMPORTANT: This file needs to be processed with Tailwind CLI before deployment */
+/* The @tailwind directives below are not valid in browsers without processing */
+
+/* To generate a compiled version, run: */
+/* npx tailwindcss -o static/css/tailwind.local.css --minify */
+
+/* For now, this file acts as a placeholder and documentation */
+/* The CDN version will be used in most cases */
+
+/* If you need a working fallback without build tools, download a pre-compiled */
+/* Tailwind CSS from: https://cdn.tailwindcss.com and save it here */
 
 @tailwind base;
 @tailwind components;

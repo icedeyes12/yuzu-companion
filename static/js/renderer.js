@@ -137,14 +137,15 @@ class MessageRenderer {
     }
 
     /**
-     * Decode HTML entities
+     * Decode HTML entities safely
      * @param {string} html - HTML string with entities
      * @returns {string} - Decoded string
      */
     decodeHtmlEntities(html) {
-        const txt = document.createElement('textarea');
-        txt.innerHTML = html;
-        return txt.value;
+        // Use DOMParser for safer decoding
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        return doc.documentElement.textContent || html;
     }
 
     /**
