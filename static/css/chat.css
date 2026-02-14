@@ -1454,3 +1454,134 @@ abbr {
     padding: 0.15rem 0.3rem !important;
   }
 }
+/* Code Block Header for new renderer.js */
+.code-block-header {
+  background: var(--header-bg);
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid var(--code-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: 'Hack', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.code-block-language {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.7rem;
+  opacity: 0.9;
+  color: var(--accent-lavender);
+  transition: all 0.3s ease;
+}
+
+.code-copy-btn {
+  background: var(--copy-button-bg);
+  border: 1px solid var(--code-border);
+  color: var(--accent-lavender) !important;
+  padding: 0.35rem 0.7rem;
+  border-radius: 5px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  font-weight: 600;
+  height: 24px;
+}
+
+.code-copy-btn:hover {
+  background: var(--copy-button-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.code-copy-btn.copied {
+  background: rgba(135, 208, 104, 0.9);
+  border-color: rgba(135, 208, 104, 0.6);
+  color: #1e1e1e !important;
+}
+
+/* Copy message button */
+.copy-message-btn {
+  position: absolute;
+  bottom: 0.5rem;
+  left: 0.5rem;
+  background: var(--copy-button-bg);
+  border: 1px solid var(--code-border);
+  color: var(--accent-lavender) !important;
+  padding: 0.35rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 10;
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.message:hover .copy-message-btn {
+  opacity: 1;
+}
+
+.copy-message-btn:hover {
+  background: var(--copy-button-hover);
+  transform: scale(1.1);
+}
+
+.copy-message-btn.copied {
+  background: rgba(135, 208, 104, 0.9);
+  border-color: rgba(135, 208, 104, 0.6);
+}
+
+/* Scroll to bottom button */
+.scroll-to-bottom-btn {
+  position: fixed !important;
+  bottom: 6rem !important;
+  right: 1.5rem !important;
+  width: 48px;
+  height: 48px;
+  background: var(--copy-button-bg);
+  border: 2px solid var(--code-border);
+  color: var(--accent-lavender) !important;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 2000 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+.scroll-to-bottom-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+  background: var(--copy-button-hover);
+}
+
+.scroll-to-bottom-btn.hidden {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+@media (max-width: 768px) {
+  .scroll-to-bottom-btn {
+    bottom: 5rem !important;
+    right: 1rem !important;
+    width: 40px;
+    height: 40px;
+  }
+}

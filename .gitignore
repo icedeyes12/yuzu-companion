@@ -31,3 +31,5 @@ static/generated_images/
 # OS
 .DS_Store
 Thumbs.db
+# Backup directory
+backup/
