@@ -293,7 +293,7 @@ class MultimodalManager {
                 formData.append(`image_${idx}`, img.file);
             });
 
-            const response = await fetch("/api/send_image_message", {
+            const response = await fetch("/api/send_message_with_images", {
                 method: "POST",
                 body: formData
             });

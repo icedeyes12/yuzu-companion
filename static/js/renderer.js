@@ -66,7 +66,7 @@ class MarkdownRenderer {
             return `<div class="code-block-container">
                 <div class="code-block-header">
                     <span class="code-language">${lang}</span>
-                    <button class="copy-code-btn" onclick="copyCodeToClipboard(this)">
+                    <button class="copy-code-btn" data-action="copy-code">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -115,12 +115,24 @@ let renderer = null;
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         renderer = new MarkdownRenderer();
+        setupCodeCopyListeners();
     });
 } else {
     renderer = new MarkdownRenderer();
+    setupCodeCopyListeners();
 }
 
-// Global function to copy code to clipboard
+// Setup event delegation for copy code buttons
+function setupCodeCopyListeners() {
+    document.addEventListener('click', (e) => {
+        const button = e.target.closest('[data-action="copy-code"]');
+        if (button) {
+            copyCodeToClipboard(button);
+        }
+    });
+}
+
+// Copy code to clipboard
 function copyCodeToClipboard(button) {
     const codeBlock = button.closest('.code-block-container');
     const code = codeBlock.querySelector('code');
