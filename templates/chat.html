@@ -1,26 +1,26 @@
 <!-- [FILE: chat.html] -->
-<!-- [VERSION: 1.0.0.69.3] -->
-<!-- [DATE: 2025-08-12] -->
+<!-- [VERSION: 2.0.0] -->
+<!-- [DATE: 2026-02-14] -->
 <!-- [PROJECT: HKKM - Yuzu Companion] -->
-<!-- [DESCRIPTION: Chat interface for AI companion system] -->
+<!-- [DESCRIPTION: Rebuilt chat interface with Tailwind CSS, marked.js, and highlight.js] -->
 <!-- [AUTHOR: Project Lead: Bani Baskara] -->
-<!-- [TEAM: Deepseek, GPT, Qwen, Aihara] -->
-<!-- [REPOSITORY: https://guthib.com/icedeyes12] -->
 <!-- [LICENSE: MIT] -->
 
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat | Yuzu Companion</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
     
     <!-- CSS Imports -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/sidebar.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/multimodal.css') }}">
     
     <!-- Highlight.js CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
@@ -115,8 +115,9 @@
     <!-- Overlay -->
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 
-    <!-- MAIN WRAPPER -->
+    <!-- MAIN CHAT WRAPPER -->
     <div class="chat-app">
+        <!-- Header with hamburger, assistant name, session name, and affection bar -->
         <header class="chat-header">
             <div class="header-left">
                 <h1 class="partner-name">{{ profile.partner_name }}</h1>
@@ -130,26 +131,37 @@
             </div>
         </header>
 
+        <!-- Scrollable chat area -->
         <main class="chat-container" id="chatContainer">
-            <!-- messages will appear here -->
+            <!-- Messages will be dynamically inserted here -->
         </main>
 
-        <!-- TYPING INDICATOR -->
+        <!-- Typing Indicator -->
         <div id="typingIndicator" class="typing-indicator hidden">
             <span></span>
             <span></span>
             <span></span>
         </div>
 
-        <!-- CLEAN INPUT AREA - WITH MULTIMODAL SUPPORT -->
+        <!-- Floating scroll-to-bottom button -->
+        <button id="scrollToBottomBtn" class="scroll-to-bottom hidden">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+        </button>
+
+        <!-- Fixed input area with MM button, textarea, and send button -->
         <div class="input-area">
             <!-- Multimodal toggle button will be inserted here by JavaScript -->
-            <textarea id="messageInput" placeholder="Type your message ..." rows="1"></textarea>
+            <textarea id="messageInput" placeholder="Type your message..." rows="1"></textarea>
             <button id="sendButton">Send</button>
         </div>
     </div>
     
-    <!-- Load Highlight.js -->
+    <!-- Load marked.js for markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- Load Highlight.js for syntax highlighting -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
@@ -169,7 +181,7 @@
 
     <!-- Our scripts -->
     <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/markdown.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/renderer.js') }}"></script>
     <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 </body>
 </html>
