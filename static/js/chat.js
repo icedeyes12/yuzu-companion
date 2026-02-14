@@ -333,7 +333,7 @@ class MultimodalManager {
 }
 
 // ==================== MESSAGE FUNCTIONS ====================
-function createMessageElement(role, content, timestamp = null) {
+async function createMessageElement(role, content, timestamp = null) {
     const msg = document.createElement("div");
     msg.classList.add("message", role);
     msg.setAttribute('data-role', role);
@@ -343,20 +343,19 @@ function createMessageElement(role, content, timestamp = null) {
     
     // Render markdown using renderer.js
     if (typeof renderMarkdown !== 'undefined') {
-        renderMarkdown(String(content)).then(html => {
-            contentContainer.innerHTML = html;
-            
-            // Add timestamp
-            const timeDiv = document.createElement("div");
-            timeDiv.className = "timestamp";
-            timeDiv.textContent = timestamp ? formatTimestamp(timestamp) : getCurrentTime();
-            contentContainer.appendChild(timeDiv);
-            
-            // Add copy button for AI messages
-            if (role === 'ai') {
-                addCopyMessageButton(msg, content);
-            }
-        });
+        const html = await renderMarkdown(String(content));
+        contentContainer.innerHTML = html;
+        
+        // Add timestamp
+        const timeDiv = document.createElement("div");
+        timeDiv.className = "timestamp";
+        timeDiv.textContent = timestamp ? formatTimestamp(timestamp) : getCurrentTime();
+        contentContainer.appendChild(timeDiv);
+        
+        // Add copy button for AI messages
+        if (role === 'ai') {
+            addCopyMessageButton(msg, content);
+        }
     } else {
         // Fallback if renderer not loaded yet
         contentContainer.textContent = String(content);
@@ -371,14 +370,14 @@ function createMessageElement(role, content, timestamp = null) {
     return msg;
 }
 
-function addMessage(role, content, timestamp = null, isHistory = false) {
+async function addMessage(role, content, timestamp = null, isHistory = false) {
     const chatContainer = document.getElementById("chatContainer");
     if (!chatContainer) {
         console.error("Cannot add message: chat container not found!");
         return null;
     }
     
-    const msg = createMessageElement(role, content, timestamp);
+    const msg = await createMessageElement(role, content, timestamp);
     chatContainer.appendChild(msg);
     
     if (!isHistory) {
@@ -430,8 +429,9 @@ function addCopyMessageButton(messageElement, content) {
 // ==================== CHAT HISTORY & PAGINATION ====================
 async function loadChatHistory() {
     try {
-        const response = await fetch("/api/get_history");
-        const history = await response.json();
+        const response = await fetch("/api/get_profile");
+        const data = await response.json();
+        const history = data.chat_history || [];
         
         const chatContainer = document.getElementById("chatContainer");
         if (!chatContainer) return;
@@ -441,20 +441,18 @@ async function loadChatHistory() {
             
             // Load last 30 messages immediately
             const recentMessages = history.slice(-IMMEDIATE_LOAD_COUNT);
-            const fragment = document.createDocumentFragment();
             
-            recentMessages.forEach(msg => {
+            // Load messages sequentially to handle async rendering
+            for (const msg of recentMessages) {
                 if (msg.role === "user" || msg.role === "assistant") {
-                    const msgElement = createMessageElement(
+                    await addMessage(
                         msg.role === "user" ? "user" : "ai",
                         msg.content,
-                        msg.timestamp
+                        msg.timestamp,
+                        true
                     );
-                    fragment.appendChild(msgElement);
                 }
-            });
-            
-            chatContainer.appendChild(fragment);
+            }
             
             setTimeout(() => {
                 scrollToBottom();
@@ -508,27 +506,21 @@ async function loadOlderMessages(olderMessages, chatContainer) {
     
     await new Promise(resolve => setTimeout(resolve, 100));
     
-    const fragment = document.createDocumentFragment();
-    
-    olderMessages.forEach(msg => {
+    // Load messages sequentially to handle async rendering
+    const firstChild = chatContainer.firstChild;
+    for (const msg of olderMessages) {
         if (msg.role === "user" || msg.role === "assistant") {
-            const msgElement = createMessageElement(
+            const msgElement = await createMessageElement(
                 msg.role === "user" ? "user" : "ai",
                 msg.content,
                 msg.timestamp
             );
-            fragment.appendChild(msgElement);
+            chatContainer.insertBefore(msgElement, firstChild);
         }
-    });
+    }
     
     if (loadingIndicator.parentNode) {
         loadingIndicator.parentNode.removeChild(loadingIndicator);
-    }
-    
-    if (chatContainer.firstChild) {
-        chatContainer.insertBefore(fragment, chatContainer.firstChild);
-    } else {
-        chatContainer.appendChild(fragment);
     }
     
     console.log(`Loaded ${olderMessages.length} older messages`);

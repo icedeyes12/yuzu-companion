@@ -33,3 +33,6 @@ static/generated_images/
 Thumbs.db
 # Backup directory
 backup/
+
+# Test files
+test_*.html

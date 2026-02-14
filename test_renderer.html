@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Renderer Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <style>
+        body {
+            padding: 2rem;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        .test-output {
+            margin-top: 2rem;
+            padding: 1rem;
+            border: 1px solid #444;
+            border-radius: 8px;
+            background: #2a2a2a;
+        }
+        .code-block-container {
+            position: relative;
+            margin: 0.6rem 0;
+            border-radius: 11px;
+            overflow: hidden;
+            background: #1e1e1e;
+            border: 1px solid #444;
+        }
+        .code-block-header {
+            background: #2d2d2d;
+            padding: 0.5rem 0.9rem;
+            border-bottom: 1px solid #444;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .code-block-language {
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 0.7rem;
+            opacity: 0.9;
+            color: #b8b8ff;
+        }
+        .code-copy-btn {
+            background: #3a3a3a;
+            border: 1px solid #555;
+            color: #b8b8ff;
+            padding: 0.35rem 0.7rem;
+            border-radius: 5px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+        .code-copy-btn:hover {
+            background: #4a4a4a;
+        }
+        .code-block-container pre {
+            margin: 0;
+            padding: 1rem;
+            overflow-x: auto;
+            background: #1e1e1e;
+        }
+        .code-block-container code {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <h1 class="text-3xl font-bold mb-4">Renderer.js Test</h1>
+    
+    <div>
+        <h2 class="text-xl mb-2">Test Markdown Input:</h2>
+        <textarea id="markdownInput" class="w-full h-64 p-4 bg-gray-800 text-white rounded" placeholder="Enter markdown here...">
+# Hello World
+
+This is a test of the **markdown** renderer using *marked.js*.
+
+## Code Example
+
+\`\`\`python
+def hello_world():
+    print("Hello from Python!")
+    return True
+\`\`\`
+
+## Lists
+
+- Item 1
+- Item 2
+  - Nested item
+  - Another nested
+
+## Table
+
+| Column 1 | Column 2 |
+|----------|----------|
+| Data 1   | Data 2   |
+| Data 3   | Data 4   |
+
+## Image Test
+
+![Test Image](https://via.placeholder.com/300x200)
+
+## Blockquote
+
+> This is a blockquote
+> with multiple lines
+        </textarea>
+        <button onclick="testRender()" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+            Render
+        </button>
+    </div>
+    
+    <div class="test-output">
+        <h2 class="text-xl mb-2">Rendered Output:</h2>
+        <div id="output" class="prose prose-invert max-w-none"></div>
+    </div>
+
+    <!-- Load marked.js -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    
+    <!-- Load Highlight.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+
+    <!-- Load our renderer -->
+    <script src="static/js/renderer.js"></script>
+
+    <script>
+        async function testRender() {
+            const input = document.getElementById('markdownInput').value;
+            const output = document.getElementById('output');
+            
+            console.log('Testing render with input:', input);
+            
+            const html = await renderMarkdown(input);
+            output.innerHTML = html;
+            
+            console.log('Rendered output:', html);
+        }
+        
+        // Auto-render on load
+        window.addEventListener('load', () => {
+            setTimeout(testRender, 500);
+        });
+    </script>
+</body>
+</html>
