@@ -56,7 +56,7 @@ class MarkdownRenderer {
         const renderer = new marked.Renderer();
         
         // Override image rendering with URL validation and XSS protection
-        renderer.image = (href, title, text) => {
+        renderer.image = function(href, title, text) {
             // Validate and sanitize URL
             let safeHref = '';
             try {
@@ -71,42 +71,79 @@ class MarkdownRenderer {
                 safeHref = '';
             }
             
-            const safeTitle = title ? ` title="${this.escapeHtml(title)}"` : '';
-            const safeAlt = text ? ` alt="${this.escapeHtml(text)}"` : '';
+            // Local escape function
+            const escapeHtmlFunc = (text) => {
+                if (typeof text !== 'string') {
+                    text = String(text || '');
+                }
+                const map = {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                };
+                return text.replace(/[&<>"']/g, m => map[m]);
+            };
+            
+            const safeTitle = title ? ` title="${escapeHtmlFunc(title)}"` : '';
+            const safeAlt = text ? ` alt="${escapeHtmlFunc(text)}"` : '';
             return `<img src="${safeHref}"${safeAlt}${safeTitle} class="message-image">`;
         };
 
         // Override code rendering to add copy button
-        renderer.code = (code, language) => {
+        renderer.code = function(code, language, isEscaped) {
             // Handle both string and token object formats from marked.js
+            // In newer marked.js versions, code might be a token object
+            let codeText = code;
+            let lang = language;
+            
             if (typeof code !== 'string') {
-                console.warn('Code block received non-string value:', code);
-                // Extract code from token object if available
+                // It's a token object - extract the text
                 if (code && typeof code === 'object') {
-                    code = code.text || code.raw || '';
+                    codeText = code.text || code.raw || '';
+                    // Language might also be in the token
+                    if (code.lang && !language) {
+                        lang = code.lang;
+                    }
                 } else {
-                    code = String(code || '');
+                    codeText = String(code || '');
                 }
             }
             
-            const lang = language || 'plaintext';
+            lang = lang || 'plaintext';
             let highlighted;
+            
+            // Use escapeHtml from the parent scope
+            const escapeHtmlFunc = (text) => {
+                if (typeof text !== 'string') {
+                    text = String(text || '');
+                }
+                const map = {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                };
+                return text.replace(/[&<>"']/g, m => map[m]);
+            };
             
             // Try to highlight code if hljs is available
             if (typeof hljs !== 'undefined' && lang && hljs.getLanguage(lang)) {
                 try {
-                    highlighted = hljs.highlight(code, { language: lang }).value;
+                    highlighted = hljs.highlight(codeText, { language: lang }).value;
                 } catch (err) {
                     console.warn('Highlight.js error:', err);
-                    highlighted = this.escapeHtml(code);
+                    highlighted = escapeHtmlFunc(codeText);
                 }
             } else {
-                highlighted = this.escapeHtml(code);
+                highlighted = escapeHtmlFunc(codeText);
             }
             
             return `<div class="code-block-container">
                 <div class="code-block-header">
-                    <span class="code-language">${lang}</span>
+                    <span class="code-language">${escapeHtmlFunc(lang)}</span>
                     <button class="copy-code-btn" data-action="copy-code">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -114,7 +151,7 @@ class MarkdownRenderer {
                         </svg>
                     </button>
                 </div>
-                <pre><code class="language-${lang}">${highlighted}</code></pre>
+                <pre><code class="language-${escapeHtmlFunc(lang)}">${highlighted}</code></pre>
             </div>`;
         };
 
