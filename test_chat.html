@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Test | Yuzu Companion</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- CSS Imports -->
+    <link rel="stylesheet" href="static/css/style.css">
+    <link rel="stylesheet" href="static/css/chat.css">
+    <link rel="stylesheet" href="static/css/sidebar.css">
+    <link rel="stylesheet" href="static/css/theme.css">
+    
+    <!-- Highlight.js CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    
+    <style>
+        /* Minimal theme variables for testing */
+        :root {
+            --bg-color: #1a1a2e;
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --accent-pink: #ff69b4;
+            --accent-lavender: #8a6de9;
+            --border-color: rgba(255, 255, 255, 0.1);
+            --user-bubble: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
+</head>
+<body>
+    <!-- Simplified Sidebar -->
+    <div class="sidebar" id="mainSidebar" style="transform: translateX(-100%);">
+      <div class="sidebar-header">
+        <h2>Yuzu Companion</h2>
+        <button class="close-sidebar" onclick="toggleSidebar()">×</button>
+      </div>
+      
+      <div class="sidebar-content">
+        <div class="sidebar-section">
+          <h3>Navigation</h3>
+          <a href="#" class="sidebar-link active">
+            Chat
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hamburger Menu -->
+    <button class="hamburger-menu" id="hamburgerMenu" onclick="toggleSidebar()">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+
+    <!-- Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()" style="display: none;"></div>
+
+    <!-- MAIN CHAT WRAPPER -->
+    <div class="chat-app">
+        <!-- Header -->
+        <header class="chat-header">
+            <div class="header-left">
+                <h1 class="partner-name">Yuzu</h1>
+                <div class="session-name" id="sessionName">Test Session</div>
+            </div>
+            <div class="affection-display">
+                <span class="affection-icon"></span>
+                <div class="affection-bar">
+                    <div class="affection-fill" style="width: 75%;"></div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Scrollable chat area -->
+        <main class="chat-container" id="chatContainer">
+            <!-- Test messages will be added here -->
+        </main>
+
+        <!-- Typing Indicator -->
+        <div id="typingIndicator" class="typing-indicator hidden">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+
+        <!-- Floating scroll-to-bottom button -->
+        <button id="scrollToBottomBtn" class="scroll-to-bottom hidden">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+        </button>
+
+        <!-- Fixed input area -->
+        <div class="input-area">
+            <textarea id="messageInput" placeholder="Type your message..." rows="1"></textarea>
+            <button id="sendButton">Send</button>
+        </div>
+    </div>
+    
+    <!-- Load marked.js -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <!-- Load Highlight.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+
+    <!-- Our scripts -->
+    <script>
+        // Minimal sidebar functionality
+        function toggleSidebar() {
+            const sidebar = document.getElementById('mainSidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            const isOpen = sidebar.style.transform === 'translateX(0px)';
+            
+            if (isOpen) {
+                sidebar.style.transform = 'translateX(-100%)';
+                overlay.style.display = 'none';
+            } else {
+                sidebar.style.transform = 'translateX(0px)';
+                overlay.style.display = 'block';
+            }
+        }
+    </script>
+    <script src="static/js/renderer.js"></script>
+    <script>
+        // Test script - modified chat.js for demo
+        console.log("Loading test chat interface...");
+        
+        // Wait for renderer to load
+        setTimeout(() => {
+            // Add test messages
+            const testMessages = [
+                {
+                    role: 'user',
+                    content: 'Hello! Can you show me some markdown examples?'
+                },
+                {
+                    role: 'ai',
+                    content: `Sure! Here are some markdown examples:
+
+# Heading 1
+## Heading 2
+### Heading 3
+
+**Bold text** and *italic text*
+
+- List item 1
+- List item 2
+  - Nested item 1
+  - Nested item 2
+
+> This is a blockquote
+> It can span multiple lines
+
+Here's a code block:
+
+\`\`\`python
+def hello_world():
+    print("Hello, World!")
+    return True
+\`\`\`
+
+And an inline code: \`console.log("test")\`
+
+| Column 1 | Column 2 |
+|----------|----------|
+| Data 1   | Data 2   |
+| Data 3   | Data 4   |`
+                },
+                {
+                    role: 'user',
+                    content: 'That looks great! Can you generate an image?'
+                },
+                {
+                    role: 'ai',
+                    content: 'Here\'s a test image:\n\n![Test Image](https://via.placeholder.com/400x300.png?text=Generated+Image)'
+                }
+            ];
+            
+            testMessages.forEach((msg, index) => {
+                setTimeout(() => {
+                    addTestMessage(msg.role, msg.content);
+                }, index * 500);
+            });
+        }, 500);
+        
+        function addTestMessage(role, content) {
+            const chatContainer = document.getElementById("chatContainer");
+            const msg = document.createElement("div");
+            msg.classList.add("message", role);
+            
+            const contentContainer = document.createElement("div");
+            contentContainer.className = "message-content";
+
+            if (typeof renderer !== 'undefined' && renderer) {
+                contentContainer.innerHTML = renderer.render(String(content));
+            } else {
+                contentContainer.textContent = String(content);
+            }
+
+            const messageFooter = document.createElement("div");
+            messageFooter.className = "message-footer";
+
+            const timeDiv = document.createElement("div");
+            timeDiv.className = "timestamp";
+            const now = new Date();
+            timeDiv.textContent = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            messageFooter.appendChild(timeDiv);
+
+            if (role === "ai") {
+                const copyBtn = document.createElement("button");
+                copyBtn.className = "copy-message-btn";
+                copyBtn.title = "Copy message";
+                copyBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>`;
+                copyBtn.onclick = () => {
+                    navigator.clipboard.writeText(content);
+                    copyBtn.classList.add('copied');
+                    setTimeout(() => copyBtn.classList.remove('copied'), 2000);
+                };
+                messageFooter.appendChild(copyBtn);
+            }
+
+            contentContainer.appendChild(messageFooter);
+            msg.appendChild(contentContainer);
+            chatContainer.appendChild(msg);
+            
+            // Scroll to bottom
+            setTimeout(() => {
+                chatContainer.scroll({
+                    top: chatContainer.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }, 50);
+        }
+        
+        // Setup scroll button
+        const scrollBtn = document.getElementById('scrollToBottomBtn');
+        const chatContainer = document.getElementById('chatContainer');
+        
+        scrollBtn.addEventListener('click', () => {
+            chatContainer.scroll({
+                top: chatContainer.scrollHeight,
+                behavior: 'smooth'
+            });
+        });
+        
+        chatContainer.addEventListener('scroll', () => {
+            const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < 100;
+            if (isNearBottom) {
+                scrollBtn.classList.add('hidden');
+            } else {
+                scrollBtn.classList.remove('hidden');
+            }
+        });
+        
+        // Setup input
+        const input = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendButton');
+        
+        input.addEventListener('input', () => {
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+        });
+        
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendBtn.click();
+            }
+        });
+        
+        sendBtn.addEventListener('click', () => {
+            const text = input.value.trim();
+            if (text) {
+                addTestMessage('user', text);
+                input.value = '';
+                input.style.height = 'auto';
+                
+                // Simulate AI response
+                setTimeout(() => {
+                    const responses = [
+                        'I understand! That\'s a great question.',
+                        'Let me help you with that.',
+                        'Here\'s what I think about that...',
+                        'Interesting! Let me explain.'
+                    ];
+                    addTestMessage('ai', responses[Math.floor(Math.random() * responses.length)]);
+                }, 1000);
+            }
+        });
+    </script>
+</body>
+</html>
