@@ -78,10 +78,15 @@ class MarkdownRenderer {
 
         // Override code rendering to add copy button
         renderer.code = (code, language) => {
-            // Ensure code is a string
+            // Handle both string and token object formats from marked.js
             if (typeof code !== 'string') {
                 console.warn('Code block received non-string value:', code);
-                code = String(code || '');
+                // Extract code from token object if available
+                if (code && typeof code === 'object') {
+                    code = code.text || code.raw || '';
+                } else {
+                    code = String(code || '');
+                }
             }
             
             const lang = language || 'plaintext';
