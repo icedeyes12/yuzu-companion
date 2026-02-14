@@ -41,7 +41,7 @@ class MarkdownRenderer {
             gfm: true,
             tables: true,
             pedantic: false,
-            sanitize: false,
+            sanitize: true,  // Enable sanitization for security
             smartLists: true,
             smartypants: false
         });
@@ -49,11 +49,12 @@ class MarkdownRenderer {
         // Custom renderer for images
         const renderer = new marked.Renderer();
         
-        // Override image rendering to ensure proper <img> tags
+        // Override image rendering to ensure proper <img> tags with XSS protection
         renderer.image = (href, title, text) => {
-            const titleAttr = title ? ` title="${title}"` : '';
-            const altAttr = text ? ` alt="${text}"` : '';
-            return `<img src="${href}"${altAttr}${titleAttr} class="message-image">`;
+            const safeHref = this.escapeHtml(href || '');
+            const safeTitle = title ? ` title="${this.escapeHtml(title)}"` : '';
+            const safeAlt = text ? ` alt="${this.escapeHtml(text)}"` : '';
+            return `<img src="${safeHref}"${safeAlt}${safeTitle} class="message-image">`;
         };
 
         // Override code rendering to add copy button

@@ -289,8 +289,8 @@ class MultimodalManager {
             const formData = new FormData();
             formData.append('message', text);
             
-            this.selectedImages.forEach((img, idx) => {
-                formData.append(`image_${idx}`, img.file);
+            this.selectedImages.forEach((img) => {
+                formData.append('images', img);
             });
 
             const response = await fetch("/api/send_message_with_images", {
@@ -608,8 +608,8 @@ async function loadSessionInfo() {
         const data = await res.json();
         
         const sessionNameEl = document.getElementById("sessionName");
-        if (sessionNameEl && data.current_session) {
-            sessionNameEl.textContent = data.current_session.name || "Current Session";
+        if (sessionNameEl && data.active_session) {
+            sessionNameEl.textContent = data.active_session.name || "Current Session";
         }
     } catch (err) {
         console.error("Failed to load session info:", err);
