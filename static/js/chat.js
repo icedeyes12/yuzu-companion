@@ -395,10 +395,19 @@ function addMessage(role, content, timestamp = null, isHistory = false) {
 }
 
 function copyMessageToClipboard(button, content) {
-    // Strip HTML tags for plain text copy
-    const temp = document.createElement('div');
-    temp.innerHTML = content;
-    const text = temp.textContent || temp.innerText;
+    // Use DOMParser to safely extract text from HTML content
+    let text = content;
+    
+    if (typeof DOMParser !== 'undefined') {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(content, 'text/html');
+        text = doc.body.textContent || doc.body.innerText || content;
+    } else {
+        // Fallback: create temp element (safe because we only read textContent)
+        const temp = document.createElement('div');
+        temp.textContent = content; // Use textContent instead of innerHTML
+        text = temp.textContent;
+    }
     
     navigator.clipboard.writeText(text).then(() => {
         const originalHTML = button.innerHTML;

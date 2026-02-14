@@ -41,7 +41,6 @@ class MarkdownRenderer {
             gfm: true,
             tables: true,
             pedantic: false,
-            sanitize: true,  // Enable sanitization for security
             smartLists: true,
             smartypants: false
         });
@@ -49,9 +48,22 @@ class MarkdownRenderer {
         // Custom renderer for images
         const renderer = new marked.Renderer();
         
-        // Override image rendering to ensure proper <img> tags with XSS protection
+        // Override image rendering with URL validation and XSS protection
         renderer.image = (href, title, text) => {
-            const safeHref = this.escapeHtml(href || '');
+            // Validate and sanitize URL
+            let safeHref = '';
+            try {
+                const url = new URL(href, window.location.origin);
+                // Only allow http, https, and data URLs
+                if (['http:', 'https:', 'data:'].includes(url.protocol)) {
+                    safeHref = url.href;
+                }
+            } catch (e) {
+                // Invalid URL, use empty string
+                console.warn('Invalid image URL:', href);
+                safeHref = '';
+            }
+            
             const safeTitle = title ? ` title="${this.escapeHtml(title)}"` : '';
             const safeAlt = text ? ` alt="${this.escapeHtml(text)}"` : '';
             return `<img src="${safeHref}"${safeAlt}${safeTitle} class="message-image">`;
@@ -101,7 +113,24 @@ class MarkdownRenderer {
         }
 
         try {
-            return marked.parse(text);
+            const html = marked.parse(text);
+            
+            // Sanitize with DOMPurify if available
+            if (typeof DOMPurify !== 'undefined') {
+                return DOMPurify.sanitize(html, {
+                    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 's', 'code', 'pre', 'a', 'img', 
+                                    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 
+                                    'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+                                    'div', 'span', 'details', 'summary', 'hr', 'button', 'svg', 'rect', 'path', 'polyline'],
+                    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'data-action', 
+                                    'width', 'height', 'viewBox', 'fill', 'stroke', 'stroke-width', 
+                                    'x', 'y', 'rx', 'ry', 'd', 'points'],
+                    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
+                });
+            }
+            
+            // Fallback if DOMPurify is not available (shouldn't happen)
+            return html;
         } catch (error) {
             console.error('Markdown rendering error:', error);
             return this.escapeHtml(text);
