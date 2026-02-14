@@ -20,6 +20,10 @@ database_backups/
 debug_logs/
 *.log
 
+# Runtime generated assets
+static/uploads/
+static/generated_images/
+
 # Secrets
 *.key
 *.env
