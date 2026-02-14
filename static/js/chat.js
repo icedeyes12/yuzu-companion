@@ -1,19 +1,21 @@
-// [FILE: chat.js] - OPTIMIZED VERSION
-// [VERSION: 1.0.0.69.6] - PERFORMANCE OPTIMIZED
-// [DATE: 2025-08-12]
+// [FILE: chat.js] - CLEAN REBUILD
+// [VERSION: 2.0.0]
+// [DATE: 2025-02-14]
 // [PROJECT: HKKM - Yuzu Companion]
-// [DESCRIPTION: Optimized chat interface with performance improvements]
+// [DESCRIPTION: Clean chat interface with markdown rendering via renderer.js]
 // [AUTHOR: Project Lead: Bani Baskara]
-// [TEAM: Deepseek, GPT, Qwen, Aihara]
-// [REPOSITORY: https://github.com/icedeyes12]
 // [LICENSE: MIT]
 
-console.log("Starting OPTIMIZED chat with performance improvements...");
+console.log("Starting chat.js v2.0...");
 
-// ==================== PERFORMANCE OPTIMIZATIONS ====================
-let isProcessingMessage = false; // Global flag to prevent double-send
+// ==================== GLOBAL STATE ====================
+let isProcessingMessage = false;
+let typingIndicator = null;
 
 // ==================== MULTIMODAL MANAGER ====================
+/**
+ * Handles chat modes: chat, image upload/analysis, and image generation
+ */
 class MultimodalManager {
     constructor() {
         this.currentMode = 'chat';
@@ -23,61 +25,47 @@ class MultimodalManager {
     }
 
     init() {
-        console.log("Initializing Multimodal...");
-        this.createToggle();
+        console.log("Initializing MultimodalManager...");
+        this.createToggleButton();
         this.setupEventListeners();
         this.patchSendButton();
-        this.updateNotificationCount();
+        this.updateImageBadge();
     }
 
-    createToggle() {
+    // Create toggle button in input area
+    createToggleButton() {
         const inputArea = document.querySelector('.input-area');
-        if (!inputArea) return;
+        if (!inputArea || inputArea.querySelector('.multimodal-toggle-container')) return;
 
-        if (inputArea.querySelector('.multimodal-toggle-container')) return;
-
-        const toggleHTML = `
+        const html = `
             <div class="multimodal-toggle-container">
-                <button class="multimodal-toggle-btn" type="button" title="Multimodal Mode">
-                    <span class="toggle-icon">${this.getSVGIcon('chat')}</span>
+                <button class="multimodal-toggle-btn" type="button" title="Switch Mode">
+                    <span class="toggle-icon">${this.getIcon('chat')}</span>
                     <div class="mode-indicator">C</div>
                     <div class="image-count-badge hidden">0</div>
                 </button>
             </div>
         `;
         
-        inputArea.insertAdjacentHTML('afterbegin', toggleHTML);
+        inputArea.insertAdjacentHTML('afterbegin', html);
         this.toggleBtn = inputArea.querySelector('.multimodal-toggle-btn');
         this.modeIndicator = inputArea.querySelector('.mode-indicator');
-        this.imageCountBadge = inputArea.querySelector('.image-count-badge');
+        this.imageBadge = inputArea.querySelector('.image-count-badge');
     }
 
-    getSVGIcon(mode) {
+    // Get SVG icons for different modes
+    getIcon(type) {
         const icons = {
-            chat: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/>
-                   </svg>`,
-            image: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM5 19l3.5-4.5 2.5 3.01L14.5 11l4.5 6H5z"/>
-                   </svg>`,
-            generate: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM5 19l3.5-4.5 2.5 3.01L14.5 11l4.5 6H5z"/>
-                      <path d="M14.5 11l1.5-2 1.5 2 2-1-2-1.5 2-1.5-2-1-1.5 2-1.5-2-1 1.5L13 8l-1.5 2z" opacity="0.7"/>
-                     </svg>`,
-            download: `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
-                     </svg>`,
-            regenerate: `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
-                       </svg>`,
-            close: `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                   <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                  </svg>`,
-            upload: `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
-                   </svg>`
+            chat: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>',
+            image: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM5 19l3.5-4.5 2.5 3.01L14.5 11l4.5 6H5z"/></svg>',
+            generate: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM5 19l3.5-4.5 2.5 3.01L14.5 11l4.5 6H5z"/><path d="M14.5 11l1.5-2 1.5 2 2-1-2-1.5 2-1.5-2-1-1.5 2-1.5-2-1 1.5L13 8l-1.5 2z" opacity="0.7"/></svg>',
+            upload: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>',
+            close: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
+            copy: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
+            download: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>',
+            regenerate: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>'
         };
-        return icons[mode] || icons.chat;
+        return icons[type] || icons.chat;
     }
 
     setupEventListeners() {
@@ -88,6 +76,7 @@ class MultimodalManager {
             this.toggleDropdown();
         });
 
+        // Close dropdown when clicking outside
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.multimodal-toggle-container')) {
                 this.closeDropdown();
@@ -95,6 +84,7 @@ class MultimodalManager {
         });
     }
 
+    // Override send button behavior
     patchSendButton() {
         const sendBtn = document.getElementById('sendButton');
         if (!sendBtn) return;
@@ -105,34 +95,29 @@ class MultimodalManager {
         };
     }
 
+    // Main send handler - routes to appropriate API based on mode
     handleSend() {
-        // PREVENTION: Check global flag to prevent double-send
-        if (isProcessingMessage) {
-            console.log("Message already being processed, please wait...");
+        if (isProcessingMessage || this.isSending) {
+            console.log("Already processing, please wait...");
             return;
         }
 
         const input = document.getElementById('messageInput');
         const text = input.value.trim();
 
-        if (this.isSending) {
-            console.log("Already sending, please wait...");
-            return;
-        }
-
-        // SET GLOBAL FLAG
         isProcessingMessage = true;
 
         if (this.currentMode === 'generate') {
-            this.handleImageGeneration(text);
-        } else if (this.currentMode === 'image' || this.selectedImages.length > 0) {
-            this.handleImageMessage(text);
+            this.sendImageGeneration(text);
+        } else if (this.currentMode === 'image' && this.selectedImages.length > 0) {
+            this.sendImageAnalysis(text);
         } else {
-            this.handleChatMessage(text);
+            this.sendChatMessage(text);
         }
     }
 
-    async handleChatMessage(text) {
+    // Send regular chat message to /api/send_message
+    async sendChatMessage(text) {
         if (!text) {
             isProcessingMessage = false;
             return;
@@ -141,18 +126,17 @@ class MultimodalManager {
         addMessage("user", text);
         this.clearInput();
         
-        if (typingIndicator) typingIndicator.classList.remove("hidden");
+        this.showTypingIndicator();
 
         try {
             const response = await fetch("/api/send_message", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: text }),
+                body: JSON.stringify({ message: text })
             });
             
             const data = await response.json();
-            
-            if (typingIndicator) typingIndicator.classList.add("hidden");
+            this.hideTypingIndicator();
             
             if (data.reply) {
                 addMessage("ai", data.reply);
@@ -161,30 +145,26 @@ class MultimodalManager {
             }
         } catch (error) {
             console.error("Error sending message:", error);
-            if (typingIndicator) typingIndicator.classList.add("hidden");
+            this.hideTypingIndicator();
             addMessage("ai", "Connection error. Please try again.");
         } finally {
-            // RESET GLOBAL FLAG
             isProcessingMessage = false;
-            this.isSending = false;
         }
     }
 
-    async handleImageGeneration(prompt) {
-        if (!prompt.trim()) {
+    // Send image generation request to /api/generate_image
+    async sendImageGeneration(prompt) {
+        if (!prompt) {
             alert('Please enter a prompt for image generation');
             isProcessingMessage = false;
             return;
         }
 
         this.isSending = true;
-        this.setSendButtonState('sending');
+        addMessage("user", prompt);
+        this.clearInput();
 
         try {
-            console.log("Generating image with prompt:", prompt);
-            
-            addMessage("user", prompt);
-            
             const response = await fetch("/api/generate_image", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -195,7 +175,6 @@ class MultimodalManager {
             
             if (data.status === 'success') {
                 this.displayGeneratedImage(data.image_url, prompt);
-                this.clearInput();
             } else {
                 throw new Error(data.error || 'Image generation failed');
             }
@@ -205,37 +184,35 @@ class MultimodalManager {
             addMessage("ai", `Error: ${error.message}`);
         } finally {
             this.isSending = false;
-            this.setSendButtonState('ready');
             isProcessingMessage = false;
         }
     }
 
-    async handleImageMessage(text) {
-        if (!text && this.selectedImages.length === 0) {
-            alert('Please enter a message or upload images');
+    // Send image analysis to /api/analyze_images
+    async sendImageAnalysis(text) {
+        if (this.selectedImages.length === 0) {
+            alert('Please upload images first');
             isProcessingMessage = false;
             return;
         }
 
         this.isSending = true;
-        this.setSendButtonState('sending');
+        addMessage("user", text || "Analyze these images");
+        
+        // Display uploaded images
+        this.selectedImages.forEach(image => {
+            this.displayUploadedImage(image);
+        });
 
         try {
-            addMessage("user", text || "Analyze these images");
-            
-            this.selectedImages.forEach((image) => {
-                const imageUrl = URL.createObjectURL(image);
-                this.displayUploadedImage(imageUrl, text);
-            });
-
             const formData = new FormData();
             if (text) formData.append('message', text);
             
-            this.selectedImages.forEach((image) => {
+            this.selectedImages.forEach(image => {
                 formData.append('images', image);
             });
 
-            const response = await fetch("/api/send_message_with_images", {
+            const response = await fetch("/api/analyze_images", {
                 method: "POST",
                 body: formData
             });
@@ -246,187 +223,94 @@ class MultimodalManager {
                 addMessage("ai", data.reply);
                 this.clearInput();
                 this.clearImages();
-                
-                if (this.currentMode !== 'chat') {
-                    this.switchMode('chat');
-                }
+                this.switchMode('chat');
             } else {
-                throw new Error(data?.error || 'Image processing failed');
+                throw new Error(data?.error || 'Image analysis failed');
             }
             
         } catch (error) {
-            console.error('Image message failed:', error);
+            console.error('Image analysis failed:', error);
             addMessage("ai", `Error: ${error.message}`);
         } finally {
             this.isSending = false;
-            this.setSendButtonState('ready');
             isProcessingMessage = false;
         }
     }
 
-    displayUploadedImage(imageUrl, caption = '') {
+    // Display uploaded image in chat
+    displayUploadedImage(imageFile) {
         const chatContainer = document.getElementById('chatContainer');
         if (!chatContainer) return;
 
-        const imageHTML = `
-            <div class="message user uploaded-image-message">
+        const imageUrl = URL.createObjectURL(imageFile);
+        const html = `
+            <div class="message user uploaded-image">
                 <div class="message-content">
-                    ${caption ? `<div class="image-caption">${this.escapeHtml(caption)}</div>` : ''}
-                    <div class="uploaded-image-container">
-                        <img src="${imageUrl}" alt="Uploaded image" class="uploaded-image">
-                    </div>
-                    <div class="timestamp">${this.getCurrentTime()}</div>
+                    <img src="${imageUrl}" alt="Uploaded" class="uploaded-image-preview">
+                    <div class="timestamp">${getCurrentTime()}</div>
                 </div>
             </div>
         `;
         
-        chatContainer.insertAdjacentHTML('beforeend', imageHTML);
+        chatContainer.insertAdjacentHTML('beforeend', html);
         scrollToBottom();
     }
 
+    // Display generated image with actions
     displayGeneratedImage(imageUrl, prompt) {
         const chatContainer = document.getElementById('chatContainer');
         if (!chatContainer) return;
 
+        // Fix image URL if needed
         if (imageUrl.startsWith('generated_images/')) {
             imageUrl = `/static/${imageUrl}`;
         }
 
-        const imageHTML = `
-            <div class="message user generated-image-message">
+        const html = `
+            <div class="message ai generated-image">
                 <div class="message-content">
-                    <div class="image-prompt-text">${this.escapeHtml(prompt)}</div>
                     <div class="generated-image-container">
-                        <img src="${imageUrl}" alt="${prompt}" class="generated-image">
+                        <img src="${imageUrl}" alt="${this.escapeHtml(prompt)}" class="generated-image-preview">
                         <div class="image-actions">
-                            <button class="image-action-btn" onclick="multimodal.downloadImage('${imageUrl}', '${prompt.replace(/[^a-z0-9]/gi, '_')}')">
-                                ${this.getSVGIcon('download')}
-                                <span>Download</span>
+                            <button class="image-action-btn" onclick="multimodal.downloadImage('${imageUrl}', '${this.escapeHtml(prompt)}')">
+                                ${this.getIcon('download')} Download
                             </button>
-                            <button class="image-action-btn" onclick="multimodal.regenerateImage('${prompt}')">
-                                ${this.getSVGIcon('regenerate')}
-                                <span>Regenerate</span>
+                            <button class="image-action-btn" onclick="multimodal.regenerateImage('${this.escapeHtml(prompt)}')">
+                                ${this.getIcon('regenerate')} Regenerate
                             </button>
                         </div>
                     </div>
-                    <div class="timestamp">${this.getCurrentTime()}</div>
+                    <p>Image generated successfully!</p>
+                    <div class="timestamp">${getCurrentTime()}</div>
                 </div>
             </div>
         `;
         
-        chatContainer.insertAdjacentHTML('beforeend', imageHTML);
-        
-        const aiResponseHTML = `
-            <div class="message ai">
-                <div class="message-content">
-                    Image generated successfully! I've created your "${prompt}" 
-                    <div class="timestamp">${this.getCurrentTime()}</div>
-                </div>
-            </div>
-        `;
-        chatContainer.insertAdjacentHTML('beforeend', aiResponseHTML);
-        
+        chatContainer.insertAdjacentHTML('beforeend', html);
         scrollToBottom();
     }
 
-    updateNotificationCount() {
-        if (!this.imageCountBadge) return;
-        
-        const count = this.selectedImages.length;
-        
-        if (count > 0) {
-            this.imageCountBadge.textContent = count;
-            this.imageCountBadge.classList.remove('hidden');
-            
-            this.imageCountBadge.classList.add('pulse');
-            setTimeout(() => {
-                this.imageCountBadge.classList.remove('pulse');
-            }, 1000);
-        } else {
-            this.imageCountBadge.classList.add('hidden');
-        }
-    }
-
-    addImages(files) {
-        this.selectedImages = [...this.selectedImages, ...files];
-        this.updateNotificationCount();
-        
-        if (this.currentMode === 'image') {
-            this.updateInputPlaceholder();
-        }
-    }
-
-    removeImage(index) {
-        this.selectedImages.splice(index, 1);
-        this.updateNotificationCount();
-        
-        this.closeDropdown();
-        setTimeout(() => this.openDropdown(), 100);
-    }
-
-    clearImages() {
-        this.selectedImages = [];
-        this.updateNotificationCount();
-        
-        if (this.isDropdownOpen && this.currentMode === 'image') {
-            this.closeDropdown();
-            setTimeout(() => this.openDropdown(), 100);
-        }
-    }
-
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    clearInput() {
-        const input = document.getElementById('messageInput');
-        if (input) {
-            input.value = '';
-            input.style.height = 'auto';
-            this.updateInputPlaceholder();
-        }
-    }
-
-    setSendButtonState(state) {
-        const sendBtn = document.getElementById('sendButton');
-        if (!sendBtn) return;
-
-        if (state === 'sending') {
-            sendBtn.disabled = true;
-            sendBtn.textContent = 'Sending...';
-            sendBtn.style.opacity = '0.7';
-        } else {
-            sendBtn.disabled = false;
-            sendBtn.textContent = 'Send';
-            sendBtn.style.opacity = '1';
-        }
-    }
-
-    getCurrentTime() {
-        const now = new Date();
-        return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-    }
-
+    // Download generated image
     downloadImage(imageUrl, filename) {
         const link = document.createElement('a');
         link.href = imageUrl;
-        link.download = `${filename || 'generated_image'}.png`;
+        link.download = `${filename.replace(/[^a-z0-9]/gi, '_')}.png`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
     }
 
+    // Regenerate image with same prompt
     regenerateImage(prompt) {
         const input = document.getElementById('messageInput');
         if (input) {
             input.value = prompt;
             this.switchMode('generate');
-            setTimeout(() => this.handleImageGeneration(prompt), 100);
+            setTimeout(() => this.sendImageGeneration(prompt), 100);
         }
     }
 
+    // Toggle mode dropdown
     toggleDropdown() {
         if (this.isDropdownOpen) {
             this.closeDropdown();
@@ -435,42 +319,42 @@ class MultimodalManager {
         }
     }
 
+    // Open mode dropdown
     openDropdown() {
         this.closeDropdown();
 
-        const dropdownHTML = `
+        const html = `
             <div class="multimodal-dropdown">
                 <div class="multimodal-option ${this.currentMode === 'chat' ? 'active' : ''}" data-mode="chat">
-                    <div class="option-icon">${this.getSVGIcon('chat')}</div>
+                    <div class="option-icon">${this.getIcon('chat')}</div>
                     <div class="option-content">
                         <div class="option-text">Chat</div>
-                        <div class="option-description">Normal chat</div>
+                        <div class="option-description">Normal conversation</div>
                     </div>
                 </div>
                 <div class="multimodal-option ${this.currentMode === 'generate' ? 'active' : ''}" data-mode="generate">
-                    <div class="option-icon">${this.getSVGIcon('generate')}</div>
+                    <div class="option-icon">${this.getIcon('generate')}</div>
                     <div class="option-content">
                         <div class="option-text">Generate Image</div>
                         <div class="option-description">Create images with AI</div>
                     </div>
                 </div>
                 <div class="multimodal-option ${this.currentMode === 'image' ? 'active' : ''}" data-mode="image">
-                    <div class="option-icon">${this.getSVGIcon('image')}</div>
+                    <div class="option-icon">${this.getIcon('image')}</div>
                     <div class="option-content">
-                        <div class="option-text">Upload Image</div>
-                        <div class="option-description">Upload + analyze images</div>
+                        <div class="option-text">Analyze Image</div>
+                        <div class="option-description">Upload & analyze images</div>
                     </div>
                 </div>
                 
                 ${this.currentMode === 'image' ? `
-                <div class="image-upload-area">
-                    <div class="upload-placeholder">
-                        ${this.selectedImages.length > 0 ? `${this.selectedImages.length} image(s) ready!` : 'Upload images for analysis'}
+                <div class="image-upload-section">
+                    <div class="upload-status">
+                        ${this.selectedImages.length > 0 ? `${this.selectedImages.length} image(s) selected` : 'No images selected'}
                     </div>
-                    <input type="file" id="imageUpload" accept="image/*" multiple style="display: none;">
+                    <input type="file" id="imageUploadInput" accept="image/*" multiple style="display: none;">
                     <button class="upload-btn" onclick="multimodal.openFilePicker()">
-                        ${this.getSVGIcon('upload')}
-                        <span>${this.selectedImages.length > 0 ? 'Add More Images' : 'Choose Images'}</span>
+                        ${this.getIcon('upload')} ${this.selectedImages.length > 0 ? 'Add More' : 'Choose Images'}
                     </button>
                     ${this.selectedImages.length > 0 ? this.renderImagePreviews() : ''}
                 </div>
@@ -478,82 +362,67 @@ class MultimodalManager {
             </div>
         `;
 
-        this.toggleBtn.insertAdjacentHTML('afterend', dropdownHTML);
+        this.toggleBtn.insertAdjacentHTML('afterend', html);
         this.isDropdownOpen = true;
 
+        // Attach mode switch listeners
         const dropdown = this.toggleBtn.nextElementSibling;
         dropdown.querySelectorAll('.multimodal-option').forEach(option => {
             option.addEventListener('click', () => {
-                const mode = option.dataset.mode;
-                this.switchMode(mode);
+                this.switchMode(option.dataset.mode);
                 this.closeDropdown();
             });
         });
 
+        // Setup file input for image mode
         if (this.currentMode === 'image') {
-            const fileInput = document.getElementById('imageUpload');
-            fileInput.onchange = (e) => {
-                if (e.target.files.length > 0) {
-                    this.addImages(Array.from(e.target.files));
-                    this.closeDropdown();
-                    setTimeout(() => this.openDropdown(), 100);
-                }
-            };
+            const fileInput = document.getElementById('imageUploadInput');
+            if (fileInput) {
+                fileInput.onchange = (e) => {
+                    if (e.target.files.length > 0) {
+                        this.addImages(Array.from(e.target.files));
+                        this.closeDropdown();
+                        setTimeout(() => this.openDropdown(), 100);
+                    }
+                };
+            }
         }
     }
 
-    renderImagePreviews() {
-        if (this.selectedImages.length === 0) return '';
-        
-        const previews = this.selectedImages.map((image, index) => {
-            const previewUrl = URL.createObjectURL(image);
-            return `
-                <div class="image-preview-container">
-                    <img class="image-preview" src="${previewUrl}" alt="Preview ${index + 1}">
-                    <button class="remove-image-btn" onclick="multimodal.removeImage(${index})" type="button">
-                        ${this.getSVGIcon('close')}
-                    </button>
-                </div>
-            `;
-        }).join('');
-
-        return `
-            <div class="image-previews-header">
-                <span>${this.selectedImages.length} image(s) ready</span>
-                <button class="clear-all-btn" onclick="multimodal.clearImages()" type="button">Clear All</button>
-            </div>
-            <div class="image-previews-grid">
-                ${previews}
-            </div>
-        `;
-    }
-
-    openFilePicker() {
-        document.getElementById('imageUpload').click();
-    }
-
+    // Close dropdown
     closeDropdown() {
         const dropdown = document.querySelector('.multimodal-dropdown');
         if (dropdown) dropdown.remove();
         this.isDropdownOpen = false;
     }
 
+    // Switch mode
     switchMode(mode) {
         this.currentMode = mode;
         
         const indicators = { chat: 'C', generate: 'G', image: 'U' };
-        this.toggleBtn.querySelector('.toggle-icon').innerHTML = this.getSVGIcon(mode);
+        this.toggleBtn.querySelector('.toggle-icon').innerHTML = this.getIcon(mode);
         this.modeIndicator.textContent = indicators[mode];
         
-        if (mode === 'image' && this.selectedImages.length > 0) {
-            this.imageCountBadge.classList.remove('hidden');
-        } else if (mode !== 'image') {
-            this.imageCountBadge.classList.add('hidden');
-        }
-        
+        this.updateImageBadge();
         this.updateInputPlaceholder();
     }
 
+    // Update image count badge
+    updateImageBadge() {
+        if (!this.imageBadge) return;
+        
+        const count = this.selectedImages.length;
+        
+        if (count > 0 && this.currentMode === 'image') {
+            this.imageBadge.textContent = count;
+            this.imageBadge.classList.remove('hidden');
+        } else {
+            this.imageBadge.classList.add('hidden');
+        }
+    }
+
+    // Update input placeholder based on mode
     updateInputPlaceholder() {
         const input = document.getElementById('messageInput');
         if (!input) return;
@@ -568,79 +437,369 @@ class MultimodalManager {
         
         input.placeholder = placeholders[this.currentMode];
     }
+
+    // Add images
+    addImages(files) {
+        this.selectedImages = [...this.selectedImages, ...files];
+        this.updateImageBadge();
+        this.updateInputPlaceholder();
+    }
+
+    // Remove single image
+    removeImage(index) {
+        this.selectedImages.splice(index, 1);
+        this.updateImageBadge();
+        this.closeDropdown();
+        setTimeout(() => this.openDropdown(), 100);
+    }
+
+    // Clear all images
+    clearImages() {
+        this.selectedImages = [];
+        this.updateImageBadge();
+        this.updateInputPlaceholder();
+    }
+
+    // Render image previews in dropdown
+    renderImagePreviews() {
+        if (this.selectedImages.length === 0) return '';
+        
+        const previews = this.selectedImages.map((image, index) => {
+            const url = URL.createObjectURL(image);
+            return `
+                <div class="image-preview-item">
+                    <img src="${url}" alt="Preview ${index + 1}">
+                    <button class="remove-preview-btn" onclick="multimodal.removeImage(${index})">
+                        ${this.getIcon('close')}
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="image-previews">
+                <div class="previews-header">
+                    <span>${this.selectedImages.length} image(s)</span>
+                    <button class="clear-all-btn" onclick="multimodal.clearImages()">Clear All</button>
+                </div>
+                <div class="previews-grid">${previews}</div>
+            </div>
+        `;
+    }
+
+    // Open file picker
+    openFilePicker() {
+        document.getElementById('imageUploadInput')?.click();
+    }
+
+    // Clear input
+    clearInput() {
+        const input = document.getElementById('messageInput');
+        if (input) {
+            input.value = '';
+            input.style.height = 'auto';
+        }
+    }
+
+    // Show typing indicator
+    showTypingIndicator() {
+        if (typingIndicator) {
+            typingIndicator.classList.remove('hidden');
+        }
+    }
+
+    // Hide typing indicator
+    hideTypingIndicator() {
+        if (typingIndicator) {
+            typingIndicator.classList.add('hidden');
+        }
+    }
+
+    // Escape HTML
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
 }
 
-// ==================== OPTIMIZED SCROLL SYSTEM ====================
-function createPermanentScrollButton() {
-    const existingBtn = document.getElementById("scrollToBottom");
-    if (existingBtn) existingBtn.remove();
+// ==================== MESSAGE FUNCTIONS ====================
+
+/**
+ * Create message element
+ * @param {string} role - 'user' or 'ai'
+ * @param {string} content - Message content
+ * @param {string} timestamp - Optional timestamp
+ * @returns {HTMLElement} Message element
+ */
+function createMessageElement(role, content, timestamp = null) {
+    const msg = document.createElement("div");
+    msg.classList.add("message", role);
+    
+    const contentDiv = document.createElement("div");
+    contentDiv.classList.add("message-content");
+
+    // AI messages: use markdown renderer from renderer.js
+    // User messages: plain text
+    if (role === 'ai' && window.messageRenderer) {
+        contentDiv.innerHTML = window.messageRenderer.render(content);
+    } else {
+        // User messages: plain text with line breaks
+        contentDiv.textContent = content;
+    }
+
+    // Add timestamp
+    const timeDiv = document.createElement("div");
+    timeDiv.className = "timestamp";
+    timeDiv.textContent = timestamp ? formatTimestamp(timestamp) : getCurrentTime();
+    contentDiv.appendChild(timeDiv);
+
+    // Add copy button for AI messages
+    if (role === 'ai') {
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "copy-message-btn";
+        copyBtn.title = "Copy message";
+        copyBtn.innerHTML = window.multimodal?.getIcon('copy') || '📋';
+        copyBtn.onclick = () => copyMessageContent(contentDiv, copyBtn);
+        contentDiv.appendChild(copyBtn);
+    }
+
+    msg.appendChild(contentDiv);
+    return msg;
+}
+
+/**
+ * Add message to chat
+ * @param {string} role - 'user' or 'ai'
+ * @param {string} content - Message content
+ * @param {string} timestamp - Optional timestamp
+ * @param {boolean} isHistory - Is this a history message?
+ */
+function addMessage(role, content, timestamp = null, isHistory = false) {
+    const chatContainer = document.getElementById("chatContainer");
+    if (!chatContainer) {
+        console.error("Chat container not found!");
+        return;
+    }
+    
+    const msg = createMessageElement(role, content, timestamp);
+    chatContainer.appendChild(msg);
+    
+    // Only scroll for new messages, not history
+    if (!isHistory) {
+        setTimeout(scrollToBottom, 50);
+    }
+    
+    return msg;
+}
+
+/**
+ * Copy message content to clipboard
+ */
+function copyMessageContent(contentDiv, button) {
+    // Get text content without timestamp and button
+    const timestamp = contentDiv.querySelector('.timestamp');
+    const copyBtn = contentDiv.querySelector('.copy-message-btn');
+    
+    // Temporarily hide elements we don't want to copy
+    if (timestamp) timestamp.style.display = 'none';
+    if (copyBtn) copyBtn.style.display = 'none';
+    
+    const textToCopy = contentDiv.innerText;
+    
+    // Restore elements
+    if (timestamp) timestamp.style.display = '';
+    if (copyBtn) copyBtn.style.display = '';
+    
+    navigator.clipboard.writeText(textToCopy).then(() => {
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '✓';
+        button.classList.add('copied');
+        
+        setTimeout(() => {
+            button.innerHTML = originalHTML;
+            button.classList.remove('copied');
+        }, 2000);
+    }).catch(err => {
+        console.error('Copy failed:', err);
+    });
+}
+
+// ==================== HISTORY & PAGINATION ====================
+
+/**
+ * Load chat history from /api/get_profile
+ * Loads last 30 messages initially, then loads older messages in background
+ */
+async function loadChatHistory() {
+    const chatContainer = document.getElementById("chatContainer");
+    if (!chatContainer) {
+        console.error("Chat container not found!");
+        return;
+    }
+    
+    try {
+        chatContainer.innerHTML = '<div class="loading">Loading messages...</div>';
+        
+        const response = await fetch("/api/get_profile");
+        const data = await response.json();
+        const history = data.chat_history || [];
+
+        if (history.length > 0) {
+            chatContainer.innerHTML = '';
+            console.log(`Loading ${history.length} messages from history`);
+            
+            // Load last 30 messages immediately
+            const recentCount = Math.min(30, history.length);
+            const recentMessages = history.slice(-recentCount);
+            
+            // Use document fragment for efficient DOM insertion
+            const fragment = document.createDocumentFragment();
+            
+            recentMessages.forEach(msg => {
+                if (msg.role === "user" || msg.role === "assistant") {
+                    const role = msg.role === "user" ? "user" : "ai";
+                    const msgElement = createMessageElement(role, msg.content, msg.timestamp);
+                    fragment.appendChild(msgElement);
+                }
+            });
+            
+            chatContainer.appendChild(fragment);
+            scrollToBottom();
+            
+            console.log(`Loaded ${recentCount} recent messages`);
+            
+            // Load older messages in background if there are more
+            if (history.length > recentCount) {
+                setTimeout(() => loadOlderMessages(history, recentCount), 500);
+            }
+        } else {
+            chatContainer.innerHTML = '';
+            addMessage("ai", "Hello! I'm your AI companion. How can I help you today?");
+        }
+    } catch (error) {
+        console.error("Failed to load chat history:", error);
+        chatContainer.innerHTML = '';
+        addMessage("ai", "Hello! I'm your AI companion. How can I help you today?");
+    }
+}
+
+/**
+ * Load older messages in background
+ * @param {Array} fullHistory - Complete chat history
+ * @param {number} alreadyLoadedCount - Number of messages already loaded
+ */
+async function loadOlderMessages(fullHistory, alreadyLoadedCount) {
+    const chatContainer = document.getElementById("chatContainer");
+    if (!chatContainer) return;
+    
+    const olderMessages = fullHistory.slice(0, -alreadyLoadedCount);
+    const totalOlder = olderMessages.length;
+    
+    if (totalOlder === 0) return;
+    
+    console.log(`Loading ${totalOlder} older messages...`);
+    
+    // Show loading indicator
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'loading-older';
+    loadingDiv.textContent = `Loading ${totalOlder} older messages...`;
+    chatContainer.insertBefore(loadingDiv, chatContainer.firstChild);
+    
+    // Wait a bit for smooth UX
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Create fragment for batch insertion
+    const fragment = document.createDocumentFragment();
+    
+    olderMessages.forEach(msg => {
+        if (msg.role === "user" || msg.role === "assistant") {
+            const role = msg.role === "user" ? "user" : "ai";
+            const msgElement = createMessageElement(role, msg.content, msg.timestamp);
+            fragment.appendChild(msgElement);
+        }
+    });
+    
+    // Remove loading indicator and insert messages
+    loadingDiv.remove();
+    chatContainer.insertBefore(fragment, chatContainer.firstChild);
+    
+    console.log(`Loaded ${totalOlder} older messages`);
+}
+
+// ==================== SCROLL SYSTEM ====================
+
+/**
+ * Scroll to bottom of chat
+ */
+function scrollToBottom() {
+    const chatContainer = document.getElementById("chatContainer");
+    if (!chatContainer) return;
+    
+    chatContainer.scroll({
+        top: chatContainer.scrollHeight,
+        behavior: 'smooth'
+    });
+    
+    // Hide scroll button
+    const scrollBtn = document.getElementById("scrollToBottomBtn");
+    if (scrollBtn) {
+        scrollBtn.classList.add("hidden");
+    }
+}
+
+/**
+ * Create scroll-to-bottom button
+ */
+function createScrollButton() {
+    const existing = document.getElementById("scrollToBottomBtn");
+    if (existing) return;
     
     const btn = document.createElement("button");
-    btn.id = "scrollToBottom";
+    btn.id = "scrollToBottomBtn";
     btn.title = "Scroll to bottom";
     btn.innerHTML = "↓";
     btn.classList.add("hidden");
     btn.onclick = scrollToBottom;
     
     document.body.appendChild(btn);
-    console.log("Scroll button created");
-    return btn;
 }
 
-function initializeScrollButtonAutoHide() {
+/**
+ * Initialize scroll button auto-hide behavior
+ */
+function initializeScrollButton() {
     const chatContainer = document.getElementById("chatContainer");
-    const scrollBtn = document.getElementById("scrollToBottom");
+    const scrollBtn = document.getElementById("scrollToBottomBtn");
     
     if (!chatContainer || !scrollBtn) return;
     
-    function updateScrollButton() {
-        const scrollThreshold = 150;
-        const scrollPosition = chatContainer.scrollTop + chatContainer.clientHeight;
-        const scrollHeight = chatContainer.scrollHeight;
-        const distanceFromBottom = scrollHeight - scrollPosition;
-        
-        if (distanceFromBottom > scrollThreshold) {
-            scrollBtn.classList.remove("hidden");
-        } else {
-            scrollBtn.classList.add("hidden");
-        }
-    }
-    
     let scrollTimeout;
-    function handleScroll() {
-        if (!scrollTimeout) {
-            scrollTimeout = setTimeout(() => {
-                updateScrollButton();
-                scrollTimeout = null;
-            }, 50);
-        }
-    }
     
-    chatContainer.addEventListener('scroll', handleScroll);
-    window.addEventListener('resize', updateScrollButton);
-    updateScrollButton();
+    chatContainer.addEventListener('scroll', () => {
+        if (scrollTimeout) clearTimeout(scrollTimeout);
+        
+        scrollTimeout = setTimeout(() => {
+            const threshold = 150;
+            const scrollPosition = chatContainer.scrollTop + chatContainer.clientHeight;
+            const scrollHeight = chatContainer.scrollHeight;
+            const distanceFromBottom = scrollHeight - scrollPosition;
+            
+            if (distanceFromBottom > threshold) {
+                scrollBtn.classList.remove("hidden");
+            } else {
+                scrollBtn.classList.add("hidden");
+            }
+        }, 50);
+    });
 }
 
-function monitorScrollSystem() {
-    const chatContainer = document.getElementById("chatContainer");
-    const scrollBtn = document.getElementById("scrollToBottom");
-    
-    if (!chatContainer) {
-        console.error("Chat container not found!");
-        return false;
-    }
-    
-    if (!scrollBtn) {
-        createPermanentScrollButton();
-        initializeScrollButtonAutoHide();
-        return false;
-    }
-    
-    return true;
-}
+// ==================== SESSION ====================
 
-// ==================== OPTIMIZED CHAT FUNCTIONS ====================
-async function loadCurrentSessionName() {
+/**
+ * Load current session name
+ */
+async function loadSessionName() {
     try {
         const response = await fetch('/api/get_profile');
         const data = await response.json();
@@ -654,353 +813,90 @@ async function loadCurrentSessionName() {
     }
 }
 
-function scrollToBottom() {
-    const chatContainer = document.getElementById("chatContainer");
-    if (!chatContainer) {
-        console.error("Chat container not found!");
-        return;
-    }
-    
-    // OPTIMIZED: Use smooth scroll with performance consideration
-    chatContainer.scroll({
-        top: chatContainer.scrollHeight,
-        behavior: 'smooth'
-    });
-    
-    const scrollBtn = document.getElementById("scrollToBottom");
-    if (scrollBtn) {
-        scrollBtn.classList.add("hidden");
-    }
-}
+// ==================== INPUT BEHAVIOR ====================
 
-function createMessageElement(role, content, timestamp = null) {
-    const msg = document.createElement("div");
-    msg.classList.add("message", role);
-    
-    const displayTime = timestamp ? formatTimestamp(timestamp) : getCurrentTime24h();
-
-    const contentContainer = document.createElement("div");
-
-    if (typeof renderMessageContent !== 'undefined') {
-        contentContainer.innerHTML = renderMessageContent(String(content));
-    } else if (typeof MarkdownParser !== 'undefined') {
-        contentContainer.innerHTML = MarkdownParser.parseWithEmojis(String(content));
-    } else {
-        contentContainer.textContent = String(content);
-    }
-
-    const timeDiv = document.createElement("div");
-    timeDiv.className = "timestamp";
-    timeDiv.textContent = displayTime;
-    contentContainer.appendChild(timeDiv);
-
-    msg.appendChild(contentContainer);
-    return msg;
-}
-
-// OPTIMIZED: New function to process only new elements
-function processNewMessageElement(element) {
-    if (!element) return;
-    
-    // Highlight code blocks only in this new element
-    if (typeof MarkdownParser !== 'undefined' && typeof MarkdownParser.highlightNewElement === 'function') {
-        MarkdownParser.highlightNewElement(element);
-    }
-    
-    // Initialize copy buttons only in this new element
-    initializeCopyButtons(element);
-}
-
-function addMessage(role, content, timestamp = null, isHistory = false) {
-    const chatContainer = document.getElementById("chatContainer");
-    if (!chatContainer) {
-        console.error("Cannot add message: chat container not found!");
-        return null;
-    }
-    
-    const msg = createMessageElement(role, content, timestamp);
-    chatContainer.appendChild(msg);
-    
-    // OPTIMIZED: Only process new elements for real-time messages, not history
-    if (!isHistory) {
-        processNewMessageElement(msg);
-        
-        setTimeout(() => {
-            scrollToBottom();
-        }, 50);
-    }
-    
-    console.log(`Added ${role} message`);
-    return msg;
-}
-
-function formatTimestamp(timestamp) {
-    if (!timestamp) return '';
-    
-    try {
-        const dbDate = new Date(timestamp);
-        let hours = dbDate.getHours();
-        let minutes = dbDate.getMinutes();
-        
-        hours = hours < 10 ? '0' + hours : hours;
-        minutes = minutes < 10 ? '0' + minutes : minutes;
-        
-        return `${hours}:${minutes}`;
-    } catch (e) {
-        console.error('Error formatting timestamp:', e, timestamp);
-        return timestamp;
-    }
-}
-
-function getCurrentTime24h() {
-    const now = new Date();
-    let hours = now.getHours();
-    let minutes = now.getMinutes();
-    hours = hours < 10 ? '0' + hours : hours;
-    minutes = minutes < 10 ? '0' + minutes : minutes;
-    return `${hours}:${minutes}`;
-}
-
-// ==================== OPTIMIZED HISTORY FUNCTION ====================
-async function loadChatHistory() {
-    const chatContainer = document.getElementById("chatContainer");
-    if (!chatContainer) {
-        console.error("Cannot load history: chat container not found!");
-        return;
-    }
-    
-    try {
-        chatContainer.innerHTML = '<div class="loading">Loading recent messages...</div>';
-        setTimeout(scrollToBottom, 100);
-        
-        const res = await fetch("/api/get_profile");
-        const data = await res.json();
-        const history = data.chat_history || [];
-
-        if (history.length > 0) {
-            chatContainer.innerHTML = '';
-            console.log(`Processing ${history.length} messages from history`);
-            
-            const immediateDisplayCount = Math.min(30, history.length);
-            const messagesToShowImmediately = history.slice(-immediateDisplayCount);
-            
-            // OPTIMIZED: Use document fragment for batch DOM operations
-            const fragment = document.createDocumentFragment();
-            
-            messagesToShowImmediately.forEach(msg => {
-                if (msg.role === "user" || msg.role === "assistant") {
-                    const msgElement = createMessageElement(
-                        msg.role === "user" ? "user" : "ai", 
-                        msg.content, 
-                        msg.timestamp
-                    );
-                    fragment.appendChild(msgElement);
-                }
-            });
-            
-            chatContainer.appendChild(fragment);
-            
-            // OPTIMIZED: Process all history messages at once after DOM insertion
-            setTimeout(() => {
-                if (typeof MarkdownParser !== 'undefined') {
-                    MarkdownParser.highlightCodeBlocks(chatContainer);
-                }
-                initializeCopyButtons(chatContainer);
-                scrollToBottom();
-                
-                if (history.length > immediateDisplayCount) {
-                    setTimeout(() => loadOlderMessages(history, immediateDisplayCount), 500);
-                }
-            }, 300);
-            
-            console.log(`Immediately displayed ${messagesToShowImmediately.length} recent messages`);
-        } else {
-            console.log("No chat history found");
-            addMessage("ai", "Hello! I'm your AI companion. Let's start a new conversation!");
-            scrollToBottom();
-        }
-    } catch (err) {
-        console.error("Failed to load chat history:", err);
-        addMessage("ai", "Hello! I'm your AI companion. Let's start a new conversation!");
-        scrollToBottom();
-    }
-}
-
-async function loadOlderMessages(fullHistory, alreadyLoadedCount) {
-    const chatContainer = document.getElementById("chatContainer");
-    if (!chatContainer) return;
-    
-    const olderMessages = fullHistory.slice(0, -alreadyLoadedCount);
-    const totalOlder = olderMessages.length;
-    
-    if (totalOlder === 0) return;
-    
-    console.log(`Loading ${totalOlder} older messages in background...`);
-    
-    const loadingIndicator = document.createElement('div');
-    loadingIndicator.className = 'loading-older';
-    loadingIndicator.innerHTML = `<div class="loading-spinner-small"></div> Loading ${totalOlder} older messages...`;
-    chatContainer.insertBefore(loadingIndicator, chatContainer.firstChild);
-    
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    const fragment = document.createDocumentFragment();
-    
-    olderMessages.forEach(msg => {
-        if (msg.role === "user" || msg.role === "assistant") {
-            const msgElement = createMessageElement(
-                msg.role === "user" ? "user" : "ai", 
-                msg.content, 
-                msg.timestamp
-            );
-            fragment.appendChild(msgElement);
-        }
-    });
-    
-    if (loadingIndicator.parentNode) {
-        loadingIndicator.parentNode.removeChild(loadingIndicator);
-    }
-    
-    if (chatContainer.firstChild) {
-        chatContainer.insertBefore(fragment, chatContainer.firstChild);
-    } else {
-        chatContainer.appendChild(fragment);
-    }
-    
-    // OPTIMIZED: Process older messages in a single batch
-    setTimeout(() => {
-        if (typeof MarkdownParser !== 'undefined') {
-            MarkdownParser.highlightCodeBlocks(chatContainer);
-        }
-        initializeCopyButtons(chatContainer);
-    }, 100);
-    
-    console.log(`Loaded ${totalOlder} older messages in background`);
-}
-
-// ==================== OPTIMIZED COPY FUNCTIONS ====================
-function initializeCopyButtons(parentElement = document) {
-    // OPTIMIZED: Only search within the specified parent element
-    const codeContainers = parentElement.querySelectorAll('.code-block-container');
-    
-    codeContainers.forEach(container => {
-        // Check if copy button already exists to avoid duplicates
-        const existingButton = container.querySelector('.copy-code-btn');
-        if (existingButton) {
-            return;
-        }
-        
-        const copyButton = document.createElement('button');
-        copyButton.className = 'copy-code-btn';
-        copyButton.innerHTML = '<span class="copy-text">Copy</span>';
-        
-        copyButton.onclick = function() { 
-            copyCodeToClipboard(this); 
-        };
-        
-        const codeHeader = container.querySelector('.code-header');
-        if (codeHeader) {
-            codeHeader.appendChild(copyButton);
-        }
-    });
-}
-
-function copyCodeToClipboard(button) {
-    const codeBlock = button.closest('.code-block-container');
-    const codeElement = codeBlock.querySelector('code');
-    const textToCopy = codeElement.textContent;
-    
-    navigator.clipboard.writeText(textToCopy).then(() => {
-        const copyText = button.querySelector('.copy-text') || button;
-        const originalText = copyText.textContent;
-        
-        if (button.querySelector('.copy-text')) {
-            copyText.textContent = 'Copied!';
-        } else {
-            button.innerHTML = 'Copied!';
-        }
-        
-        button.classList.add('copied');
-        
-        setTimeout(() => {
-            if (button.querySelector('.copy-text')) {
-                copyText.textContent = originalText;
-            } else {
-                button.innerHTML = 'Copy';
-            }
-            button.classList.remove('copied');
-        }, 2000);
-    }).catch(err => {
-        console.error('Copy failed:', err);
-    });
-}
-
-// ==================== OPTIMIZED HIGHLIGHT.JS INIT ====================
-function initializeHighlightJS(container = document) {
-    if (typeof hljs !== 'undefined') {
-        // OPTIMIZED: Only process elements within the specified container
-        const blocks = container.querySelectorAll('pre code');
-        blocks.forEach((block) => {
-            hljs.highlightElement(block);
-        });
-        console.log(`Highlight.js initialized on ${blocks.length} blocks`);
-    } else {
-        console.log("Highlight.js not loaded yet");
-    }
-}
-
-// ==================== OPTIMIZED INPUT BEHAVIOR ====================
+/**
+ * Initialize input textarea behavior
+ */
 function initializeInputBehavior() {
     const input = document.getElementById('messageInput');
     if (!input) return;
 
-    // Hanya auto-resize - Enter = new line (natural mobile behavior)
+    // Auto-resize on input
     input.oninput = () => {
         input.style.height = 'auto';
         input.style.height = Math.min(input.scrollHeight, 400) + 'px';
     };
-
-    // Mobile-friendly: Enter = new line, Send button = send");
 }
 
-// ==================== OPTIMIZED INITIALIZATION ====================
+// ==================== UTILITY FUNCTIONS ====================
+
+/**
+ * Format timestamp for display
+ */
+function formatTimestamp(timestamp) {
+    if (!timestamp) return '';
+    
+    try {
+        const date = new Date(timestamp);
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        return `${hours}:${minutes}`;
+    } catch (e) {
+        console.error('Error formatting timestamp:', e);
+        return timestamp;
+    }
+}
+
+/**
+ * Get current time in HH:MM format
+ */
+function getCurrentTime() {
+    const now = new Date();
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+}
+
+// ==================== INITIALIZATION ====================
+
+/**
+ * Initialize chat system
+ */
 function initializeChat() {
-    console.log("Initializing OPTIMIZED chat system...");
+    console.log("Initializing chat system...");
+    
+    // Get typing indicator
+    typingIndicator = document.getElementById('typingIndicator');
     
     // Initialize scroll system
-    createPermanentScrollButton();
-    initializeScrollButtonAutoHide();
+    createScrollButton();
+    initializeScrollButton();
     
-    // Initialize input behavior
+    // Initialize input
     initializeInputBehavior();
     
     // Load session name
-    loadCurrentSessionName();
+    loadSessionName();
     
-    // Load history
+    // Load chat history
     loadChatHistory();
     
-    // Initialize multimodal
+    // Initialize multimodal manager
     window.multimodal = new MultimodalManager();
     window.multimodal.init();
     
-    // Monitor scroll system
-    setTimeout(() => monitorScrollSystem(), 1000);
-    
-    console.log("OPTIMIZED chat system ready!");
+    console.log("Chat system ready!");
 }
 
-// Start when page loads
-window.onload = function() {
+// Start when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeChat);
+} else {
     initializeChat();
-};
+}
 
-// Global exports
+// ==================== GLOBAL EXPORTS ====================
 window.addMessage = addMessage;
 window.scrollToBottom = scrollToBottom;
-window.copyCodeToClipboard = copyCodeToClipboard;
-window.monitorScrollSystem = monitorScrollSystem;
 window.loadChatHistory = loadChatHistory;
-window.initializeHighlightJS = initializeHighlightJS;
-window.initializeCopyButtons = initializeCopyButtons;
-window.MultimodalManager = MultimodalManager;

@@ -1,0 +1,10 @@
+/* Tailwind CSS Local Fallback */
+/* This file serves as a fallback if the CDN is unavailable */
+/* Download the full Tailwind CSS from: https://cdn.tailwindcss.com */
+
+/* For production, download a static build or use Tailwind CLI to generate a custom build */
+/* This placeholder ensures the system degrades gracefully if CDN fails */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
