@@ -651,9 +651,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Setup input handlers
     setupInputHandlers();
     
-    // Initialize multimodal manager
-    const multimodal = new MultimodalManager();
-    multimodal.init();
+    // Initialize multimodal manager and make it globally accessible
+    window.multimodal = new MultimodalManager();
+    window.multimodal.init();
     
     // Load session info
     await loadSessionInfo();

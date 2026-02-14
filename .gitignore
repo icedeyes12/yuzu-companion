@@ -30,4 +30,7 @@ static/generated_images/
 
 # OS
 .DS_Store
-Thumbs.dbtest_chat.html
+Thumbs.db
+
+# Test files
+test_chat.html
