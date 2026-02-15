@@ -113,7 +113,13 @@ class MultimodalManager {
         }
 
         const input = document.getElementById('messageInput');
-        const text = input.value.trim();
+        const text = input.value;
+        console.log("RAW USER TEXT:", JSON.stringify(text));
+
+        if (!text.trim()) {
+            isProcessingMessage = false;
+            return;
+        }
 
         if (this.isSending) {
             console.log("Already sending, please wait...");
