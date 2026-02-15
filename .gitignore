@@ -31,3 +31,4 @@ static/generated_images/
 # OS
 .DS_Store
 Thumbs.db
+.pytest_cache/
