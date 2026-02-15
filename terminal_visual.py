@@ -9,8 +9,23 @@
 # [LICENSE: MIT]
 
 import os
+import re
 import shutil
 import subprocess
+from typing import Optional
+
+
+def extract_image_path_from_markdown(text: str) -> Optional[str]:
+    """Return the first local image path found in markdown ``![...](path)`` syntax.
+
+    Only paths that do **not** start with ``http://`` or ``https://`` are
+    considered local.  Returns ``None`` when no local path is found.
+    """
+    for match in re.finditer(r'!\[[^\]]*\]\(([^)]+)\)', text):
+        path = match.group(1)
+        if not path.startswith(("http://", "https://")):
+            return path
+    return None
 
 
 def preview_image_in_terminal(image_path: str) -> None:

@@ -15,6 +15,7 @@ from app import get_available_providers, get_all_models, set_preferred_provider,
 from database import Database
 from providers import get_ai_manager
 from tools import multimodal_tools
+from terminal_visual import extract_image_path_from_markdown, preview_image_in_terminal
 from datetime import datetime
 import threading
 import webbrowser
@@ -657,6 +658,12 @@ class YuzuCompanionAgent:
             response = handle_user_message(user_input, interface="terminal")
             response_time = time.time() - start_time
             self.display_normal_response_panel(response, response_time)
+            full_response = response
+        
+        image_path = extract_image_path_from_markdown(full_response)
+        if image_path:
+            abs_path = os.path.abspath(image_path)
+            preview_image_in_terminal(abs_path)
         
         console.print("-" * 60)
         console.print()

@@ -1,4 +1,4 @@
-"""Tests for terminal_visual.preview_image_in_terminal()."""
+"""Tests for terminal_visual module."""
 
 import sys
 import os
@@ -7,7 +7,7 @@ from unittest.mock import patch, call
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from terminal_visual import preview_image_in_terminal
+from terminal_visual import preview_image_in_terminal, extract_image_path_from_markdown
 
 
 class TestPreviewImageInTerminal(unittest.TestCase):
@@ -52,6 +52,51 @@ class TestPreviewImageInTerminal(unittest.TestCase):
         self.assertEqual(args[1], "-g")
         self.assertEqual(args[2], "80x40")
         self.assertEqual(args[3], "/some/image.jpg")
+
+
+class TestExtractImagePathFromMarkdown(unittest.TestCase):
+    """Tests for extract_image_path_from_markdown()."""
+
+    def test_extracts_local_path(self):
+        text = "Here is your image!\n\n![Generated Image](static/generated_images/20250812_test.png)"
+        result = extract_image_path_from_markdown(text)
+        self.assertEqual(result, "static/generated_images/20250812_test.png")
+
+    def test_ignores_http_urls(self):
+        text = "![photo](http://example.com/img.png)"
+        result = extract_image_path_from_markdown(text)
+        self.assertIsNone(result)
+
+    def test_ignores_https_urls(self):
+        text = "![photo](https://cdn.example.com/img.png)"
+        result = extract_image_path_from_markdown(text)
+        self.assertIsNone(result)
+
+    def test_returns_first_local_path_only(self):
+        text = ("![a](static/generated_images/first.png) "
+                "![b](static/generated_images/second.png)")
+        result = extract_image_path_from_markdown(text)
+        self.assertEqual(result, "static/generated_images/first.png")
+
+    def test_returns_none_for_no_images(self):
+        text = "Just a plain text reply with no images."
+        result = extract_image_path_from_markdown(text)
+        self.assertIsNone(result)
+
+    def test_skips_url_returns_local(self):
+        text = ("![remote](https://example.com/pic.jpg) "
+                "![local](static/uploads/photo.png)")
+        result = extract_image_path_from_markdown(text)
+        self.assertEqual(result, "static/uploads/photo.png")
+
+    def test_empty_string(self):
+        result = extract_image_path_from_markdown("")
+        self.assertIsNone(result)
+
+    def test_absolute_local_path(self):
+        text = "![img](/home/user/images/test.png)"
+        result = extract_image_path_from_markdown(text)
+        self.assertEqual(result, "/home/user/images/test.png")
 
 
 if __name__ == '__main__':
