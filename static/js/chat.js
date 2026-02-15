@@ -570,7 +570,7 @@ function createMessageElement(role, content, timestamp = null) {
 
     // Render content through a single safe pipeline
     if (typeof renderer !== 'undefined') {
-        contentContainer.innerHTML = renderMessageContent(String(content), role === "user");
+        contentContainer.innerHTML = renderMessageContent(String(content));
         
         // Apply syntax highlighting to code blocks after rendering
         setTimeout(() => {
@@ -648,7 +648,7 @@ function addMessage(role, content, timestamp = null, isHistory = false) {
     return msg;
 }
 
-function renderMessageContent(rawText, isUser = false) {
+function renderMessageContent(rawText) {
     const safeText = String(rawText ?? '');
     const escapedText = escapeMessageHtml(safeText);
     try {
@@ -656,8 +656,8 @@ function renderMessageContent(rawText, isUser = false) {
         if (typeof renderer !== 'undefined' && typeof renderer.preprocessGeneratedImages === 'function') {
             processed = renderer.preprocessGeneratedImages(processed);
         }
-        if (typeof renderer !== 'undefined' && typeof renderer.renderMessage === 'function') {
-            return renderer.renderMessage(processed, isUser);
+        if (typeof renderer !== 'undefined' && typeof renderer.render === 'function') {
+            return renderer.render(processed);
         }
         return escapedText;
     } catch (e) {
