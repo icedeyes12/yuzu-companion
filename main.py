@@ -846,13 +846,13 @@ class YuzuCompanionAgent:
         elif choice == "3":
             try:
                 current_affection = profile.get('affection', 50)
-                new_affection = IntPrompt.ask("Set affection level (0-100)", default=current_affection)
-                if 0 <= new_affection <= 100:
+                new_affection = IntPrompt.ask("Set affection level (-100 to 100)", default=current_affection)
+                if -100 <= new_affection <= 100:
                     Database.update_profile({'affection': new_affection})
                     success(f"Affection set to {new_affection}")
                     self._profile_cache = None
                 else:
-                    error("Affection must be between 0 and 100")
+                    error("Affection must be between -100 and 100")
             except Exception as e:
                 error(f"Invalid input: {e}")
 

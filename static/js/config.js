@@ -216,12 +216,14 @@ function setupEventListeners() {
     if (affectionSlider) {
         affectionSlider.addEventListener('input', function() {
             affectionValue.textContent = this.value;
-            // Add visual feedback
-            this.style.setProperty('--slider-progress', `${this.value}%`);
+            // Add visual feedback (map -100..100 to 0%..100%)
+            const progress = (parseInt(this.value) + 100) / 2;
+            this.style.setProperty('--slider-progress', `${progress}%`);
         });
         
         // Initialize slider progress
-        affectionSlider.style.setProperty('--slider-progress', `${affectionSlider.value}%`);
+        const initialProgress = (parseInt(affectionSlider.value) + 100) / 2;
+        affectionSlider.style.setProperty('--slider-progress', `${initialProgress}%`);
     }
     
     // API key management

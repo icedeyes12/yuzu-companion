@@ -126,9 +126,9 @@
                 <div class="session-name" id="sessionName"></div>
             </div>
             <div class="affection-display">
-                <span class="affection-icon"></span>
+                <span class="affection-icon">{% if profile.affection > 0 %}❤️{% else %}💔{% endif %}</span>
                 <div class="affection-bar">
-                    <div class="affection-fill" style="width: {{ profile.affection }}%;"></div>
+                    <div class="affection-fill{% if profile.affection < 0 %} negative{% elif profile.affection == 0 %} neutral{% endif %}" style="width: {{ profile.affection|abs if profile.affection != 0 else 0 }}%;"></div>
                 </div>
             </div>
         </header>

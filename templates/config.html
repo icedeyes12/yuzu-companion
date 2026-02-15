@@ -120,8 +120,8 @@
             </div>
 
             <div class="form-group">
-                <label for="affection-level">Affection Level (0-100): <span id="affection-value">{{ profile.affection }}</span></label>
-                <input type="range" id="affection-level" min="0" max="100" value="{{ profile.affection }}">
+                <label for="affection-level">Affection Level (-100 to 100): <span id="affection-value">{{ profile.affection }}</span></label>
+                <input type="range" id="affection-level" min="-100" max="100" value="{{ profile.affection }}">
             </div>
 
             <button id="save-profile" class="btn btn-primary">Save Profile Settings</button>
