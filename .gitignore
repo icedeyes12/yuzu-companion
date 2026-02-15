@@ -23,6 +23,7 @@ debug_logs/
 # Runtime generated assets
 static/uploads/
 static/generated_images/
+static/image_cache/
 
 # Secrets
 *.key
