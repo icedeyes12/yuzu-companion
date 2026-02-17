@@ -33,3 +33,7 @@ static/image_cache/
 .DS_Store
 Thumbs.db
 .pytest_cache/
+
+# tool artifacts
+tools/static/
+package-lock.json
