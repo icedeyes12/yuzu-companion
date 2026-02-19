@@ -165,8 +165,8 @@ def _execute_command_tool(command_info, session_id=None):
             else:
                 weather_location = Database.get_location()
                 args = {
-                    "lat": weather_location.get('lat', 0.0) or 0.0,
-                    "lon": weather_location.get('lon', 0.0) or 0.0
+                    "lat": weather_location.get('lat') or 0.0,
+                    "lon": weather_location.get('lon') or 0.0
                 }
         elif tool_name == "image_analyze":
             # No args needed

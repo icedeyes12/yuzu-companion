@@ -51,8 +51,8 @@ def execute(arguments, **kwargs):
     # Fall back to structured location columns if not provided
     if lat == 0 and lon == 0:
         location = Database.get_location()
-        lat = location.get("lat") or 0
-        lon = location.get("lon") or 0
+        lat = location.get("lat") or 0.0
+        lon = location.get("lon") or 0.0
 
     if lat == 0 or lon == 0:
         return json.dumps({"error": "location_not_set"})
