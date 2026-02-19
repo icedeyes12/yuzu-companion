@@ -827,9 +827,7 @@ def api_update_location():
         data = request.get_json()
         lat = float(data.get('lat', 0.0))
         lon = float(data.get('lon', 0.0))
-        context = Database.get_context()
-        context['location'] = {'lat': lat, 'lon': lon}
-        Database.update_context(context)
+        Database.update_location(lat, lon)
         return jsonify({'status': 'ok'})
     except Exception as e:
         print(f"Error updating location: {e}")
@@ -841,9 +839,7 @@ def api_update_weather_location():
         data = request.get_json()
         lat = float(data.get('lat', 0.0))
         lon = float(data.get('lon', 0.0))
-        context = Database.get_context()
-        context['location'] = {'lat': lat, 'lon': lon}
-        Database.update_context(context)
+        Database.update_location(lat, lon)
         return jsonify({'status': 'success', 'message': 'Weather location updated'})
     except Exception as e:
         print(f"Error updating weather location: {e}")

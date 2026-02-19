@@ -35,6 +35,8 @@ class Profile(Base):
     global_knowledge_json = Column(Text, nullable=False, default='{}')
     providers_config_json = Column(Text, nullable=False, default='{}')
     context = Column(Text, nullable=False, default='{}')
+    location_lat = Column(Float, nullable=True, default=None)
+    location_lon = Column(Float, nullable=True, default=None)
     image_model = Column(String(50), nullable=False, default='hunyuan')
     vision_model = Column(String(100), nullable=False, default='moonshotai/kimi-k2.5')
     created_at = Column(DateTime, default=datetime.now)
@@ -209,6 +211,47 @@ def _migrate_add_vision_model_column(engine):
             conn.execute(text("ALTER TABLE profiles ADD COLUMN vision_model TEXT DEFAULT 'moonshotai/kimi-k2.5'"))
             conn.commit()
 
+def _migrate_add_location_columns(engine):
+    """Add location_lat and location_lon columns to profiles table, migrate data from context JSON."""
+    from sqlalchemy import inspect as sa_inspect, text
+    inspector = sa_inspect(engine)
+    columns = [col['name'] for col in inspector.get_columns('profiles')]
+    
+    with engine.connect() as conn:
+        if 'location_lat' not in columns:
+            conn.execute(text("ALTER TABLE profiles ADD COLUMN location_lat REAL"))
+        if 'location_lon' not in columns:
+            conn.execute(text("ALTER TABLE profiles ADD COLUMN location_lon REAL"))
+        conn.commit()
+    
+    # Migrate existing location data from context JSON to new columns
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT id, context FROM profiles")).fetchall()
+        for row in rows:
+            profile_id = row[0]
+            context_str = row[1] or '{}'
+            try:
+                context = json.loads(context_str)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            
+            loc = context.get('location')
+            if loc and isinstance(loc, dict):
+                lat = loc.get('lat')
+                lon = loc.get('lon')
+                if lat is not None or lon is not None:
+                    conn.execute(
+                        text("UPDATE profiles SET location_lat = :lat, location_lon = :lon WHERE id = :pid"),
+                        {"lat": lat, "lon": lon, "pid": profile_id}
+                    )
+                # Remove location from context JSON
+                del context['location']
+                conn.execute(
+                    text("UPDATE profiles SET context = :ctx WHERE id = :pid"),
+                    {"ctx": json.dumps(context), "pid": profile_id}
+                )
+        conn.commit()
+
 def init_db():
     """
     Initialize database with safety guards.
@@ -277,6 +320,12 @@ def init_db():
         _migrate_add_vision_model_column(engine)
     except Exception as e:
         print(f"[WARNING] vision_model migration skipped: {e}")
+    
+    # Migrate existing databases: add location columns and move data from context JSON
+    try:
+        _migrate_add_location_columns(engine)
+    except Exception as e:
+        print(f"[WARNING] location columns migration skipped: {e}")
     
     with get_db_session() as session:
         # Create default profile and session if needed
@@ -418,6 +467,8 @@ class Database:
                     'global_knowledge': json.loads(profile.global_knowledge_json),
                     'providers_config': json.loads(profile.providers_config_json),
                     'context': json.loads(profile.context or '{}'),
+                    'location_lat': profile.location_lat,
+                    'location_lon': profile.location_lon,
                     'image_model': profile.image_model or 'hunyuan',
                     'vision_model': profile.vision_model if hasattr(profile, 'vision_model') and profile.vision_model else 'moonshotai/kimi-k2.5',
                     'created_at': profile.created_at,
@@ -437,6 +488,8 @@ class Database:
                     setattr(profile, f"{key}_json", json.dumps(value))
                 elif key == 'context':
                     setattr(profile, 'context', json.dumps(value))
+                elif key in ('location_lat', 'location_lon'):
+                    setattr(profile, key, value)
                 else:
                     setattr(profile, key, value)
             
@@ -461,6 +514,30 @@ class Database:
             if not profile:
                 return
             profile.context = json.dumps(context_dict)
+            profile.updated_at = datetime.now()
+            session.commit()
+
+    @staticmethod
+    def get_location():
+        """Get location from structured columns."""
+        with get_db_session() as session:
+            profile = session.query(Profile).first()
+            if profile:
+                return {
+                    'lat': profile.location_lat,
+                    'lon': profile.location_lon
+                }
+            return {'lat': None, 'lon': None}
+
+    @staticmethod
+    def update_location(lat, lon):
+        """Update location in structured columns."""
+        with get_db_session() as session:
+            profile = session.query(Profile).first()
+            if not profile:
+                return
+            profile.location_lat = float(lat) if lat is not None else None
+            profile.location_lon = float(lon) if lon is not None else None
             profile.updated_at = datetime.now()
             session.commit()
 
@@ -743,7 +820,7 @@ class Database:
         with get_db_session() as session:
             query = session.query(Message).filter(
                 Message.session_id == session_id,
-                Message.role.in_(['user', 'assistant', 'image_tools'])
+                Message.role.in_(['user', 'assistant', 'tool', 'image_tools'])
             )
             
             if recent and limit:
@@ -784,7 +861,7 @@ class Database:
         with get_db_session() as session:
             query = session.query(Message).filter(
                 Message.session_id == session_id,
-                Message.role.in_(['user', 'assistant', 'system'])
+                Message.role.in_(['user', 'assistant', 'tool', 'system'])
             )
             
             if recent and limit:

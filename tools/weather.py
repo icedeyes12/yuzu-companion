@@ -48,12 +48,11 @@ def execute(arguments, **kwargs):
     lon = arguments.get("lon", 0)
     mode = arguments.get("mode", "current")
 
-    # Fall back to context-based location if not provided
+    # Fall back to structured location columns if not provided
     if lat == 0 and lon == 0:
-        context = Database.get_context()
-        location = context.get("location", {})
-        lat = location.get("lat", 0)
-        lon = location.get("lon", 0)
+        location = Database.get_location()
+        lat = location.get("lat") or 0
+        lon = location.get("lon") or 0
 
     if lat == 0 or lon == 0:
         return json.dumps({"error": "location_not_set"})

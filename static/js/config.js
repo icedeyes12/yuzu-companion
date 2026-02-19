@@ -917,10 +917,8 @@ async function loadLocation() {
     try {
         const response = await fetch('/api/get_profile');
         const data = await response.json();
-        const ctx = data.context || {};
-        const loc = ctx.location || {};
-        document.getElementById('location-lat').value = loc.lat || 0.0;
-        document.getElementById('location-lon').value = loc.lon || 0.0;
+        document.getElementById('location-lat').value = data.location_lat || 0.0;
+        document.getElementById('location-lon').value = data.location_lon || 0.0;
     } catch (e) {
         console.error('Failed to load location:', e);
     }

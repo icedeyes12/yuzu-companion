@@ -163,11 +163,10 @@ def _execute_command_tool(command_info, session_id=None):
             if args_str:
                 args = {"location": args_str}
             else:
-                weather_context = Database.get_context()
-                weather_location = weather_context.get('location', {})
+                weather_location = Database.get_location()
                 args = {
-                    "lat": weather_location.get('lat', 0.0),
-                    "lon": weather_location.get('lon', 0.0)
+                    "lat": weather_location.get('lat', 0.0) or 0.0,
+                    "lon": weather_location.get('lon', 0.0) or 0.0
                 }
         elif tool_name == "image_analyze":
             # No args needed
@@ -487,8 +486,7 @@ def _build_generation_context(profile, session_id, interface="terminal"):
     # =========================
     location_context = ""
     try:
-        profile_context = Database.get_context()
-        loc = profile_context.get("location", {})
+        loc = Database.get_location()
         if loc.get("lat") and loc.get("lon"):
             location_context = (
                 f"\n\nCurrent location:"
@@ -1236,8 +1234,7 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
         if preferred_provider in ('openrouter',):
             kwargs['tools'] = tools
         
-        weather_context = Database.get_context()
-        weather_location = weather_context.get('location', {})
+        weather_location = Database.get_location()
         
         # Tool execution loop (non-streaming for tool iterations)
         max_tool_iterations = 3
@@ -1298,8 +1295,8 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
                     
                     if tool_name == 'weather':
                         if 'lat' not in args or 'lon' not in args:
-                            args['lat'] = weather_location.get('lat', 0.0)
-                            args['lon'] = weather_location.get('lon', 0.0)
+                            args['lat'] = weather_location.get('lat') or 0.0
+                            args['lon'] = weather_location.get('lon') or 0.0
                     
                     print(f"[tool] {tool_name}({args})")
                     
@@ -1344,6 +1341,10 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
                             pass
                     
                     last_tool_results.append({"tool": tool_name, "result": result})
+                    
+                    # Persist tool result to database
+                    Database.add_tool_result(tool_name, result, session_id=session_id)
+                    
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.get('id', ''),
@@ -1362,6 +1363,10 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
                     if cmd_info:
                         # Execute command-based tool
                         tool_result = _execute_command_tool(cmd_info, session_id=session_id)
+                        
+                        # Persist assistant command and tool result to database
+                        Database.add_message('assistant', cmd_info["full_command"], session_id=session_id)
+                        Database.add_tool_result(cmd_info["command"], tool_result, session_id=session_id)
                         
                         # Add tool result to messages for next iteration
                         messages.append({
@@ -1388,6 +1393,10 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
                 if cmd_info:
                     # Execute command-based tool
                     tool_result = _execute_command_tool(cmd_info, session_id=session_id)
+                    
+                    # Persist assistant command and tool result to database
+                    Database.add_message('assistant', cmd_info["full_command"], session_id=session_id)
+                    Database.add_tool_result(cmd_info["command"], tool_result, session_id=session_id)
                     
                     # Add tool result to messages for next iteration
                     messages.append({
@@ -1534,9 +1543,8 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
         if preferred_provider in ('openrouter',):
             kwargs['tools'] = tools
         
-        # Get weather location from context for tool calls
-        weather_context = Database.get_context()
-        weather_location = weather_context.get('location', {})
+        # Get weather location from structured profile columns for tool calls
+        weather_location = Database.get_location()
         
         # Tool execution loop
         max_tool_iterations = 3
@@ -1592,8 +1600,8 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
                     # Inject weather location defaults
                     if tool_name == 'weather':
                         if 'lat' not in args or 'lon' not in args:
-                            args['lat'] = weather_location.get('lat', 0.0)
-                            args['lon'] = weather_location.get('lon', 0.0)
+                            args['lat'] = weather_location.get('lat') or 0.0
+                            args['lon'] = weather_location.get('lon') or 0.0
                     
                     print(f"[tool] {tool_name}({args})")
                     
@@ -1640,6 +1648,10 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
                             pass
                     
                     last_tool_results.append({"tool": tool_name, "result": result})
+                    
+                    # Persist tool result to database
+                    Database.add_tool_result(tool_name, result, session_id=session_id)
+                    
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.get('id', ''),
@@ -1658,6 +1670,10 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
                     if cmd_info:
                         # Execute command-based tool
                         tool_result = _execute_command_tool(cmd_info, session_id=session_id)
+                        
+                        # Persist assistant command and tool result to database
+                        Database.add_message('assistant', cmd_info["full_command"], session_id=session_id)
+                        Database.add_tool_result(cmd_info["command"], tool_result, session_id=session_id)
                         
                         # Add tool result to messages for next iteration
                         messages.append({
@@ -1690,6 +1706,10 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
                 if cmd_info:
                     # Execute command-based tool
                     tool_result = _execute_command_tool(cmd_info, session_id=session_id)
+                    
+                    # Persist assistant command and tool result to database
+                    Database.add_message('assistant', cmd_info["full_command"], session_id=session_id)
+                    Database.add_tool_result(cmd_info["command"], tool_result, session_id=session_id)
                     
                     # Add tool result to messages for next iteration
                     messages.append({
