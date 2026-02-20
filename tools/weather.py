@@ -43,14 +43,10 @@ WMO_CODES = {
 
 def execute(arguments, **kwargs):
     from database import Database
-    from tools.registry import build_markdown_contract
 
     lat = arguments.get("lat", 0)
     lon = arguments.get("lon", 0)
     mode = arguments.get("mode", "current")
-
-    profile = Database.get_profile() or {}
-    partner_name = profile.get("partner_name", "Yuzu")
 
     # Fall back to context-based location if not provided
     if lat == 0 and lon == 0:
@@ -60,14 +56,7 @@ def execute(arguments, **kwargs):
         lon = location.get("lon", 0)
 
     if lat == 0 or lon == 0:
-        return build_markdown_contract(
-            "weather_tools",
-            f"/weather {lat} {lon}",
-            ["Error: location_not_set"],
-            partner_name,
-        )
-
-    full_command = f"/weather {lat} {lon}" + (f" --mode={mode}" if mode != "current" else "")
+        return json.dumps({"error": "location_not_set"})
 
     try:
         if mode == "forecast":
@@ -86,16 +75,18 @@ def execute(arguments, **kwargs):
             data = resp.json()
             daily = data.get("daily", {})
             dates = daily.get("time", [])
-            lines = []
+            forecast = []
             for i, date in enumerate(dates):
                 code = daily.get("weathercode", [0])[i] if i < len(daily.get("weathercode", [])) else 0
-                weather_desc = WMO_CODES.get(code, f"Code {code}")
-                temp_max = daily.get("temperature_2m_max", [None])[i] if i < len(daily.get("temperature_2m_max", [])) else None
-                temp_min = daily.get("temperature_2m_min", [None])[i] if i < len(daily.get("temperature_2m_min", [])) else None
-                precip = daily.get("precipitation_sum", [0])[i] if i < len(daily.get("precipitation_sum", [])) else 0
-                wind = daily.get("windspeed_10m_max", [None])[i] if i < len(daily.get("windspeed_10m_max", [])) else None
-                lines.append(f"{date}: {weather_desc}, {temp_min}–{temp_max}°C, Rain {precip}mm, Wind {wind} km/h")
-            return build_markdown_contract("weather_tools", full_command, lines, partner_name)
+                forecast.append({
+                    "date": date,
+                    "weather": WMO_CODES.get(code, f"Code {code}"),
+                    "temp_max": daily.get("temperature_2m_max", [None])[i] if i < len(daily.get("temperature_2m_max", [])) else None,
+                    "temp_min": daily.get("temperature_2m_min", [None])[i] if i < len(daily.get("temperature_2m_min", [])) else None,
+                    "precipitation_mm": daily.get("precipitation_sum", [0])[i] if i < len(daily.get("precipitation_sum", [])) else 0,
+                    "wind_max": daily.get("windspeed_10m_max", [None])[i] if i < len(daily.get("windspeed_10m_max", [])) else None,
+                })
+            return json.dumps({"forecast": forecast})
         else:
             resp = requests.get(
                 "https://api.open-meteo.com/v1/forecast",
@@ -110,16 +101,11 @@ def execute(arguments, **kwargs):
             data = resp.json()
             current = data.get("current_weather", {})
             weather_code = current.get("weathercode", 0)
-            lines = [
-                f"Temperature: {current.get('temperature')}°C",
-                f"Weather: {WMO_CODES.get(weather_code, f'Code {weather_code}')}",
-                f"Wind: {current.get('windspeed')} km/h",
-            ]
-            return build_markdown_contract("weather_tools", full_command, lines, partner_name)
+            return json.dumps({
+                "temperature": current.get("temperature"),
+                "weather": WMO_CODES.get(weather_code, f"Code {weather_code}"),
+                "wind_speed": current.get("windspeed")
+            })
 
     except Exception as e:
-        return build_markdown_contract(
-            "weather_tools", full_command,
-            [f"Error: Weather fetch failed: {str(e)}"],
-            partner_name,
-        )
+        return json.dumps({"error": f"Weather fetch failed: {str(e)}"})

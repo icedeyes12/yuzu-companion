@@ -698,15 +698,11 @@ class Database:
     @staticmethod
     def add_tool_result(tool_name, result_content, session_id=None):
         """
-        Store tool result in database with tool-specific role.
-        
-        The result_content is expected to be a fully formatted markdown
-        contract (``<details>`` block) returned by ``build_markdown_contract``.
-        It is stored as-is — no additional wrapping is applied.
+        Store formatted tool result in database with tool-specific role.
         
         Args:
             tool_name (str): Name of the tool that was executed
-            result_content (str): Formatted markdown contract from tool execution
+            result_content (str): Raw result content from tool execution
             session_id (int, optional): Session ID. Defaults to active session if None.
         """
         if session_id is None:
@@ -719,10 +715,13 @@ class Database:
         with get_db_session() as session:
             local_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
+            # Format tool result
+            formatted_content = f"🔧 TOOL RESULT — {tool_name.upper()}\n\n{result_content}\n\n---"
+            
             message = Message(
                 session_id=session_id,
                 role=role,
-                content=result_content,
+                content=formatted_content,
                 content_encrypted=False,
                 timestamp=local_time
             )

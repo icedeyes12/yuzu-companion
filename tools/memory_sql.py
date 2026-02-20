@@ -75,25 +75,13 @@ def _inject_role_filter(query):
 
 
 def execute(arguments, **kwargs):
-    from database import Database
-    from tools.registry import build_markdown_contract
-
     query = arguments.get("query", "").strip()
-    profile = Database.get_profile() or {}
-    partner_name = profile.get("partner_name", "Yuzu")
-
     if not query:
-        return build_markdown_contract(
-            "memory_sql_tools", "/memory_sql", ["Error: No query provided"], partner_name
-        )
-
-    full_command = f"/memory_sql {query}"
+        return json.dumps({"error": "No query provided"})
 
     error = _validate_query(query)
     if error:
-        return build_markdown_contract(
-            "memory_sql_tools", full_command, [f"Warning: {error}"], partner_name
-        )
+        return json.dumps({"error": error})
 
     query = _inject_role_filter(query)
 
@@ -107,18 +95,10 @@ def execute(arguments, **kwargs):
 
             if query.strip().upper().startswith("SELECT"):
                 rows = [dict(row._mapping) for row in result.fetchall()]
-                lines = [f"Rows returned: {len(rows)}"]
-                for row in rows:
-                    lines.append(str(row))
-                return build_markdown_contract("memory_sql_tools", full_command, lines, partner_name)
+                return json.dumps({"rows": rows, "count": len(rows)}, default=str)
             else:
                 conn.commit()
-                lines = [f"Affected rows: {result.rowcount}"]
-                return build_markdown_contract("memory_sql_tools", full_command, lines, partner_name)
+                return json.dumps({"affected_rows": result.rowcount})
 
     except Exception as e:
-        return build_markdown_contract(
-            "memory_sql_tools", full_command,
-            [f"Error: SQL execution failed: {str(e)}"],
-            partner_name,
-        )
+        return json.dumps({"error": f"SQL execution failed: {str(e)}"})

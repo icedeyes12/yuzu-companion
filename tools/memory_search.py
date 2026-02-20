@@ -189,44 +189,24 @@ def _search_raw_messages(session_id, query, limit=20):
 
 
 def execute(arguments, **kwargs):
-    from database import Database
-    from tools.registry import build_markdown_contract
-
     query = arguments.get("query", "")
     session_id = kwargs.get("session_id")
 
-    profile = Database.get_profile() or {}
-    partner_name = profile.get("partner_name", "Yuzu")
-    full_command = f"/memory_search {query}"
-
     if not query or not session_id:
-        return build_markdown_contract(
-            "memory_search_tools", full_command,
-            ["Error: query and session_id required"],
-            partner_name,
-        )
+        return json.dumps({"error": "query and session_id required"})
 
-    lines = []
+    result = {
+        "structured": {"semantic": [], "episodic": [], "segments": []},
+        "raw_messages": [],
+    }
 
     # Step 1: Structured memory retrieval
     try:
         from memory.retrieval import retrieve_memory
         memory_bundle = retrieve_memory(session_id)
-        semantic = memory_bundle.get("semantic", [])
-        episodic = memory_bundle.get("episodic", [])
-        segments = memory_bundle.get("segments", [])
-        if semantic:
-            lines.append("--- Semantic Memories ---")
-            for item in semantic:
-                lines.append(str(item))
-        if episodic:
-            lines.append("--- Episodic Memories ---")
-            for item in episodic:
-                lines.append(str(item))
-        if segments:
-            lines.append("--- Conversation Segments ---")
-            for item in segments:
-                lines.append(str(item))
+        result["structured"]["semantic"] = memory_bundle.get("semantic", [])
+        result["structured"]["episodic"] = memory_bundle.get("episodic", [])
+        result["structured"]["segments"] = memory_bundle.get("segments", [])
     except Exception as e:
         print(f"[memory_search] Structured retrieval failed: {e}")
 
@@ -237,24 +217,19 @@ def execute(arguments, **kwargs):
         try:
             temporal_msgs = _search_temporal_messages(session_id, start, end)
             if temporal_msgs:
-                lines.append(f"--- Messages ({start.strftime('%Y-%m-%d')} to {end.strftime('%Y-%m-%d')}) ---")
-                for msg in temporal_msgs:
-                    lines.append(f"[{msg['timestamp']}] {msg['role']}: {msg['content']}")
-                return build_markdown_contract("memory_search_tools", full_command, lines, partner_name)
+                result["raw_messages"] = temporal_msgs
+                result["time_window"] = {
+                    "start": start.strftime('%Y-%m-%d %H:%M:%S'),
+                    "end": end.strftime('%Y-%m-%d %H:%M:%S'),
+                }
+                return json.dumps(result, default=str)
         except Exception as e:
             print(f"[memory_search] Temporal scan failed: {e}")
 
     # Step 3: Keyword-based raw message search
     try:
-        raw_results = _search_raw_messages(session_id, query)
-        if raw_results:
-            lines.append("--- Keyword Matches ---")
-            for msg in raw_results:
-                lines.append(f"[{msg.get('timestamp', '')}] {msg['content']}")
+        result["raw_messages"] = _search_raw_messages(session_id, query)
     except Exception as e:
         print(f"[memory_search] Raw message search failed: {e}")
 
-    if not lines:
-        lines.append("No results found")
-
-    return build_markdown_contract("memory_search_tools", full_command, lines, partner_name)
+    return json.dumps(result, default=str)
