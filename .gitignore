@@ -24,6 +24,7 @@ debug_logs/
 static/uploads/
 static/generated_images/
 static/image_cache/
+static/generated/
 
 # Secrets
 *.key
@@ -37,3 +38,6 @@ Thumbs.db
 # tool artifacts
 tools/static/
 package-lock.json
+
+
+copilot/
