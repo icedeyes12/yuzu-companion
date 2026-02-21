@@ -25,6 +25,7 @@ static/uploads/
 static/generated_images/
 static/image_cache/
 static/generated/
+static/media/
 
 # Secrets
 *.key
