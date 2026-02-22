@@ -62,6 +62,8 @@ def build_tool_contract(tool_name, result_content, full_command=None, partner_na
         full_command = f'/{tool_name}'
 
     # Strip any pre-existing 🔧 wrapper so we never double-wrap.
+    # NOTE: _execute_command_tool() no longer produces this format, but
+    # third-party callers or API tool paths may still pass wrapped text.
     raw = result_content or ''
     if raw.strip().startswith('🔧'):
         text = raw.strip()

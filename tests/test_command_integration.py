@@ -138,7 +138,8 @@ def test_command_control_signal_not_saved_and_stops_after_tool(monkeypatch):
     assert any(role == "web_search_tools" and "<details>" in (content or "")
                for role, content in roles_and_content), roles_and_content
     # Rendered output must match persisted output
-    persisted = next(c for r, c in roles_and_content if r == "web_search_tools")
+    persisted = next((c for r, c in roles_and_content if r == "web_search_tools"), None)
+    assert persisted is not None, "No web_search_tools message found in DB"
     assert reply.strip() == persisted.strip(), "Rendered output differs from DB content"
 
 
