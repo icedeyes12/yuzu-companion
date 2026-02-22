@@ -195,7 +195,7 @@ def _extract_tool_command(content):
     """Extract the tool command from a stored tool result header.
 
     Returns the slash command (e.g. ``/web_search``) or ``None`` when
-    the content does not contain a recognisable tool header.
+    the content does not contain a recognizable tool header.
     """
     if not content:
         return None
@@ -1058,7 +1058,7 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
             
             # Retry once on null response (transport / provider error)
             if ai_response is None:
-                print("[WARNING] AI returned None, retrying once...")
+                print(f"[WARNING] {preferred_provider}/{preferred_model} returned None, retrying once...")
                 time.sleep(1)
                 ai_response = ai_manager.send_message(
                     preferred_provider, preferred_model, messages, **ns_kwargs
@@ -1310,7 +1310,7 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
             
             # Retry once on null response (transport / provider error)
             if ai_response is None:
-                print("[WARNING] AI returned None, retrying once...")
+                print(f"[WARNING] {preferred_provider}/{preferred_model} returned None, retrying once...")
                 time.sleep(1)
                 ai_response = ai_manager.send_message(
                     preferred_provider, preferred_model, messages, **kwargs
