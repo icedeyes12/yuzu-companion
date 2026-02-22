@@ -139,6 +139,111 @@ def _is_rendered_tool_output(response_text):
     stripped = response_text.strip()
     return stripped.startswith("🔧 TOOL RESULT —") or stripped.startswith("🔧 TOOL ERROR —")
 
+def _strip_tool_markdown(content):
+    """Extract raw tool result lines from stored tool markdown.
+
+    Handles three DB formats:
+
+    1. ``<details>`` contract (executor prefix + blockquoted result)::
+
+        <details>
+        <summary>🔧 image_tools</summary>
+
+        ```bash
+        Yuzuki Aihara$ /imagine prompt
+        ```
+
+        > <img src="static/generated_images/...">
+
+        </details>
+
+    2. ``🔧 TOOL RESULT — NAME`` header::
+
+        🔧 TOOL RESULT — WEB_SEARCH
+
+        {"results": [...]}
+
+        ---
+
+    3. Plain content (legacy – returned as-is).
+
+    Returns only the raw result lines with all wrapper formatting removed.
+    """
+    if not content:
+        return content
+
+    text = content.strip()
+
+    # --- Format 1: <details> contract ---
+    if text.startswith("<details>"):
+        # Remove <details>, <summary>...</summary>, </details>
+        text = re.sub(r'</?details>', '', text)
+        text = re.sub(r'<summary>.*?</summary>', '', text, flags=re.DOTALL)
+        # Remove code-fenced command block entirely
+        text = re.sub(r'```[a-zA-Z]*\n.*?```', '', text, flags=re.DOTALL)
+        # Strip blockquote markers from result lines
+        text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)
+        return text.strip()
+
+    # --- Format 2: 🔧 TOOL RESULT/ERROR header ---
+    if text.startswith("🔧"):
+        while text.startswith("🔧"):
+            idx = text.find("\n\n")
+            if idx != -1:
+                text = text[idx + 2:]
+            else:
+                text = "\n".join(text.split("\n")[1:])
+            text = text.strip()
+        # Remove trailing --- footer(s)
+        while text.rstrip().endswith("---"):
+            text = text.rstrip()[:-3].rstrip()
+        return text.strip()
+
+    # --- Format 3: plain legacy content ---
+    return text
+
+
+# Map stored uppercase tool names back to slash commands for projection
+_TOOL_NAME_TO_COMMAND = {
+    'WEB_SEARCH': '/web_search',
+    'WEATHER': '/weather',
+    'MEMORY_SQL': '/memory_sql',
+    'MEMORY_SEARCH': '/memory_search',
+    'IMAGE_GENERATE': '/imagine',
+    'IMAGINE': '/imagine',
+    'IMAGE_ANALYZE': '/image_analyze',
+    'REQUEST': '/request',
+    'HTTP_REQUEST': '/request',
+}
+
+def _extract_tool_command(content):
+    """Extract the original slash command from a stored tool result.
+
+    Handles:
+    - ``<details>`` format: extracts from ``ExecutorName$ /command args``
+    - ``🔧 TOOL RESULT — NAME`` format: maps NAME to slash command
+    - Plain content: returns ``None``
+    """
+    if not content:
+        return None
+
+    text = content.strip()
+
+    # Format 1: <details> contract — command is inside code-fenced block
+    if text.startswith("<details>"):
+        m = re.search(r'```(?:bash)?\n.*?\$\s*(/\w+[^\n]*)\n```', text, re.DOTALL)
+        if m:
+            return m.group(1).strip()
+        return None
+
+    # Format 2: 🔧 TOOL RESULT/ERROR header
+    m = re.match(r'🔧 TOOL (?:RESULT|ERROR) — (\w+)', text)
+    if m:
+        tool_key = m.group(1)
+        return _TOOL_NAME_TO_COMMAND.get(tool_key, f'/{tool_key.lower()}')
+
+    return None
+
 def _execute_command_tool(command_info, session_id=None):
     """
     Execute a tool based on command detection.
@@ -183,6 +288,9 @@ def _execute_command_tool(command_info, session_id=None):
             # Map to image_generate tool for execution, but keep original name for display
             tool_name = "image_generate"
             args = {"prompt": args_str}
+        elif tool_name == "request":
+            tool_name = "http_request"
+            args = {"url": args_str}
         else:
             # Generic argument handling
             args = {"query": args_str} if args_str else {}
@@ -831,14 +939,26 @@ You are continuous.
 
     for msg in chat_history:
         role = msg["role"]
-        # Map tool-specific roles to 'assistant' for LLM API compatibility
+        content = msg["content"]
         # Tool results are stored with dedicated roles (e.g., web_search_tools)
-        # but LLMs only understand system/user/assistant/tool roles
+        # and markdown wrappers for UI rendering.  The LLM must never see
+        # those decorations.  Projection splits each tool result into two
+        # messages so the model sees the command as its own output and the
+        # result as external user-provided data:
+        #   assistant: /command
+        #   user:      <raw result lines>
         if role in ALL_TOOL_ROLES:
-            role = "assistant"
+            command = _extract_tool_command(content)
+            clean = _strip_tool_markdown(content)
+            if command and clean:
+                messages.append({"role": "assistant", "content": command})
+                messages.append({"role": "user", "content": clean})
+            elif clean:
+                messages.append({"role": "user", "content": clean})
+            continue
         messages.append({
             "role": role,
-            "content": msg["content"]
+            "content": content
         })
 
     return messages
@@ -975,10 +1095,10 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
                 **ns_kwargs
             )
             
-            # Handle None — retry once before giving up
+            # Retry once on null response (transport / provider error)
             if ai_response is None:
-                print("[WARNING] AI returned None, retrying...")
-                import time as _time; _time.sleep(1)
+                print(f"[WARNING] {preferred_provider}/{preferred_model} returned None, retrying once...")
+                time.sleep(1)
                 ai_response = ai_manager.send_message(
                     preferred_provider, preferred_model, messages, **ns_kwargs
                 )
@@ -1104,17 +1224,6 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
                 print("[WARNING] Empty response after tool call, forcing final answer...")
                 break
             
-            # True empty on first call — retry once without tools
-            if loop_count == 0:
-                print("[WARNING] Empty response, retrying without tools...")
-                retry_kwargs = {k: v for k, v in ns_kwargs.items() if k != 'tools'}
-                ai_response = ai_manager.send_message(
-                    preferred_provider, preferred_model, messages, **retry_kwargs
-                )
-                if isinstance(ai_response, str) and ai_response.strip():
-                    yield ai_response
-                    return
-            
             yield "AI service failed to generate a response."
             return
         
@@ -1238,10 +1347,10 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
                 **kwargs
             )
             
-            # Handle None — retry once before giving up
+            # Retry once on null response (transport / provider error)
             if ai_response is None:
-                print("[WARNING] AI returned None, retrying...")
-                import time as _time; _time.sleep(1)
+                print(f"[WARNING] {preferred_provider}/{preferred_model} returned None, retrying once...")
+                time.sleep(1)
                 ai_response = ai_manager.send_message(
                     preferred_provider, preferred_model, messages, **kwargs
                 )
@@ -1368,16 +1477,6 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
             if loop_count > 0 and last_tool_results:
                 print("[WARNING] Empty response after tool call, forcing final answer...")
                 break
-            
-            # True empty on first call — retry once without tools
-            if loop_count == 0:
-                print("[WARNING] Empty response, retrying without tools...")
-                retry_kwargs = {k: v for k, v in kwargs.items() if k != 'tools'}
-                ai_response = ai_manager.send_message(
-                    preferred_provider, preferred_model, messages, **retry_kwargs
-                )
-                if isinstance(ai_response, str) and ai_response.strip():
-                    return ai_response
             
             print(f"[WARNING] AI service returned empty response")
             return "AI service failed to generate a response."

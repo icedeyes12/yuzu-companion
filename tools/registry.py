@@ -1,6 +1,7 @@
 import json
 from tools import web_search, weather, memory_search, image_generate, image_analyze
 from tools import memory_sql
+from tools import http_request
 
 
 _TOOLS = {
@@ -10,12 +11,17 @@ _TOOLS = {
     "memory_sql": memory_sql,
     "image_generate": image_generate,
     "image_analyze": image_analyze,
+    "http_request": http_request
 }
 
 
 def get_tool_schemas():
-    """Return list of tool schemas in OpenRouter format."""
-    return [mod.SCHEMA for mod in _TOOLS.values()]
+    """Return list of tool schemas in OpenRouter format.
+    
+    http_request is excluded — it is a backend-only tool executed via
+    the /request command and must never be injected into provider payloads.
+    """
+    return [mod.SCHEMA for name, mod in _TOOLS.items() if name != "http_request"]
 
 
 def execute_tool(tool_name, arguments, session_id=None):

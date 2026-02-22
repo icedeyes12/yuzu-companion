@@ -145,7 +145,7 @@ def test_tool_results_in_chat_history():
 
 
 def test_context_builder_maps_tool_roles():
-    """Test that _build_generation_context maps tool roles to 'assistant' for LLM API."""
+    """Test that _build_generation_context projects tool results as assistant+user pair."""
     from database import Database, ALL_TOOL_ROLES
     
     print("=== Testing Context Builder Tool Role Mapping ===\n")
@@ -166,16 +166,23 @@ def test_context_builder_maps_tool_roles():
         assert msg['role'] not in ALL_TOOL_ROLES, \
             f"Tool-specific role '{msg['role']}' leaked into LLM messages"
     
-    # Verify tool results are present as 'assistant' role
-    tool_content_found = False
+    # Verify projection: tool results become assistant (command) + user (result)
+    # The assistant message should contain the slash command
+    # The user message should contain the raw result without markdown
+    command_found = False
+    result_found = False
     for msg in messages:
-        if '🔧 TOOL RESULT' in msg.get('content', ''):
-            assert msg['role'] == 'assistant', \
-                f"Tool result should have role 'assistant' for LLM, got '{msg['role']}'"
-            tool_content_found = True
+        content = msg.get('content', '')
+        if msg['role'] == 'assistant' and content.startswith('/web_search'):
+            command_found = True
+        if msg['role'] == 'user' and '{"results": []}' in content:
+            assert '🔧' not in content, "Markdown tool header leaked into LLM payload"
+            assert not content.rstrip().endswith('---'), "Markdown footer leaked into LLM payload"
+            result_found = True
     
-    assert tool_content_found, "Tool result content not found in context builder output"
-    print("✓ Tool roles correctly mapped to 'assistant' in context builder")
+    assert command_found, "Tool command not projected as assistant message"
+    assert result_found, "Tool result not projected as user message"
+    print("✓ Tool roles correctly projected as assistant+user pair in context builder")
     
     print("\n✅ Context builder tool role mapping test passed!")
 

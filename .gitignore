@@ -9,7 +9,7 @@ venv/
 .env/
 
 # SQLite
-*.db
+
 *.db-journal
 *.sqlite
 *.sqlite3

@@ -118,7 +118,13 @@ class OllamaProvider(AIProvider):
             
             if response.status_code == 200:
                 result = response.json()
-                return result['message']['content'].strip()
+                content = result['message']['content']
+                text = content.strip() if content else ''
+                # Ollama uses 'done_reason' instead of 'finish_reason'
+                done_reason = result.get('done_reason', 'stop')
+                if done_reason == 'length' and text:
+                    text += ' ...(length)'
+                return text
             else:
                 return None
                 
@@ -235,7 +241,13 @@ class CerebrasProvider(AIProvider):
             
             if response.status_code == 200:
                 result = response.json()
-                return result['choices'][0]['message']['content'].strip()
+                choice = result['choices'][0]
+                content = choice['message']['content']
+                text = content.strip() if content else ''
+                finish_reason = choice.get('finish_reason', 'stop')
+                if finish_reason == 'length' and text:
+                    text += ' ...(length)'
+                return text
             else:
                 return None
                 
@@ -401,13 +413,19 @@ class OpenRouterProvider(AIProvider):
             
             if response.status_code == 200:
                 result = response.json()
-                message = result['choices'][0]['message']
+                choice = result['choices'][0]
+                message = choice['message']
+                finish_reason = choice.get('finish_reason', 'stop')
                 # Return full message dict when tool_calls present
                 tool_calls = message.get('tool_calls')
                 if tool_calls:
                     return message
                 content = message.get('content', '')
-                return content.strip() if content else ''
+                text = content.strip() if content else ''
+                # Append length indicator when truncated by max_tokens
+                if finish_reason == 'length' and text:
+                    text += ' ...(length)'
+                return text
             else:
                 if response.status_code == 402:
                     return "OpenRouter free tier limit reached. Please try a different model or add credits."
@@ -571,7 +589,13 @@ class ChutesProvider(AIProvider):
             
             if response.status_code == 200:
                 result = response.json()
-                return result['choices'][0]['message']['content'].strip()
+                choice = result['choices'][0]
+                content = choice['message']['content']
+                text = content.strip() if content else ''
+                finish_reason = choice.get('finish_reason', 'stop')
+                if finish_reason == 'length' and text:
+                    text += ' ...(length)'
+                return text
             else:
                 print(f"[ERROR] Chutes API error {response.status_code}: {response.text}")
                 return None
