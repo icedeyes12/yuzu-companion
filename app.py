@@ -20,7 +20,7 @@ import json
 import traceback
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
-from database import Database, ALL_TOOL_ROLES
+from database import Database, ALL_TOOL_ROLES, build_tool_contract
 from providers import get_ai_manager
 from tools import multimodal_tools
 from tools.registry import get_tool_schemas, execute_tool
@@ -133,20 +133,11 @@ def _detect_command(response_text):
     }
 
 def _is_rendered_tool_output(response_text):
-    """True when response is a rendered tool output block.
-
-    Checks both the ``<details>`` contract (DB format) and legacy
-    ``🔧 TOOL RESULT/ERROR`` headers (still returned by
-    ``_execute_command_tool`` at runtime).
-    """
+    """True when response is a rendered tool output block (``<details>`` contract)."""
     if not response_text:
         return False
     stripped = response_text.strip()
-    return (
-        stripped.startswith("<details>")
-        or stripped.startswith("🔧 TOOL RESULT —")
-        or stripped.startswith("🔧 TOOL ERROR —")
-    )
+    return stripped.startswith("<details>")
 
 def _strip_tool_markdown(content):
     """Extract raw tool result lines from stored ``<details>`` contract.
@@ -289,13 +280,19 @@ def _execute_command_tool(command_info, session_id=None):
         # Execute the tool
         result = execute_tool(tool_name, args, session_id=session_id)
         
-        # Format result with original command name for display consistency
-        formatted_result = f"🔧 TOOL RESULT — {original_command.upper()}\n\n{result}\n\n---"
+        # Build the canonical <details> contract — same format used for
+        # rendering AND persistence.  No legacy 🔧 wrapper.
+        formatted_result = build_tool_contract(
+            original_command, result, full_command=command_info["full_command"]
+        )
         
         return formatted_result
         
     except Exception as e:
-        error_msg = f"🔧 TOOL ERROR — {original_command.upper()}\n\nError: {str(e)}\n\n---"
+        error_result = f"Error: {str(e)}"
+        error_msg = build_tool_contract(
+            original_command, error_result, full_command=command_info["full_command"]
+        )
         print(f"[COMMAND ERROR] {tool_name}: {e}")
         return error_msg
 

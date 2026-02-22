@@ -85,15 +85,26 @@ def test_tool_result_format():
 
 
 def test_command_control_signal_not_saved_and_stops_after_tool(monkeypatch):
-    """Command control signal should not be saved/rendered as assistant content."""
+    """Command control signal should not be saved/rendered as assistant content.
+
+    The mock returns a ``<details>`` contract (matching real
+    ``_execute_command_tool`` output) — the same contract must be
+    rendered to the UI and saved to DB.
+    """
     import app
-    from database import Database, get_db_session, Message
+    from database import Database, get_db_session, Message, build_tool_contract
 
     # Isolated active session
     new_session_id = Database.create_session("test-command-control-signal")
     Database.switch_session(new_session_id)
     session_id = Database.get_active_session()['id']
     assert session_id == new_session_id
+
+    # Pre-build the contract that the mock will return
+    mock_contract = build_tool_contract(
+        "web_search", '{"results":[]}',
+        full_command="/web_search python testing"
+    )
 
     class FakeManager:
         def __init__(self):
@@ -109,11 +120,11 @@ def test_command_control_signal_not_saved_and_stops_after_tool(monkeypatch):
     monkeypatch.setattr(
         app,
         "_execute_command_tool",
-        lambda cmd_info, session_id=None: "🔧 TOOL RESULT — WEB_SEARCH\n\n{\"results\":[]}\n\n---",
+        lambda cmd_info, session_id=None: mock_contract,
     )
 
     reply = app.handle_user_message("please check latest python testing links", interface="terminal")
-    assert reply.startswith("🔧 TOOL RESULT — WEB_SEARCH")
+    assert reply.strip().startswith("<details>"), f"Expected <details> contract, got: {reply[:80]}"
     assert fake_manager.calls == 1, "LLM should stop after command tool execution in this turn"
 
     with get_db_session() as session:
@@ -126,6 +137,9 @@ def test_command_control_signal_not_saved_and_stops_after_tool(monkeypatch):
     # Tool result persisted with dedicated role in <details> contract format
     assert any(role == "web_search_tools" and "<details>" in (content or "")
                for role, content in roles_and_content), roles_and_content
+    # Rendered output must match persisted output
+    persisted = next(c for r, c in roles_and_content if r == "web_search_tools")
+    assert reply.strip() == persisted.strip(), "Rendered output differs from DB content"
 
 
 if __name__ == "__main__":

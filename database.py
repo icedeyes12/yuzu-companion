@@ -38,6 +38,66 @@ TOOL_ROLES = {
 # All tool roles for use in queries
 ALL_TOOL_ROLES = list(TOOL_ROLES.values())
 
+
+def build_tool_contract(tool_name, result_content, full_command=None, partner_name=None):
+    """Build the canonical ``<details>`` markdown contract for a tool result.
+
+    This is the **single source of truth** for tool result formatting.
+    Both live rendering and database persistence must use this function.
+
+    Args:
+        tool_name (str): Name of the tool (e.g. ``web_search``, ``imagine``).
+        result_content (str): Raw result content from tool execution.
+        full_command (str, optional): Full slash command with arguments.
+            Defaults to ``/{tool_name}`` when not provided.
+        partner_name (str, optional): Display name for the executor prefix.
+            Resolved from the profile when ``None``.
+
+    Returns:
+        str: The ``<details>`` markdown contract ready for rendering **and** storage.
+    """
+    role = TOOL_ROLES.get(tool_name, f'{tool_name}_tools')
+
+    if not full_command:
+        full_command = f'/{tool_name}'
+
+    # Strip any pre-existing 🔧 wrapper so we never double-wrap.
+    raw = result_content or ''
+    if raw.strip().startswith('🔧'):
+        text = raw.strip()
+        while text.startswith('🔧'):
+            idx = text.find('\n\n')
+            if idx != -1:
+                text = text[idx + 2:]
+            else:
+                text = '\n'.join(text.split('\n')[1:])
+            text = text.strip()
+        while text.rstrip().endswith('---'):
+            text = text.rstrip()[:-3].rstrip()
+        raw = text.strip()
+
+    if partner_name is None:
+        try:
+            profile = Database.get_profile()
+            partner_name = profile.get('partner_name', 'Yuzu')
+        except Exception:
+            partner_name = 'Yuzu'
+
+    quoted_lines = '\n'.join(
+        f'> {line}' if line.strip() else '>' for line in raw.split('\n')
+    )
+
+    return (
+        f'<details>\n'
+        f'<summary>🔧 {role}</summary>\n\n'
+        f'```bash\n'
+        f'{partner_name}$ {full_command}\n'
+        f'```\n\n'
+        f'{quoted_lines}\n\n'
+        f'</details>'
+    )
+
+
 class Profile(Base):
     __tablename__ = 'profiles'
     
@@ -702,22 +762,13 @@ class Database:
         """
         Store formatted tool result in database with tool-specific role.
 
-        Uses the ``<details>`` markdown contract::
-
-            <details>
-            <summary>🔧 {role}</summary>
-
-            ```bash
-            {partner_name}$ {full_command}
-            ```
-
-            > {result lines}
-
-            </details>
+        If *result_content* is already a ``<details>`` contract (as returned
+        by :func:`build_tool_contract`), it is stored as-is.  Otherwise a new
+        contract is built from the raw content.
 
         Args:
             tool_name (str): Name of the tool that was executed
-            result_content (str): Raw result content from tool execution
+            result_content (str): Raw result content **or** pre-built contract
             session_id (int, optional): Session ID. Defaults to active session if None.
             full_command (str, optional): Full slash command with arguments
                 (e.g. ``/web_search Python programming``).
@@ -730,49 +781,13 @@ class Database:
         # Use tool-specific role from TOOL_ROLES mapping
         role = TOOL_ROLES.get(tool_name, f'{tool_name}_tools')
 
-        # Build full command fallback
-        if not full_command:
-            full_command = f'/{tool_name}'
-
-        # Strip any pre-existing 🔧 wrapper from result_content so we
-        # don't double-wrap when callers pass already-formatted text.
-        # This is needed because _execute_command_tool() still returns
-        # the legacy 🔧 TOOL RESULT format at runtime.
-        raw = result_content
-        if raw and raw.strip().startswith('🔧'):
-            text = raw.strip()
-            while text.startswith('🔧'):
-                idx = text.find('\n\n')
-                if idx != -1:
-                    text = text[idx + 2:]
-                else:
-                    text = '\n'.join(text.split('\n')[1:])
-                text = text.strip()
-            while text.rstrip().endswith('---'):
-                text = text.rstrip()[:-3].rstrip()
-            raw = text.strip()
-
-        # Resolve partner_name for the executor prefix
-        try:
-            profile = Database.get_profile()
-            partner_name = profile.get('partner_name', 'Yuzu')
-        except Exception:
-            partner_name = 'Yuzu'
-
-        # Blockquote each result line
-        quoted_lines = '\n'.join(
-            f'> {line}' if line.strip() else '>' for line in raw.split('\n')
-        )
-
-        formatted_content = (
-            f'<details>\n'
-            f'<summary>🔧 {role}</summary>\n\n'
-            f'```bash\n'
-            f'{partner_name}$ {full_command}\n'
-            f'```\n\n'
-            f'{quoted_lines}\n\n'
-            f'</details>'
-        )
+        # If the caller already built the contract, store it directly.
+        if result_content and result_content.strip().startswith('<details>'):
+            formatted_content = result_content.strip()
+        else:
+            formatted_content = build_tool_contract(
+                tool_name, result_content, full_command=full_command
+            )
 
         with get_db_session() as session:
             local_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')

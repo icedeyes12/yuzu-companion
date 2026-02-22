@@ -443,6 +443,106 @@ class TestToolCommandExtraction:
 
 
 # ---------------------------------------------------------------------------
+# 8. Rendering contract enforcement
+# ---------------------------------------------------------------------------
+
+class TestRenderingContract:
+    """_execute_command_tool must return <details> contract — not legacy format."""
+
+    def test_execute_command_returns_details_contract(self, monkeypatch):
+        """_execute_command_tool must return a <details> contract."""
+        import app
+        monkeypatch.setattr(app, "execute_tool", lambda *a, **kw: '{"results":[]}')
+
+        cmd_info = {
+            "command": "web_search",
+            "args": "test query",
+            "remaining_text": "",
+            "full_command": "/web_search test query"
+        }
+        result = app._execute_command_tool(cmd_info, session_id=1)
+        assert result.strip().startswith("<details>"), \
+            f"Expected <details> contract, got: {result[:80]}"
+        assert result.strip().endswith("</details>"), \
+            f"Expected </details> at end, got: {result[-30:]}"
+
+    def test_execute_command_no_legacy_emoji(self, monkeypatch):
+        """No 🔧 TOOL RESULT header in return value."""
+        import app
+        monkeypatch.setattr(app, "execute_tool", lambda *a, **kw: '{"ok":true}')
+
+        cmd_info = {
+            "command": "weather",
+            "args": "Tokyo",
+            "remaining_text": "",
+            "full_command": "/weather Tokyo"
+        }
+        result = app._execute_command_tool(cmd_info, session_id=1)
+        assert "🔧 TOOL RESULT —" not in result
+        assert "🔧 TOOL ERROR —" not in result
+
+    def test_error_returns_details_contract(self, monkeypatch):
+        """Error results must also use <details> contract."""
+        import app
+
+        def failing_tool(*a, **kw):
+            raise ValueError("connection timeout")
+
+        monkeypatch.setattr(app, "execute_tool", failing_tool)
+
+        cmd_info = {
+            "command": "web_search",
+            "args": "test",
+            "remaining_text": "",
+            "full_command": "/web_search test"
+        }
+        result = app._execute_command_tool(cmd_info, session_id=1)
+        assert result.strip().startswith("<details>")
+        assert "connection timeout" in result
+        assert "🔧 TOOL ERROR —" not in result
+
+    def test_build_tool_contract_is_shared(self):
+        """build_tool_contract is importable and produces <details> output."""
+        from database import build_tool_contract
+        contract = build_tool_contract("weather", '{"temp": 20}',
+                                       full_command="/weather Tokyo",
+                                       partner_name="TestBot")
+        assert contract.startswith("<details>")
+        assert "</details>" in contract
+        assert "TestBot$ /weather Tokyo" in contract
+        assert '> {"temp": 20}' in contract
+
+    def test_rendered_output_matches_db(self, monkeypatch):
+        """Rendered output and DB content must be identical."""
+        import app
+        from database import Database, get_db_session, Message
+
+        monkeypatch.setattr(app, "execute_tool", lambda *a, **kw: '{"data":"ok"}')
+
+        sid = Database.create_session("test-render-match-db")
+        Database.switch_session(sid)
+
+        cmd_info = {
+            "command": "web_search",
+            "args": "test",
+            "remaining_text": "",
+            "full_command": "/web_search test"
+        }
+        rendered = app._execute_command_tool(cmd_info, session_id=sid)
+        Database.add_tool_result("web_search", rendered, session_id=sid,
+                                 full_command="/web_search test")
+
+        with get_db_session() as session:
+            msg = session.query(Message).filter(
+                Message.session_id == sid,
+                Message.role == 'web_search_tools'
+            ).order_by(Message.id.desc()).first()
+            assert msg is not None
+            assert rendered.strip() == msg.content.strip(), \
+                "Rendered output differs from DB content"
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
