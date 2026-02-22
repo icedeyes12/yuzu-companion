@@ -1,6 +1,7 @@
 import json
 from tools import web_search, weather, memory_search, image_generate, image_analyze
 from tools import memory_sql
+from tools import http_request
 
 
 _TOOLS = {
@@ -10,6 +11,7 @@ _TOOLS = {
     "memory_sql": memory_sql,
     "image_generate": image_generate,
     "image_analyze": image_analyze,
+    "http_request": http_request
 }
 
 

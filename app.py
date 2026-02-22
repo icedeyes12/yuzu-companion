@@ -223,7 +223,7 @@ def _execute_command_tool(command_info, session_id=None):
             tool_name = "image_generate"
             args = {"prompt": args_str}
         elif tool_name == "request":
-            # HTTP request tool expects 'url', not 'query'
+            tool_name = "http_request"
             args = {"url": args_str}
         else:
             # Generic argument handling
