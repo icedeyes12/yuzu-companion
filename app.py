@@ -178,6 +178,33 @@ def _strip_tool_markdown(content):
 
     return text.strip()
 
+# Map stored uppercase tool names back to slash commands for projection
+_TOOL_NAME_TO_COMMAND = {
+    'WEB_SEARCH': '/web_search',
+    'WEATHER': '/weather',
+    'MEMORY_SQL': '/memory_sql',
+    'MEMORY_SEARCH': '/memory_search',
+    'IMAGE_GENERATE': '/imagine',
+    'IMAGINE': '/imagine',
+    'IMAGE_ANALYZE': '/image_analyze',
+    'REQUEST': '/request',
+    'HTTP_REQUEST': '/request',
+}
+
+def _extract_tool_command(content):
+    """Extract the tool command from a stored tool result header.
+
+    Returns the slash command (e.g. ``/web_search``) or ``None`` when
+    the content does not contain a recognisable tool header.
+    """
+    if not content:
+        return None
+    m = re.match(r'🔧 TOOL (?:RESULT|ERROR) — (\w+)', content.strip())
+    if not m:
+        return None
+    tool_key = m.group(1)
+    return _TOOL_NAME_TO_COMMAND.get(tool_key, f'/{tool_key.lower()}')
+
 def _execute_command_tool(command_info, session_id=None):
     """
     Execute a tool based on command detection.
@@ -876,12 +903,20 @@ You are continuous.
         content = msg["content"]
         # Tool results are stored with dedicated roles (e.g., web_search_tools)
         # and markdown wrappers for UI rendering.  The LLM must never see
-        # those decorations.  Project tool results as role: user with clean
-        # content so the model does not learn to generate tool output itself.
+        # those decorations.  Projection splits each tool result into two
+        # messages so the model sees the command as its own output and the
+        # result as external user-provided data:
+        #   assistant: /command
+        #   user:      <raw result lines>
         if role in ALL_TOOL_ROLES:
-            role = "user"
+            command = _extract_tool_command(content)
             clean = _strip_tool_markdown(content)
-            content = f"[tool result]\n{clean}" if clean else content
+            if command and clean:
+                messages.append({"role": "assistant", "content": command})
+                messages.append({"role": "user", "content": clean})
+            elif clean:
+                messages.append({"role": "user", "content": clean})
+            continue
         messages.append({
             "role": role,
             "content": content
@@ -1020,6 +1055,14 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
                 messages,
                 **ns_kwargs
             )
+            
+            # Retry once on null response (transport / provider error)
+            if ai_response is None:
+                print("[WARNING] AI returned None, retrying once...")
+                time.sleep(1)
+                ai_response = ai_manager.send_message(
+                    preferred_provider, preferred_model, messages, **ns_kwargs
+                )
             
             if isinstance(ai_response, dict) and ai_response.get('tool_calls'):
                 tool_calls = ai_response['tool_calls']
@@ -1264,6 +1307,14 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
                 messages,
                 **kwargs
             )
+            
+            # Retry once on null response (transport / provider error)
+            if ai_response is None:
+                print("[WARNING] AI returned None, retrying once...")
+                time.sleep(1)
+                ai_response = ai_manager.send_message(
+                    preferred_provider, preferred_model, messages, **kwargs
+                )
             
             # Check if response contains tool calls (dict with tool_calls)
             if isinstance(ai_response, dict) and ai_response.get('tool_calls'):

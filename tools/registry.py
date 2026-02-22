@@ -16,8 +16,12 @@ _TOOLS = {
 
 
 def get_tool_schemas():
-    """Return list of tool schemas in OpenRouter format."""
-    return [mod.SCHEMA for mod in _TOOLS.values()]
+    """Return list of tool schemas in OpenRouter format.
+    
+    http_request is excluded — it is a backend-only tool executed via
+    the /request command and must never be injected into provider payloads.
+    """
+    return [mod.SCHEMA for name, mod in _TOOLS.items() if name != "http_request"]
 
 
 def execute_tool(tool_name, arguments, session_id=None):

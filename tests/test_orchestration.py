@@ -80,7 +80,7 @@ class TestStripToolMarkdown:
 # ---------------------------------------------------------------------------
 
 class TestProjectionModel:
-    """Tool results must reach the LLM as role:user with clean content."""
+    """Tool results must be projected as assistant (command) + user (result)."""
 
     def test_no_tool_emoji_in_llm_payload(self):
         from database import Database, ALL_TOOL_ROLES
@@ -99,21 +99,46 @@ class TestProjectionModel:
             assert '🔧' not in msg.get('content', ''), \
                 f"Tool emoji leaked into LLM payload: {msg['content'][:80]}"
 
-    def test_tool_results_projected_as_user(self):
+    def test_tool_results_split_into_two_messages(self):
         from database import Database
         from app import _build_generation_context
 
-        session_id = Database.create_session("test-projection-role")
+        session_id = Database.create_session("test-projection-split")
         Database.switch_session(session_id)
         Database.add_tool_result("web_search", '{"results":[]}', session_id=session_id)
 
         profile = Database.get_profile()
         messages = _build_generation_context(profile, session_id, "terminal")
 
-        tool_msgs = [m for m in messages if '[tool result]' in m.get('content', '')]
-        assert len(tool_msgs) >= 1, "Expected at least one projected tool result"
-        for m in tool_msgs:
-            assert m['role'] == 'user'
+        # Find the assistant command message and its following user result
+        command_found = False
+        result_found = False
+        for i, msg in enumerate(messages):
+            if msg['role'] == 'assistant' and msg['content'] == '/web_search':
+                command_found = True
+                # Next message should be user with the raw result
+                if i + 1 < len(messages):
+                    nxt = messages[i + 1]
+                    if nxt['role'] == 'user' and '{"results":[]}' in nxt['content']:
+                        result_found = True
+
+        assert command_found, "Tool command not projected as assistant message"
+        assert result_found, "Tool result not projected as user message after command"
+
+    def test_projection_preserves_raw_result(self):
+        from database import Database
+        from app import _build_generation_context
+
+        session_id = Database.create_session("test-projection-raw")
+        Database.switch_session(session_id)
+        raw = '{"image_path": "static/generated_images/test.png"}'
+        Database.add_tool_result("imagine", raw, session_id=session_id)
+
+        profile = Database.get_profile()
+        messages = _build_generation_context(profile, session_id, "terminal")
+
+        result_msgs = [m for m in messages if m['role'] == 'user' and raw in m['content']]
+        assert len(result_msgs) >= 1, "Raw result not preserved in projection"
 
 
 # ---------------------------------------------------------------------------
@@ -121,9 +146,9 @@ class TestProjectionModel:
 # ---------------------------------------------------------------------------
 
 class TestRetryDiscipline:
-    """Provider returning None or empty must NOT trigger hidden retries."""
+    """Retry on null response only; no retry on empty string or partial content."""
 
-    def test_no_retry_on_none_non_streaming(self, monkeypatch):
+    def test_retry_once_on_none_non_streaming(self, monkeypatch):
         import app
 
         session_id = _create_test_session("test-retry-none")
@@ -142,8 +167,8 @@ class TestRetryDiscipline:
             _minimal_profile(), "hello", interface="terminal", session_id=session_id
         )
 
-        # Should call provider exactly once (no retry on None)
-        assert mgr.calls == 1, f"Expected 1 call, got {mgr.calls}"
+        # Null response triggers exactly one retry (2 total calls)
+        assert mgr.calls == 2, f"Expected 2 calls (1 + retry), got {mgr.calls}"
         assert "failed" in result.lower() or "couldn't" in result.lower()
 
     def test_no_retry_on_empty_non_streaming(self, monkeypatch):
@@ -167,7 +192,7 @@ class TestRetryDiscipline:
 
         assert mgr.calls == 1, f"Expected 1 call, got {mgr.calls}"
 
-    def test_no_retry_on_none_streaming(self, monkeypatch):
+    def test_retry_once_on_none_streaming(self, monkeypatch):
         import app
 
         session_id = _create_test_session("test-retry-stream-none")
@@ -187,7 +212,8 @@ class TestRetryDiscipline:
             _minimal_profile(), "hello", interface="terminal", session_id=session_id
         ))
 
-        assert mgr.calls == 1, f"Expected 1 call, got {mgr.calls}"
+        # Null response triggers exactly one retry (2 total calls)
+        assert mgr.calls == 2, f"Expected 2 calls (1 + retry), got {mgr.calls}"
 
 
 # ---------------------------------------------------------------------------
@@ -319,6 +345,69 @@ class TestRequestToolMapping:
 
         assert captured_args['args'] == {"url": "https://example.com"}, \
             f"Expected url mapping, got {captured_args['args']}"
+
+
+# ---------------------------------------------------------------------------
+# 6. Schema exclusion – http_request must not be in provider schemas
+# ---------------------------------------------------------------------------
+
+class TestSchemaExclusion:
+    """http_request tool must not appear in provider payload schemas."""
+
+    def test_http_request_excluded_from_schemas(self):
+        from tools.registry import get_tool_schemas
+        schemas = get_tool_schemas()
+        names = [s['function']['name'] for s in schemas]
+        assert 'http_request' not in names, \
+            "http_request must not be injected into provider schemas"
+
+    def test_other_tools_still_present(self):
+        from tools.registry import get_tool_schemas
+        schemas = get_tool_schemas()
+        names = [s['function']['name'] for s in schemas]
+        for tool in ['web_search', 'weather', 'memory_sql', 'image_generate']:
+            assert tool in names, f"Expected {tool} in schemas"
+
+
+# ---------------------------------------------------------------------------
+# 7. Tool command extraction
+# ---------------------------------------------------------------------------
+
+class TestToolCommandExtraction:
+    """_extract_tool_command must return the correct slash command."""
+
+    def test_web_search(self):
+        from app import _extract_tool_command
+        raw = '🔧 TOOL RESULT — WEB_SEARCH\n\n{}\n\n---'
+        assert _extract_tool_command(raw) == '/web_search'
+
+    def test_imagine(self):
+        from app import _extract_tool_command
+        raw = '🔧 TOOL RESULT — IMAGINE\n\n{}\n\n---'
+        assert _extract_tool_command(raw) == '/imagine'
+
+    def test_request(self):
+        from app import _extract_tool_command
+        raw = '🔧 TOOL RESULT — REQUEST\n\n{}\n\n---'
+        assert _extract_tool_command(raw) == '/request'
+
+    def test_http_request(self):
+        from app import _extract_tool_command
+        raw = '🔧 TOOL RESULT — HTTP_REQUEST\n\n{}\n\n---'
+        assert _extract_tool_command(raw) == '/request'
+
+    def test_error_format(self):
+        from app import _extract_tool_command
+        raw = '🔧 TOOL ERROR — WEATHER\n\nError\n\n---'
+        assert _extract_tool_command(raw) == '/weather'
+
+    def test_none_input(self):
+        from app import _extract_tool_command
+        assert _extract_tool_command(None) is None
+
+    def test_plain_text(self):
+        from app import _extract_tool_command
+        assert _extract_tool_command("just text") is None
 
 
 # ---------------------------------------------------------------------------

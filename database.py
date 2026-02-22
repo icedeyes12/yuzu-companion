@@ -31,6 +31,8 @@ TOOL_ROLES = {
     'memory_search': 'memory_search_tools',
     'weather': 'weather_tools',
     'image_analyze': 'image_analyze_tools',
+    'http_request': 'request_tools',
+    'request': 'request_tools',
 }
 
 # All tool roles for use in queries
