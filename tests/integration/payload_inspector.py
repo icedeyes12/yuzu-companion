@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
 """
 Payload Inspector
-- Can be executed from /tests directory
+- Can be executed from /tests/integration
 - Dumps full payload to /debug_logs
 - Outputs both .json and .md
 """
 
 import sys
-import os
 import json
 from datetime import datetime
 from pathlib import Path
 
 
 # ==========================================================
-# Resolve project root (works when running from /tests)
+# Resolve project root (works when running from /tests/integration)
 # ==========================================================
 
 CURRENT_FILE = Path(__file__).resolve()
-PROJECT_ROOT = CURRENT_FILE.parent.parent
+PROJECT_ROOT = CURRENT_FILE.parent.parent.parent
 DEBUG_DIR = PROJECT_ROOT / "debug_logs"
 
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -58,15 +57,14 @@ def dump_payload(provider, model, messages, kwargs):
         "timestamp": timestamp,
         "provider": provider,
         "model": model,
+        "message_count": len(messages),
         "messages": messages,
         "kwargs": kwargs
     }
 
-    # Write JSON
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
-    # Write Markdown
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(f"# Payload Dump — {timestamp}\n\n")
         f.write(f"**Provider:** `{provider}`  \n")
@@ -76,6 +74,7 @@ def dump_payload(provider, model, messages, kwargs):
 
         for i, msg in enumerate(messages):
             f.write(f"## [{i}] Role: `{msg['role']}`\n\n")
+
             content = msg["content"]
 
             if isinstance(content, str):
