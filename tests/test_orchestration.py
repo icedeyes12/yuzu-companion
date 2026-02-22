@@ -21,6 +21,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 class TestStripToolMarkdown:
     """Verify markdown wrappers are stripped cleanly for LLM projection."""
 
+    # --- Format 2: 🔧 TOOL RESULT header ---
+
     def test_strips_standard_tool_result(self):
         from app import _strip_tool_markdown
         raw = '🔧 TOOL RESULT — WEB_SEARCH\n\n{"results": []}\n\n---'
@@ -37,25 +39,47 @@ class TestStripToolMarkdown:
         outer = f'🔧 TOOL RESULT — WEB_SEARCH\n\n{inner}\n\n---'
         assert _strip_tool_markdown(outer) == '{"ok":true}'
 
-    def test_strips_code_fences(self):
+    # --- Format 1: <details> contract ---
+
+    def test_strips_details_image(self):
         from app import _strip_tool_markdown
-        raw = '🔧 TOOL RESULT — MEMORY_SQL\n\n```bash\nSELECT 1\n```\n\n---'
+        raw = (
+            '<details>\n<summary>🔧 image_tools</summary>\n\n'
+            '```bash\nYuzuki Aihara$ /imagine test prompt\n```\n\n'
+            '> <img src="static/generated_images/test.png" alt="Generated Image">\n\n'
+            '</details>'
+        )
         result = _strip_tool_markdown(raw)
+        assert '<details>' not in result
+        assert '<summary>' not in result
         assert '```' not in result
-        assert 'SELECT 1' in result
+        assert 'Yuzuki Aihara$' not in result
+        assert '<img src="static/generated_images/test.png"' in result
 
-    def test_strips_executor_prefix(self):
+    def test_strips_details_request(self):
         from app import _strip_tool_markdown
-        raw = '🔧 TOOL RESULT — REQUEST\n\nExecutor$ /request https://example.com\nOK\n\n---'
+        raw = (
+            '<details>\n<summary>🔧 request_tools</summary>\n\n'
+            '```bash\nYuzuki Aihara$ /request\n```\n\n'
+            '> Error: No URL provided\n\n'
+            '</details>'
+        )
         result = _strip_tool_markdown(raw)
-        assert 'Executor$' not in result
-        assert '/request https://example.com' in result
+        assert result == 'Error: No URL provided'
 
-    def test_strips_blockquote_markers(self):
+    # --- Format 3: plain legacy content ---
+
+    def test_passthrough_plain_text(self):
         from app import _strip_tool_markdown
-        raw = '🔧 TOOL RESULT — WEB_SEARCH\n\n> line one\n> line two\n\n---'
-        result = _strip_tool_markdown(raw)
-        assert result == 'line one\nline two'
+        plain = 'Just some text without markers'
+        assert _strip_tool_markdown(plain) == plain
+
+    def test_passthrough_plain_path(self):
+        from app import _strip_tool_markdown
+        path = 'static/generated_images/test.png'
+        assert _strip_tool_markdown(path) == path
+
+    # --- Edge cases ---
 
     def test_returns_none_for_none(self):
         from app import _strip_tool_markdown
@@ -68,11 +92,6 @@ class TestStripToolMarkdown:
     def test_returns_empty_for_whitespace(self):
         from app import _strip_tool_markdown
         assert _strip_tool_markdown('   ') == ''
-
-    def test_passthrough_plain_text(self):
-        from app import _strip_tool_markdown
-        plain = 'Just some text without markers'
-        assert _strip_tool_markdown(plain) == plain
 
 
 # ---------------------------------------------------------------------------
@@ -376,6 +395,8 @@ class TestSchemaExclusion:
 class TestToolCommandExtraction:
     """_extract_tool_command must return the correct slash command."""
 
+    # --- Format 2: 🔧 TOOL RESULT header ---
+
     def test_web_search(self):
         from app import _extract_tool_command
         raw = '🔧 TOOL RESULT — WEB_SEARCH\n\n{}\n\n---'
@@ -400,6 +421,28 @@ class TestToolCommandExtraction:
         from app import _extract_tool_command
         raw = '🔧 TOOL ERROR — WEATHER\n\nError\n\n---'
         assert _extract_tool_command(raw) == '/weather'
+
+    # --- Format 1: <details> contract ---
+
+    def test_details_image_command(self):
+        from app import _extract_tool_command
+        raw = (
+            '<details>\n<summary>🔧 image_tools</summary>\n\n'
+            '```bash\nYuzuki Aihara$ /imagine test prompt\n```\n\n'
+            '> <img src="test.png">\n\n</details>'
+        )
+        assert _extract_tool_command(raw) == '/imagine test prompt'
+
+    def test_details_request_command(self):
+        from app import _extract_tool_command
+        raw = (
+            '<details>\n<summary>🔧 request_tools</summary>\n\n'
+            '```bash\nYuzuki Aihara$ /request https://example.com\n```\n\n'
+            '> {"ok":true}\n\n</details>'
+        )
+        assert _extract_tool_command(raw) == '/request https://example.com'
+
+    # --- Edge cases ---
 
     def test_none_input(self):
         from app import _extract_tool_command

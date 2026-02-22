@@ -140,43 +140,68 @@ def _is_rendered_tool_output(response_text):
     return stripped.startswith("🔧 TOOL RESULT —") or stripped.startswith("🔧 TOOL ERROR —")
 
 def _strip_tool_markdown(content):
-    """Strip markdown wrappers from stored tool results for LLM projection.
+    """Extract raw tool result lines from stored tool markdown.
 
-    Stored format:
-        🔧 TOOL RESULT — TOOL_NAME\n\n<raw content>\n\n---
+    Handles three DB formats:
 
-    Returns the raw content with all UI-only formatting removed so that
-    the LLM never sees markdown decorations, code fences, executor
-    prefixes, or leading ``>`` markers.
+    1. ``<details>`` contract (executor prefix + blockquoted result)::
+
+        <details>
+        <summary>🔧 image_tools</summary>
+
+        ```bash
+        Yuzuki Aihara$ /imagine prompt
+        ```
+
+        > <img src="static/generated_images/...">
+
+        </details>
+
+    2. ``🔧 TOOL RESULT — NAME`` header::
+
+        🔧 TOOL RESULT — WEB_SEARCH
+
+        {"results": [...]}
+
+        ---
+
+    3. Plain content (legacy – returned as-is).
+
+    Returns only the raw result lines with all wrapper formatting removed.
     """
     if not content:
         return content
 
     text = content.strip()
 
-    # Strip nested tool headers (may be wrapped more than once)
-    while text.startswith("🔧"):
-        idx = text.find("\n\n")
-        if idx != -1:
-            text = text[idx + 2:]
-        else:
-            text = "\n".join(text.split("\n")[1:])
-        text = text.strip()
+    # --- Format 1: <details> contract ---
+    if text.startswith("<details>"):
+        # Remove <details>, <summary>...</summary>, </details>
+        text = re.sub(r'</?details>', '', text)
+        text = re.sub(r'<summary>.*?</summary>', '', text, flags=re.DOTALL)
+        # Remove code-fenced command block entirely
+        text = re.sub(r'```[a-zA-Z]*\n.*?```', '', text, flags=re.DOTALL)
+        # Strip blockquote markers from result lines
+        text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)
+        return text.strip()
 
-    # Remove trailing ``---`` footer(s)
-    while text.rstrip().endswith("---"):
-        text = text.rstrip()[:-3].rstrip()
+    # --- Format 2: 🔧 TOOL RESULT/ERROR header ---
+    if text.startswith("🔧"):
+        while text.startswith("🔧"):
+            idx = text.find("\n\n")
+            if idx != -1:
+                text = text[idx + 2:]
+            else:
+                text = "\n".join(text.split("\n")[1:])
+            text = text.strip()
+        # Remove trailing --- footer(s)
+        while text.rstrip().endswith("---"):
+            text = text.rstrip()[:-3].rstrip()
+        return text.strip()
 
-    # Strip code fences (```bash ... ``` or ``` ... ```)
-    text = re.sub(r'```[a-zA-Z]*\n?', '', text)
+    # --- Format 3: plain legacy content ---
+    return text
 
-    # Strip executor prefixes (e.g. ``Executor$ /command``)
-    text = re.sub(r'^Executor\$\s*', '', text, flags=re.MULTILINE)
-
-    # Strip leading ``> `` blockquote markers
-    text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)
-
-    return text.strip()
 
 # Map stored uppercase tool names back to slash commands for projection
 _TOOL_NAME_TO_COMMAND = {
@@ -192,18 +217,32 @@ _TOOL_NAME_TO_COMMAND = {
 }
 
 def _extract_tool_command(content):
-    """Extract the tool command from a stored tool result header.
+    """Extract the original slash command from a stored tool result.
 
-    Returns the slash command (e.g. ``/web_search``) or ``None`` when
-    the content does not contain a recognizable tool header.
+    Handles:
+    - ``<details>`` format: extracts from ``ExecutorName$ /command args``
+    - ``🔧 TOOL RESULT — NAME`` format: maps NAME to slash command
+    - Plain content: returns ``None``
     """
     if not content:
         return None
-    m = re.match(r'🔧 TOOL (?:RESULT|ERROR) — (\w+)', content.strip())
-    if not m:
+
+    text = content.strip()
+
+    # Format 1: <details> contract — command is inside code-fenced block
+    if text.startswith("<details>"):
+        m = re.search(r'```(?:bash)?\n.*?\$\s*(/\w+[^\n]*)\n```', text, re.DOTALL)
+        if m:
+            return m.group(1).strip()
         return None
-    tool_key = m.group(1)
-    return _TOOL_NAME_TO_COMMAND.get(tool_key, f'/{tool_key.lower()}')
+
+    # Format 2: 🔧 TOOL RESULT/ERROR header
+    m = re.match(r'🔧 TOOL (?:RESULT|ERROR) — (\w+)', text)
+    if m:
+        tool_key = m.group(1)
+        return _TOOL_NAME_TO_COMMAND.get(tool_key, f'/{tool_key.lower()}')
+
+    return None
 
 def _execute_command_tool(command_info, session_id=None):
     """
