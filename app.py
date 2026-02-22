@@ -139,6 +139,45 @@ def _is_rendered_tool_output(response_text):
     stripped = response_text.strip()
     return stripped.startswith("🔧 TOOL RESULT —") or stripped.startswith("🔧 TOOL ERROR —")
 
+def _strip_tool_markdown(content):
+    """Strip markdown wrappers from stored tool results for LLM projection.
+
+    Stored format:
+        🔧 TOOL RESULT — TOOL_NAME\n\n<raw content>\n\n---
+
+    Returns the raw content with all UI-only formatting removed so that
+    the LLM never sees markdown decorations, code fences, executor
+    prefixes, or leading ``>`` markers.
+    """
+    if not content:
+        return content
+
+    text = content.strip()
+
+    # Strip nested tool headers (may be wrapped more than once)
+    while text.startswith("🔧"):
+        idx = text.find("\n\n")
+        if idx != -1:
+            text = text[idx + 2:]
+        else:
+            text = "\n".join(text.split("\n")[1:])
+        text = text.strip()
+
+    # Remove trailing ``---`` footer(s)
+    while text.rstrip().endswith("---"):
+        text = text.rstrip()[:-3].rstrip()
+
+    # Strip code fences (```bash ... ``` or ``` ... ```)
+    text = re.sub(r'```[a-zA-Z]*\n?', '', text)
+
+    # Strip executor prefixes  (e.g. ``Executor$ /command``)
+    text = re.sub(r'^Executor\$\s*', '', text, flags=re.MULTILINE)
+
+    # Strip leading ``> `` blockquote markers
+    text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)
+
+    return text.strip()
+
 def _execute_command_tool(command_info, session_id=None):
     """
     Execute a tool based on command detection.
@@ -183,6 +222,9 @@ def _execute_command_tool(command_info, session_id=None):
             # Map to image_generate tool for execution, but keep original name for display
             tool_name = "image_generate"
             args = {"prompt": args_str}
+        elif tool_name == "request":
+            # HTTP request tool expects 'url', not 'query'
+            args = {"url": args_str}
         else:
             # Generic argument handling
             args = {"query": args_str} if args_str else {}
@@ -831,14 +873,18 @@ You are continuous.
 
     for msg in chat_history:
         role = msg["role"]
-        # Map tool-specific roles to 'assistant' for LLM API compatibility
+        content = msg["content"]
         # Tool results are stored with dedicated roles (e.g., web_search_tools)
-        # but LLMs only understand system/user/assistant/tool roles
+        # and markdown wrappers for UI rendering.  The LLM must never see
+        # those decorations.  Project tool results as role: user with clean
+        # content so the model does not learn to generate tool output itself.
         if role in ALL_TOOL_ROLES:
-            role = "assistant"
+            role = "user"
+            clean = _strip_tool_markdown(content)
+            content = f"[tool result]\n{clean}" if clean else content
         messages.append({
             "role": role,
-            "content": msg["content"]
+            "content": content
         })
 
     return messages
@@ -975,14 +1021,6 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
                 **ns_kwargs
             )
             
-            # Handle None — retry once before giving up
-            if ai_response is None:
-                print("[WARNING] AI returned None, retrying...")
-                import time as _time; _time.sleep(1)
-                ai_response = ai_manager.send_message(
-                    preferred_provider, preferred_model, messages, **ns_kwargs
-                )
-            
             if isinstance(ai_response, dict) and ai_response.get('tool_calls'):
                 tool_calls = ai_response['tool_calls']
                 
@@ -1103,17 +1141,6 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
             if loop_count > 0 and last_tool_results:
                 print("[WARNING] Empty response after tool call, forcing final answer...")
                 break
-            
-            # True empty on first call — retry once without tools
-            if loop_count == 0:
-                print("[WARNING] Empty response, retrying without tools...")
-                retry_kwargs = {k: v for k, v in ns_kwargs.items() if k != 'tools'}
-                ai_response = ai_manager.send_message(
-                    preferred_provider, preferred_model, messages, **retry_kwargs
-                )
-                if isinstance(ai_response, str) and ai_response.strip():
-                    yield ai_response
-                    return
             
             yield "AI service failed to generate a response."
             return
@@ -1238,14 +1265,6 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
                 **kwargs
             )
             
-            # Handle None — retry once before giving up
-            if ai_response is None:
-                print("[WARNING] AI returned None, retrying...")
-                import time as _time; _time.sleep(1)
-                ai_response = ai_manager.send_message(
-                    preferred_provider, preferred_model, messages, **kwargs
-                )
-            
             # Check if response contains tool calls (dict with tool_calls)
             if isinstance(ai_response, dict) and ai_response.get('tool_calls'):
                 tool_calls = ai_response['tool_calls']
@@ -1368,16 +1387,6 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
             if loop_count > 0 and last_tool_results:
                 print("[WARNING] Empty response after tool call, forcing final answer...")
                 break
-            
-            # True empty on first call — retry once without tools
-            if loop_count == 0:
-                print("[WARNING] Empty response, retrying without tools...")
-                retry_kwargs = {k: v for k, v in kwargs.items() if k != 'tools'}
-                ai_response = ai_manager.send_message(
-                    preferred_provider, preferred_model, messages, **retry_kwargs
-                )
-                if isinstance(ai_response, str) and ai_response.strip():
-                    return ai_response
             
             print(f"[WARNING] AI service returned empty response")
             return "AI service failed to generate a response."
