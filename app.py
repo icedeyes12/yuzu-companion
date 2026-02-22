@@ -170,7 +170,7 @@ def _strip_tool_markdown(content):
     # Strip code fences (```bash ... ``` or ``` ... ```)
     text = re.sub(r'```[a-zA-Z]*\n?', '', text)
 
-    # Strip executor prefixes  (e.g. ``Executor$ /command``)
+    # Strip executor prefixes (e.g. ``Executor$ /command``)
     text = re.sub(r'^Executor\$\s*', '', text, flags=re.MULTILINE)
 
     # Strip leading ``> `` blockquote markers

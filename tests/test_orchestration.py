@@ -57,13 +57,17 @@ class TestStripToolMarkdown:
         result = _strip_tool_markdown(raw)
         assert result == 'line one\nline two'
 
-    def test_returns_empty_for_none(self):
+    def test_returns_none_for_none(self):
         from app import _strip_tool_markdown
         assert _strip_tool_markdown(None) is None
 
     def test_returns_empty_string(self):
         from app import _strip_tool_markdown
         assert _strip_tool_markdown('') == ''
+
+    def test_returns_empty_for_whitespace(self):
+        from app import _strip_tool_markdown
+        assert _strip_tool_markdown('   ') == ''
 
     def test_passthrough_plain_text(self):
         from app import _strip_tool_markdown
