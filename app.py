@@ -133,7 +133,12 @@ def _detect_command(response_text):
     }
 
 def _is_rendered_tool_output(response_text):
-    """True when response is a rendered tool output block."""
+    """True when response is a rendered tool output block.
+
+    Checks both the ``<details>`` contract (DB format) and legacy
+    ``🔧 TOOL RESULT/ERROR`` headers (still returned by
+    ``_execute_command_tool`` at runtime).
+    """
     if not response_text:
         return False
     stripped = response_text.strip()

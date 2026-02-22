@@ -736,6 +736,8 @@ class Database:
 
         # Strip any pre-existing 🔧 wrapper from result_content so we
         # don't double-wrap when callers pass already-formatted text.
+        # This is needed because _execute_command_tool() still returns
+        # the legacy 🔧 TOOL RESULT format at runtime.
         raw = result_content
         if raw and raw.strip().startswith('🔧'):
             text = raw.strip()
