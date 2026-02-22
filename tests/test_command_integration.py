@@ -52,21 +52,34 @@ def test_command_execution_flow():
 
 
 def test_tool_result_format():
-    """Test that tool results are formatted correctly."""
+    """Test that tool results are stored in <details> contract format."""
     print("\n=== Testing Tool Result Format ===\n")
     
-    # Simulate a tool result format
+    from database import Database
+    
+    # Simulate storing a tool result
     tool_name = "web_search"
     result = '{"results": [{"title": "Test", "snippet": "Test snippet"}]}'
     
-    formatted = f"🔧 TOOL RESULT — {tool_name.upper()}\n\n{result}\n\n---"
+    session_id = Database.create_session("test-tool-result-format")
+    Database.switch_session(session_id)
+    Database.add_tool_result(tool_name, result, session_id=session_id,
+                             full_command="/web_search test query")
     
-    assert "🔧 TOOL RESULT — WEB_SEARCH" in formatted
-    assert result in formatted
-    assert formatted.endswith("---")
+    # Verify the stored format
+    from database import get_db_session, Message
+    with get_db_session() as session:
+        msg = session.query(Message).filter(
+            Message.session_id == session_id,
+            Message.role == 'web_search_tools'
+        ).first()
+        assert msg is not None
+        assert msg.content.startswith('<details>')
+        assert '</details>' in msg.content
+        assert '/web_search test query' in msg.content
+        assert result in msg.content
     
-    print("✓ Tool result format is correct")
-    print(f"Format example:\n{formatted}")
+    print("✓ Tool result stored in <details> contract format")
     
     print("\n✅ Tool result formatting test passed!")
 
@@ -110,8 +123,8 @@ def test_command_control_signal_not_saved_and_stops_after_tool(monkeypatch):
     # No assistant /command control signal persisted
     assert not any(role == "assistant" and isinstance(content, str) and content.strip().startswith("/")
                    for role, content in roles_and_content), roles_and_content
-    # Tool result persisted with dedicated role
-    assert any(role == "web_search_tools" and "🔧 TOOL RESULT — WEB_SEARCH" in (content or "")
+    # Tool result persisted with dedicated role in <details> contract format
+    assert any(role == "web_search_tools" and "<details>" in (content or "")
                for role, content in roles_and_content), roles_and_content
 
 

@@ -698,28 +698,83 @@ class Database:
             session.commit()
 
     @staticmethod
-    def add_tool_result(tool_name, result_content, session_id=None):
+    def add_tool_result(tool_name, result_content, session_id=None, full_command=None):
         """
         Store formatted tool result in database with tool-specific role.
-        
+
+        Uses the ``<details>`` markdown contract::
+
+            <details>
+            <summary>🔧 {role}</summary>
+
+            ```bash
+            {partner_name}$ {full_command}
+            ```
+
+            > {result lines}
+
+            </details>
+
         Args:
             tool_name (str): Name of the tool that was executed
             result_content (str): Raw result content from tool execution
             session_id (int, optional): Session ID. Defaults to active session if None.
+            full_command (str, optional): Full slash command with arguments
+                (e.g. ``/web_search Python programming``).
+                Defaults to ``/{tool_name}`` when not provided.
         """
         if session_id is None:
             active_session = Database.get_active_session()
             session_id = active_session['id']
-        
+
         # Use tool-specific role from TOOL_ROLES mapping
         role = TOOL_ROLES.get(tool_name, f'{tool_name}_tools')
-        
+
+        # Build full command fallback
+        if not full_command:
+            full_command = f'/{tool_name}'
+
+        # Strip any pre-existing 🔧 wrapper from result_content so we
+        # don't double-wrap when callers pass already-formatted text.
+        raw = result_content
+        if raw and raw.strip().startswith('🔧'):
+            text = raw.strip()
+            while text.startswith('🔧'):
+                idx = text.find('\n\n')
+                if idx != -1:
+                    text = text[idx + 2:]
+                else:
+                    text = '\n'.join(text.split('\n')[1:])
+                text = text.strip()
+            while text.rstrip().endswith('---'):
+                text = text.rstrip()[:-3].rstrip()
+            raw = text.strip()
+
+        # Resolve partner_name for the executor prefix
+        try:
+            profile = Database.get_profile()
+            partner_name = profile.get('partner_name', 'Yuzu')
+        except Exception:
+            partner_name = 'Yuzu'
+
+        # Blockquote each result line
+        quoted_lines = '\n'.join(
+            f'> {line}' if line.strip() else '>' for line in raw.split('\n')
+        )
+
+        formatted_content = (
+            f'<details>\n'
+            f'<summary>🔧 {role}</summary>\n\n'
+            f'```bash\n'
+            f'{partner_name}$ {full_command}\n'
+            f'```\n\n'
+            f'{quoted_lines}\n\n'
+            f'</details>'
+        )
+
         with get_db_session() as session:
             local_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            
-            # Format tool result
-            formatted_content = f"🔧 TOOL RESULT — {tool_name.upper()}\n\n{result_content}\n\n---"
-            
+
             message = Message(
                 session_id=session_id,
                 role=role,
