@@ -20,7 +20,7 @@ import json
 import traceback
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
-from database import Database, ALL_TOOL_ROLES
+from database import Database, ALL_TOOL_ROLES, build_tool_contract
 from providers import get_ai_manager
 from tools import multimodal_tools
 from tools.registry import get_tool_schemas, execute_tool
@@ -133,18 +133,16 @@ def _detect_command(response_text):
     }
 
 def _is_rendered_tool_output(response_text):
-    """True when response is a rendered tool output block."""
+    """True when response is a rendered tool output block (``<details>`` contract)."""
     if not response_text:
         return False
     stripped = response_text.strip()
-    return stripped.startswith("🔧 TOOL RESULT —") or stripped.startswith("🔧 TOOL ERROR —")
+    return stripped.startswith("<details>")
 
 def _strip_tool_markdown(content):
-    """Extract raw tool result lines from stored tool markdown.
+    """Extract raw tool result lines from stored ``<details>`` contract.
 
-    Handles three DB formats:
-
-    1. ``<details>`` contract (executor prefix + blockquoted result)::
+    Expected format::
 
         <details>
         <summary>🔧 image_tools</summary>
@@ -153,19 +151,10 @@ def _strip_tool_markdown(content):
         Yuzuki Aihara$ /imagine prompt
         ```
 
-        > <img src="static/generated_images/...">
+        > result line 1
+        > result line 2
 
         </details>
-
-    2. ``🔧 TOOL RESULT — NAME`` header::
-
-        🔧 TOOL RESULT — WEB_SEARCH
-
-        {"results": [...]}
-
-        ---
-
-    3. Plain content (legacy – returned as-is).
 
     Returns only the raw result lines with all wrapper formatting removed.
     """
@@ -174,75 +163,68 @@ def _strip_tool_markdown(content):
 
     text = content.strip()
 
-    # --- Format 1: <details> contract ---
-    if text.startswith("<details>"):
-        # Remove <details>, <summary>...</summary>, </details>
-        text = re.sub(r'</?details>', '', text)
-        text = re.sub(r'<summary>.*?</summary>', '', text, flags=re.DOTALL)
-        # Remove code-fenced command block entirely
-        text = re.sub(r'```[a-zA-Z]*\n.*?```', '', text, flags=re.DOTALL)
-        # Strip blockquote markers from result lines
-        text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)
-        return text.strip()
+    if not text.startswith("<details>"):
+        # Not a <details> contract — return as-is
+        return text
 
-    # --- Format 2: 🔧 TOOL RESULT/ERROR header ---
-    if text.startswith("🔧"):
-        while text.startswith("🔧"):
-            idx = text.find("\n\n")
-            if idx != -1:
-                text = text[idx + 2:]
-            else:
-                text = "\n".join(text.split("\n")[1:])
-            text = text.strip()
-        # Remove trailing --- footer(s)
-        while text.rstrip().endswith("---"):
-            text = text.rstrip()[:-3].rstrip()
-        return text.strip()
+    # Remove <details>, <summary>...</summary>, </details>
+    text = re.sub(r'</?details>', '', text)
+    text = re.sub(r'<summary>.*?</summary>', '', text, flags=re.DOTALL)
+    # Remove code-fenced command block entirely
+    text = re.sub(r'```[a-zA-Z]*\n.*?```', '', text, flags=re.DOTALL)
+    # Strip blockquote markers from result lines
+    text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)
+    return text.strip()
 
-    # --- Format 3: plain legacy content ---
-    return text
-
-
-# Map stored uppercase tool names back to slash commands for projection
-_TOOL_NAME_TO_COMMAND = {
-    'WEB_SEARCH': '/web_search',
-    'WEATHER': '/weather',
-    'MEMORY_SQL': '/memory_sql',
-    'MEMORY_SEARCH': '/memory_search',
-    'IMAGE_GENERATE': '/imagine',
-    'IMAGINE': '/imagine',
-    'IMAGE_ANALYZE': '/image_analyze',
-    'REQUEST': '/request',
-    'HTTP_REQUEST': '/request',
-}
 
 def _extract_tool_command(content):
-    """Extract the original slash command from a stored tool result.
+    """Extract the original slash command from a stored ``<details>`` contract.
 
-    Handles:
-    - ``<details>`` format: extracts from ``ExecutorName$ /command args``
-    - ``🔧 TOOL RESULT — NAME`` format: maps NAME to slash command
-    - Plain content: returns ``None``
+    Parses the code-fenced command block::
+
+        ```bash
+        Yuzuki Aihara$ /imagine full prompt here
+        ```
+
+    Returns the full command including arguments (everything after ``$ ``).
+    Returns ``None`` when the content is not a ``<details>`` contract.
     """
     if not content:
         return None
 
     text = content.strip()
 
-    # Format 1: <details> contract — command is inside code-fenced block
-    if text.startswith("<details>"):
-        m = re.search(r'```(?:bash)?\n.*?\$\s*(/\w+[^\n]*)\n```', text, re.DOTALL)
-        if m:
-            return m.group(1).strip()
+    if not text.startswith("<details>"):
         return None
 
-    # Format 2: 🔧 TOOL RESULT/ERROR header
-    m = re.match(r'🔧 TOOL (?:RESULT|ERROR) — (\w+)', text)
+    m = re.search(r'```(?:bash)?\n.*?\$\s*(/[^\n]+)\n```', text, re.DOTALL)
     if m:
-        tool_key = m.group(1)
-        return _TOOL_NAME_TO_COMMAND.get(tool_key, f'/{tool_key.lower()}')
-
+        return m.group(1).strip()
     return None
+
+# Mapping from API tool names to their slash command equivalents
+_API_TOOL_TO_COMMAND = {
+    'image_generate': 'imagine',
+    'http_request': 'request',
+}
+
+def _build_full_command(tool_name, args):
+    """Reconstruct a full slash command string from an API tool call.
+
+    >>> _build_full_command('web_search', {'query': 'Python programming'})
+    '/web_search Python programming'
+    >>> _build_full_command('image_generate', {'prompt': 'a cat'})
+    '/imagine a cat'
+    """
+    cmd_name = _API_TOOL_TO_COMMAND.get(tool_name, tool_name)
+    # Pick the most meaningful argument value as the argument string
+    arg_str = ''
+    if args:
+        for key in ('query', 'prompt', 'url', 'location'):
+            if key in args and args[key]:
+                arg_str = str(args[key])
+                break
+    return f'/{cmd_name} {arg_str}'.rstrip()
 
 def _execute_command_tool(command_info, session_id=None):
     """
@@ -298,13 +280,19 @@ def _execute_command_tool(command_info, session_id=None):
         # Execute the tool
         result = execute_tool(tool_name, args, session_id=session_id)
         
-        # Format result with original command name for display consistency
-        formatted_result = f"🔧 TOOL RESULT — {original_command.upper()}\n\n{result}\n\n---"
+        # Build the canonical <details> contract — same format used for
+        # rendering AND persistence.  No legacy 🔧 wrapper.
+        formatted_result = build_tool_contract(
+            original_command, result, full_command=command_info["full_command"]
+        )
         
         return formatted_result
         
     except Exception as e:
-        error_msg = f"🔧 TOOL ERROR — {original_command.upper()}\n\nError: {str(e)}\n\n---"
+        error_result = f"Error: {str(e)}"
+        error_msg = build_tool_contract(
+            original_command, error_result, full_command=command_info["full_command"]
+        )
         print(f"[COMMAND ERROR] {tool_name}: {e}")
         return error_msg
 
@@ -941,20 +929,19 @@ You are continuous.
         role = msg["role"]
         content = msg["content"]
         # Tool results are stored with dedicated roles (e.g., web_search_tools)
-        # and markdown wrappers for UI rendering.  The LLM must never see
-        # those decorations.  Projection splits each tool result into two
-        # messages so the model sees the command as its own output and the
-        # result as external user-provided data:
-        #   assistant: /command
-        #   user:      <raw result lines>
+        # and a <details> markdown contract for UI rendering.  The LLM must
+        # never see those decorations.  Projection splits each tool result
+        # into two messages:
+        #   assistant:  full /command with arguments
+        #   *_tools:    raw result lines (original tool role preserved)
         if role in ALL_TOOL_ROLES:
             command = _extract_tool_command(content)
             clean = _strip_tool_markdown(content)
             if command and clean:
                 messages.append({"role": "assistant", "content": command})
-                messages.append({"role": "user", "content": clean})
+                messages.append({"role": role, "content": clean})
             elif clean:
-                messages.append({"role": "user", "content": clean})
+                messages.append({"role": role, "content": clean})
             continue
         messages.append({
             "role": role,
@@ -1185,7 +1172,8 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
                     # Save tool result to database with tool-specific role
                     # (image_generate already saved via add_image_tools_message above)
                     if tool_name != 'image_generate':
-                        Database.add_tool_result(tool_name, result, session_id=session_id)
+                        Database.add_tool_result(tool_name, result, session_id=session_id,
+                                                 full_command=_build_full_command(tool_name, args))
                 loop_count += 1
                 continue
             
@@ -1198,7 +1186,8 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
                     if cmd_info:
                         # Execute command-based tool, save tool result, and stop.
                         tool_result = _execute_command_tool(cmd_info, session_id=session_id)
-                        Database.add_tool_result(cmd_info["command"], tool_result, session_id=session_id)
+                        Database.add_tool_result(cmd_info["command"], tool_result, session_id=session_id,
+                                                 full_command=cmd_info["full_command"])
                         yield tool_result
                         return
                     
@@ -1212,7 +1201,8 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
                 if cmd_info:
                     # Execute command-based tool, save tool result, and stop.
                     tool_result = _execute_command_tool(cmd_info, session_id=session_id)
-                    Database.add_tool_result(cmd_info["command"], tool_result, session_id=session_id)
+                    Database.add_tool_result(cmd_info["command"], tool_result, session_id=session_id,
+                                             full_command=cmd_info["full_command"])
                     yield tool_result
                     return
                     
@@ -1443,7 +1433,8 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
                     # Save tool result to database with tool-specific role
                     # (image_generate already saved via add_image_tools_message above)
                     if tool_name != 'image_generate':
-                        Database.add_tool_result(tool_name, result, session_id=session_id)
+                        Database.add_tool_result(tool_name, result, session_id=session_id,
+                                                 full_command=_build_full_command(tool_name, args))
                 loop_count += 1
                 continue
             
@@ -1456,7 +1447,8 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
                     if cmd_info:
                         # Execute command-based tool, save tool result, and stop.
                         tool_result = _execute_command_tool(cmd_info, session_id=session_id)
-                        Database.add_tool_result(cmd_info["command"], tool_result, session_id=session_id)
+                        Database.add_tool_result(cmd_info["command"], tool_result, session_id=session_id,
+                                                 full_command=cmd_info["full_command"])
                         return tool_result
                     
                     return content.strip()
@@ -1468,7 +1460,8 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
                 if cmd_info:
                     # Execute command-based tool, save tool result, and stop.
                     tool_result = _execute_command_tool(cmd_info, session_id=session_id)
-                    Database.add_tool_result(cmd_info["command"], tool_result, session_id=session_id)
+                    Database.add_tool_result(cmd_info["command"], tool_result, session_id=session_id,
+                                             full_command=cmd_info["full_command"])
                     return tool_result
                 
                 return ai_response

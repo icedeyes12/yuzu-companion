@@ -21,9 +21,10 @@ def test_add_tool_result():
     tool_name = "web_search"
     result_content = '{"results": [{"title": "Test", "snippet": "Sample"}]}'
     
-    Database.add_tool_result(tool_name, result_content, session_id=session_id)
+    Database.add_tool_result(tool_name, result_content, session_id=session_id,
+                             full_command="/web_search Python")
     
-    # Verify it was stored with tool-specific role
+    # Verify it was stored with tool-specific role and <details> contract
     with get_db_session() as session:
         messages = session.query(Message).filter(
             Message.session_id == session_id,
@@ -33,7 +34,9 @@ def test_add_tool_result():
         assert len(messages) > 0, "No web_search_tools messages found in database"
         last_msg = messages[-1]
         assert last_msg.role == 'web_search_tools'
-        assert "🔧 TOOL RESULT — WEB_SEARCH" in last_msg.content
+        assert last_msg.content.startswith('<details>')
+        assert '</details>' in last_msg.content
+        assert '/web_search Python' in last_msg.content
         assert result_content in last_msg.content
         print("✓ Web search result stored with role 'web_search_tools'")
     
@@ -42,7 +45,8 @@ def test_add_tool_result():
     tool_name = "memory_sql"
     result_content = '{"rows": [{"id": 1, "content": "Test message"}]}'
     
-    Database.add_tool_result(tool_name, result_content, session_id=session_id)
+    Database.add_tool_result(tool_name, result_content, session_id=session_id,
+                             full_command="/memory_sql SELECT * FROM messages LIMIT 5")
     
     # Verify it was stored with correct role
     with get_db_session() as session:
@@ -54,11 +58,11 @@ def test_add_tool_result():
         assert len(messages) > 0, "No memory_sql_tools messages found"
         last_msg = messages[-1]
         assert last_msg.role == 'memory_sql_tools'
-        assert "🔧 TOOL RESULT — MEMORY_SQL" in last_msg.content
+        assert last_msg.content.startswith('<details>')
         assert result_content in last_msg.content
         print("✓ Memory SQL result stored with role 'memory_sql_tools'")
     
-    # Test 3: Verify formatting
+    # Test 3: Verify <details> contract formatting
     print("\nTest 3: Verify result formatting")
     with get_db_session() as session:
         tool_messages = session.query(Message).filter(
@@ -69,8 +73,8 @@ def test_add_tool_result():
         assert len(tool_messages) >= 2, "Expected at least 2 tool messages"
         
         for msg in tool_messages:
-            assert msg.content.startswith('🔧 TOOL RESULT —'), f"Wrong header: {msg.content[:30]}"
-            assert msg.content.endswith('---'), f"Wrong footer: {msg.content[-10:]}"
+            assert msg.content.startswith('<details>'), f"Wrong header: {msg.content[:30]}"
+            assert msg.content.rstrip().endswith('</details>'), f"Wrong footer: {msg.content[-20:]}"
             print(f"✓ Tool result formatted correctly: {msg.content[:50]}...")
     
     # Test 4: Verify session_id defaults to active session
@@ -145,7 +149,7 @@ def test_tool_results_in_chat_history():
 
 
 def test_context_builder_maps_tool_roles():
-    """Test that _build_generation_context projects tool results as assistant+user pair."""
+    """Test that _build_generation_context projects tool results as assistant+*_tools pair."""
     from database import Database, ALL_TOOL_ROLES
     
     print("=== Testing Context Builder Tool Role Mapping ===\n")
@@ -154,35 +158,34 @@ def test_context_builder_maps_tool_roles():
     session_id = active_session['id']
     
     # Add a tool result so it's in the DB
-    Database.add_tool_result("web_search", '{"results": []}', session_id=session_id)
+    Database.add_tool_result("web_search", '{"results": []}', session_id=session_id,
+                             full_command="/web_search test query")
     
     # Import and call the context builder
     from app import _build_generation_context
     profile = Database.get_profile()
     messages = _build_generation_context(profile, session_id, "terminal")
     
-    # Verify no tool-specific roles leaked through to LLM messages
-    for msg in messages:
-        assert msg['role'] not in ALL_TOOL_ROLES, \
-            f"Tool-specific role '{msg['role']}' leaked into LLM messages"
-    
-    # Verify projection: tool results become assistant (command) + user (result)
+    # Verify projection: tool results become assistant (command) + *_tools (result)
     # The assistant message should contain the slash command
-    # The user message should contain the raw result without markdown
+    # The *_tools message should contain the raw result without markdown
     command_found = False
     result_found = False
-    for msg in messages:
+    for i, msg in enumerate(messages):
         content = msg.get('content', '')
-        if msg['role'] == 'assistant' and content.startswith('/web_search'):
+        if msg['role'] == 'assistant' and '/web_search' in content:
             command_found = True
-        if msg['role'] == 'user' and '{"results": []}' in content:
-            assert '🔧' not in content, "Markdown tool header leaked into LLM payload"
-            assert not content.rstrip().endswith('---'), "Markdown footer leaked into LLM payload"
-            result_found = True
+            # Next message should be the tool result with *_tools role
+            if i + 1 < len(messages):
+                nxt = messages[i + 1]
+                if nxt['role'] == 'web_search_tools' and '{"results": []}' in nxt['content']:
+                    assert '🔧' not in nxt['content'], "Markdown tool header leaked into LLM payload"
+                    assert '<details>' not in nxt['content'], "<details> leaked into LLM payload"
+                    result_found = True
     
     assert command_found, "Tool command not projected as assistant message"
-    assert result_found, "Tool result not projected as user message"
-    print("✓ Tool roles correctly projected as assistant+user pair in context builder")
+    assert result_found, "Tool result not projected as *_tools message"
+    print("✓ Tool roles correctly projected as assistant+*_tools pair in context builder")
     
     print("\n✅ Context builder tool role mapping test passed!")
 

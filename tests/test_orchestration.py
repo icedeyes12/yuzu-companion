@@ -21,25 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 class TestStripToolMarkdown:
     """Verify markdown wrappers are stripped cleanly for LLM projection."""
 
-    # --- Format 2: 🔧 TOOL RESULT header ---
-
-    def test_strips_standard_tool_result(self):
-        from app import _strip_tool_markdown
-        raw = '🔧 TOOL RESULT — WEB_SEARCH\n\n{"results": []}\n\n---'
-        assert _strip_tool_markdown(raw) == '{"results": []}'
-
-    def test_strips_tool_error(self):
-        from app import _strip_tool_markdown
-        raw = '🔧 TOOL ERROR — WEATHER\n\nError: timeout\n\n---'
-        assert _strip_tool_markdown(raw) == 'Error: timeout'
-
-    def test_strips_double_wrapped(self):
-        from app import _strip_tool_markdown
-        inner = '🔧 TOOL RESULT — WEB_SEARCH\n\n{"ok":true}\n\n---'
-        outer = f'🔧 TOOL RESULT — WEB_SEARCH\n\n{inner}\n\n---'
-        assert _strip_tool_markdown(outer) == '{"ok":true}'
-
-    # --- Format 1: <details> contract ---
+    # --- <details> contract ---
 
     def test_strips_details_image(self):
         from app import _strip_tool_markdown
@@ -67,7 +49,18 @@ class TestStripToolMarkdown:
         result = _strip_tool_markdown(raw)
         assert result == 'Error: No URL provided'
 
-    # --- Format 3: plain legacy content ---
+    def test_strips_details_web_search(self):
+        from app import _strip_tool_markdown
+        raw = (
+            '<details>\n<summary>🔧 web_search_tools</summary>\n\n'
+            '```bash\nYuzuki Aihara$ /web_search Python\n```\n\n'
+            '> {"results": []}\n\n'
+            '</details>'
+        )
+        result = _strip_tool_markdown(raw)
+        assert result == '{"results": []}'
+
+    # --- Non-<details> content returned as-is ---
 
     def test_passthrough_plain_text(self):
         from app import _strip_tool_markdown
@@ -99,10 +92,10 @@ class TestStripToolMarkdown:
 # ---------------------------------------------------------------------------
 
 class TestProjectionModel:
-    """Tool results must be projected as assistant (command) + user (result)."""
+    """Tool results must be projected as assistant (command) + *_tools (result)."""
 
-    def test_no_tool_emoji_in_llm_payload(self):
-        from database import Database, ALL_TOOL_ROLES
+    def test_tool_emoji_not_in_content(self):
+        from database import Database
         from app import _build_generation_context
 
         session_id = Database.create_session("test-projection-clean")
@@ -113,8 +106,6 @@ class TestProjectionModel:
         messages = _build_generation_context(profile, session_id, "terminal")
 
         for msg in messages:
-            assert msg['role'] not in ALL_TOOL_ROLES, \
-                f"Raw tool role '{msg['role']}' leaked"
             assert '🔧' not in msg.get('content', ''), \
                 f"Tool emoji leaked into LLM payload: {msg['content'][:80]}"
 
@@ -124,25 +115,26 @@ class TestProjectionModel:
 
         session_id = Database.create_session("test-projection-split")
         Database.switch_session(session_id)
-        Database.add_tool_result("web_search", '{"results":[]}', session_id=session_id)
+        Database.add_tool_result("web_search", '{"results":[]}', session_id=session_id,
+                                 full_command="/web_search test query")
 
         profile = Database.get_profile()
         messages = _build_generation_context(profile, session_id, "terminal")
 
-        # Find the assistant command message and its following user result
+        # Find the assistant command message and its following *_tools result
         command_found = False
         result_found = False
         for i, msg in enumerate(messages):
-            if msg['role'] == 'assistant' and msg['content'] == '/web_search':
+            if msg['role'] == 'assistant' and '/web_search' in msg['content']:
                 command_found = True
-                # Next message should be user with the raw result
+                # Next message should be web_search_tools with the raw result
                 if i + 1 < len(messages):
                     nxt = messages[i + 1]
-                    if nxt['role'] == 'user' and '{"results":[]}' in nxt['content']:
+                    if nxt['role'] == 'web_search_tools' and '{"results":[]}' in nxt['content']:
                         result_found = True
 
         assert command_found, "Tool command not projected as assistant message"
-        assert result_found, "Tool result not projected as user message after command"
+        assert result_found, "Tool result not projected as *_tools message after command"
 
     def test_projection_preserves_raw_result(self):
         from database import Database
@@ -151,12 +143,13 @@ class TestProjectionModel:
         session_id = Database.create_session("test-projection-raw")
         Database.switch_session(session_id)
         raw = '{"image_path": "static/generated_images/test.png"}'
-        Database.add_tool_result("imagine", raw, session_id=session_id)
+        Database.add_tool_result("imagine", raw, session_id=session_id,
+                                 full_command="/imagine a cute cat")
 
         profile = Database.get_profile()
         messages = _build_generation_context(profile, session_id, "terminal")
 
-        result_msgs = [m for m in messages if m['role'] == 'user' and raw in m['content']]
+        result_msgs = [m for m in messages if m['role'] == 'image_tools' and raw in m['content']]
         assert len(result_msgs) >= 1, "Raw result not preserved in projection"
 
 
@@ -393,36 +386,9 @@ class TestSchemaExclusion:
 # ---------------------------------------------------------------------------
 
 class TestToolCommandExtraction:
-    """_extract_tool_command must return the correct slash command."""
+    """_extract_tool_command must return the correct slash command from <details> contract."""
 
-    # --- Format 2: 🔧 TOOL RESULT header ---
-
-    def test_web_search(self):
-        from app import _extract_tool_command
-        raw = '🔧 TOOL RESULT — WEB_SEARCH\n\n{}\n\n---'
-        assert _extract_tool_command(raw) == '/web_search'
-
-    def test_imagine(self):
-        from app import _extract_tool_command
-        raw = '🔧 TOOL RESULT — IMAGINE\n\n{}\n\n---'
-        assert _extract_tool_command(raw) == '/imagine'
-
-    def test_request(self):
-        from app import _extract_tool_command
-        raw = '🔧 TOOL RESULT — REQUEST\n\n{}\n\n---'
-        assert _extract_tool_command(raw) == '/request'
-
-    def test_http_request(self):
-        from app import _extract_tool_command
-        raw = '🔧 TOOL RESULT — HTTP_REQUEST\n\n{}\n\n---'
-        assert _extract_tool_command(raw) == '/request'
-
-    def test_error_format(self):
-        from app import _extract_tool_command
-        raw = '🔧 TOOL ERROR — WEATHER\n\nError\n\n---'
-        assert _extract_tool_command(raw) == '/weather'
-
-    # --- Format 1: <details> contract ---
+    # --- <details> contract ---
 
     def test_details_image_command(self):
         from app import _extract_tool_command
@@ -442,7 +408,30 @@ class TestToolCommandExtraction:
         )
         assert _extract_tool_command(raw) == '/request https://example.com'
 
-    # --- Edge cases ---
+    def test_details_web_search_command(self):
+        from app import _extract_tool_command
+        raw = (
+            '<details>\n<summary>🔧 web_search_tools</summary>\n\n'
+            '```bash\nYuzuki Aihara$ /web_search Python programming\n```\n\n'
+            '> {"results":[]}\n\n</details>'
+        )
+        assert _extract_tool_command(raw) == '/web_search Python programming'
+
+    def test_details_weather_command(self):
+        from app import _extract_tool_command
+        raw = (
+            '<details>\n<summary>🔧 weather_tools</summary>\n\n'
+            '```bash\nYuzuki Aihara$ /weather Tokyo\n```\n\n'
+            '> {"temp": 20}\n\n</details>'
+        )
+        assert _extract_tool_command(raw) == '/weather Tokyo'
+
+    # --- Non-<details> content returns None ---
+
+    def test_legacy_format_returns_none(self):
+        from app import _extract_tool_command
+        raw = '🔧 TOOL RESULT — WEB_SEARCH\n\n{}\n\n---'
+        assert _extract_tool_command(raw) is None
 
     def test_none_input(self):
         from app import _extract_tool_command
@@ -451,6 +440,106 @@ class TestToolCommandExtraction:
     def test_plain_text(self):
         from app import _extract_tool_command
         assert _extract_tool_command("just text") is None
+
+
+# ---------------------------------------------------------------------------
+# 8. Rendering contract enforcement
+# ---------------------------------------------------------------------------
+
+class TestRenderingContract:
+    """_execute_command_tool must return <details> contract — not legacy format."""
+
+    def test_execute_command_returns_details_contract(self, monkeypatch):
+        """_execute_command_tool must return a <details> contract."""
+        import app
+        monkeypatch.setattr(app, "execute_tool", lambda *a, **kw: '{"results":[]}')
+
+        cmd_info = {
+            "command": "web_search",
+            "args": "test query",
+            "remaining_text": "",
+            "full_command": "/web_search test query"
+        }
+        result = app._execute_command_tool(cmd_info, session_id=1)
+        assert result.strip().startswith("<details>"), \
+            f"Expected <details> contract, got: {result[:80]}"
+        assert result.strip().endswith("</details>"), \
+            f"Expected </details> at end, got: {result[-30:]}"
+
+    def test_execute_command_no_legacy_emoji(self, monkeypatch):
+        """No 🔧 TOOL RESULT header in return value."""
+        import app
+        monkeypatch.setattr(app, "execute_tool", lambda *a, **kw: '{"ok":true}')
+
+        cmd_info = {
+            "command": "weather",
+            "args": "Tokyo",
+            "remaining_text": "",
+            "full_command": "/weather Tokyo"
+        }
+        result = app._execute_command_tool(cmd_info, session_id=1)
+        assert "🔧 TOOL RESULT —" not in result
+        assert "🔧 TOOL ERROR —" not in result
+
+    def test_error_returns_details_contract(self, monkeypatch):
+        """Error results must also use <details> contract."""
+        import app
+
+        def failing_tool(*a, **kw):
+            raise ValueError("connection timeout")
+
+        monkeypatch.setattr(app, "execute_tool", failing_tool)
+
+        cmd_info = {
+            "command": "web_search",
+            "args": "test",
+            "remaining_text": "",
+            "full_command": "/web_search test"
+        }
+        result = app._execute_command_tool(cmd_info, session_id=1)
+        assert result.strip().startswith("<details>")
+        assert "connection timeout" in result
+        assert "🔧 TOOL ERROR —" not in result
+
+    def test_build_tool_contract_is_shared(self):
+        """build_tool_contract is importable and produces <details> output."""
+        from database import build_tool_contract
+        contract = build_tool_contract("weather", '{"temp": 20}',
+                                       full_command="/weather Tokyo",
+                                       partner_name="TestBot")
+        assert contract.startswith("<details>")
+        assert "</details>" in contract
+        assert "TestBot$ /weather Tokyo" in contract
+        assert '> {"temp": 20}' in contract
+
+    def test_rendered_output_matches_db(self, monkeypatch):
+        """Rendered output and DB content must be identical."""
+        import app
+        from database import Database, get_db_session, Message
+
+        monkeypatch.setattr(app, "execute_tool", lambda *a, **kw: '{"data":"ok"}')
+
+        sid = Database.create_session("test-render-match-db")
+        Database.switch_session(sid)
+
+        cmd_info = {
+            "command": "web_search",
+            "args": "test",
+            "remaining_text": "",
+            "full_command": "/web_search test"
+        }
+        rendered = app._execute_command_tool(cmd_info, session_id=sid)
+        Database.add_tool_result("web_search", rendered, session_id=sid,
+                                 full_command="/web_search test")
+
+        with get_db_session() as session:
+            msg = session.query(Message).filter(
+                Message.session_id == sid,
+                Message.role == 'web_search_tools'
+            ).order_by(Message.id.desc()).first()
+            assert msg is not None
+            assert rendered.strip() == msg.content.strip(), \
+                "Rendered output differs from DB content"
 
 
 # ---------------------------------------------------------------------------
