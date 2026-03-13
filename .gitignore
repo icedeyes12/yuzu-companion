@@ -45,3 +45,5 @@ copilot/
 .aider*
 *.tar
 *.gz
+
+yuzu_images/
