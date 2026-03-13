@@ -40,6 +40,7 @@ CORE_SERVERS = [
         "args": ["-y", "@modelcontextprotocol/server-memory"],
         "description": "Persistent key-value storage",
     },
+<<<<<<< HEAD
 ]
 
 # Optional servers (uncomment to enable)
@@ -65,6 +66,46 @@ OPTIONAL_SERVERS = [
     #     "args": ["-m", "mcp_server_time"],
     #     "description": "Time and date utilities",
     # },
+=======
+    
+    # ============================================
+    # OPTIONAL SERVERS - Uncomment to enable
+    # ============================================
+    
+    Git support
+    {
+        "name": "git",
+        "transport": "stdio",
+        "command": "uvx",
+        "args": ["mcp-server-git", "--repository", "/path/to/repo"],
+        "description": "Git repository operations",
+    },
+    
+    Time utilities
+    {
+        "name": "time",
+        "transport": "stdio",
+        "command": "uvx",
+        "args": ["mcp-server-time"],
+        "description": "Time and date utilities",
+    },
+    
+    # Puppeteer browser automation
+    # {
+    #     "name": "puppeteer",
+    #     "transport": "stdio",
+    #     "command": "npx",
+    #     "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+    #     "description": "Browser automation and screenshots",
+    # },
+    
+    # ============================================
+    # DANGER ZONE - HIGH RISK
+    # ============================================
+    
+    # ⚠️ Shell access - NO CONFIRMATION
+    # Can delete files, install malware, exfiltrate data
+>>>>>>> a95bf42 (a)
     # {
     #     "name": "shell",
     #     "transport": "stdio",
