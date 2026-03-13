@@ -1354,6 +1354,8 @@ class Database:
                 'transport': s.transport,
                 'is_active': s.is_active,
                 'is_connected': s.is_connected,
+                'command': s.command,
+                'args': json.loads(s.args or '[]'),
                 'last_error': s.last_error
             } for s in servers]
 
