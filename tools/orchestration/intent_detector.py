@@ -43,6 +43,8 @@ class IntentDetector:
             r'\bwhat\s+(do|would)\s+you\s+look\s+like',
             r'\b(can\s+you\s+)?(draw|paint|sketch)\b',
             r'/imagine\b',
+            r'\byour\s+(picture|photo|image|pic)\b',  # Matches "your picture"
+            r'\bsend\s+me\s+your\s+(picture|photo|image)\b',  # Matches "send me your picture"
         ],
         ToolIntent.WEB_SEARCH: [
             r'\b(search|look\s+up|find|google)\s+(for\s+)?(.+)',
@@ -64,6 +66,8 @@ class IntentDetector:
             r'\bwhat\s+was\s+our\s+conversation\s+about\b',
             r'\bsearch\s+(my\s+)?memory\b',
             r'\bfind\s+(in\s+)?(our\s+)?(chat|conversation|history)\b',
+            r'\bwhat\s+did\s+we\s+talk\s+about\b',  # Simpler pattern for TC5
+            r'\bwhat\s+did\s+we\s+discuss\b',  # Another variation
         ],
     }
     
