@@ -28,24 +28,20 @@ if [ -z "$TERMUX_VERSION" ] && [ -z "$TERMUX_API_VERSION" ]; then
 fi
 
 echo -e "${BLUE}📦 Step 1: Updating packages...${NC}"
-pkg update -y
+apt-get update -y
 
 echo -e "${BLUE}📦 Step 2: Installing dependencies...${NC}"
-pkg install -y python git sqlite
+apt-get install -y python git sqlite
 
-# Install pip if not present
+# Verify pip is available (should be bundled with python)
 if ! command -v pip &> /dev/null; then
-    echo -e "${BLUE}🐍 Installing pip...${NC}"
-    pkg install -y python-pip || {
-        # Try alternative method
-        curl -sS https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
-        python /tmp/get-pip.py --user
-    }
+    echo -e "${YELLOW}⚠️  pip not found, installing...${NC}"
+    apt-get install -y python-pip || true
 fi
 
 # Install optional dependencies if available
 echo -e "${BLUE}📦 Step 3: Installing optional tools...${NC}"
-pkg install -y libffi openssl || true
+apt-get install -y libffi openssl || true
 
 # Set up storage access
 if [ ! -d "$HOME/storage" ]; then
@@ -105,15 +101,10 @@ else
     fi
 fi
 
-# Install Python dependencies
+# Install Python dependencies (pip comes bundled with python)
 echo -e "${BLUE}🐍 Step 7: Installing Python packages...${NC}"
 cd "$YUZU_DIR"
-
-# Fix for newer Termux - don't upgrade pip, just install requirements
-pip install -r requirements.txt || {
-    echo -e "${YELLOW}⚠️  First pip install failed, trying with --user flag...${NC}"
-    pip install --user -r requirements.txt
-}
+pip install -r requirements.txt
 
 # Create launcher script
 echo -e "${BLUE}🚀 Step 8: Creating launcher...${NC}"
