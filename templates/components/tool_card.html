@@ -1,0 +1,314 @@
+<!-- Tool Card Component Template -->
+<!-- This template is used for rendering tool execution results in the chat -->
+
+<!-- Tool Card Container -->
+<div class="tool-card" data-tool-name="{{ tool_name }}" data-status="{{ status }}" data-execution-id="{{ execution_id }}">
+    
+    <!-- Card Header -->
+    <div class="tool-card-header">
+        <span class="tool-icon">{{ icon }}</span>
+        <span class="tool-title">{{ title }}</span>
+        <span class="tool-status-indicator {% if status == 'running' %}spinning{% endif %}"></span>
+    </div>
+    
+    <!-- Card Body -->
+    <div class="tool-card-body">
+        {% if status == 'pending' or status == 'running' %}
+        <!-- Loading State -->
+        <div class="tool-loading">
+            <div class="spinner"></div>
+            <p class="loading-text">{{ status_text or 'Processing...' }}</p>
+            {% if progress is not none %}
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: {{ progress }}%"></div>
+            </div>
+            {% endif %}
+        </div>
+        
+        {% elif status == 'success' %}
+        <!-- Success State -->
+        {% if card_type == 'image' %}
+        <div class="tool-result-image">
+            <img src="{{ content.image_path or content.url }}" 
+                 alt="{{ content.alt or 'Generated image' }}"
+                 onload="this.classList.add('loaded')"
+                 onerror="this.classList.add('error')" />
+        </div>
+        
+        {% elif card_type == 'list' %}
+        <div class="tool-result-list">
+            <ul>
+            {% for item in content.items %}
+                <li>{{ item.text or item }}</li>
+            {% endfor %}
+            </ul>
+        </div>
+        
+        {% elif card_type == 'code' %}
+        <div class="tool-result-code">
+            <pre><code>{{ content.code }}</code></pre>
+        </div>
+        
+        {% else %}
+        <div class="tool-result-text">
+            <pre>{{ content.text }}</pre>
+        </div>
+        {% endif %}
+        
+        {% elif status == 'error' %}
+        <!-- Error State -->
+        <div class="tool-error">
+            <span class="error-icon">⚠️</span>
+            <p class="error-message">{{ error_message }}</p>
+            {% if retry_url %}
+            <button class="retry-btn" onclick="retryTool('{{ retry_url }}')">Retry</button>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Card Footer (LLM Commentary) -->
+    {% if llm_commentary %}
+    <div class="tool-card-footer">
+        <p class="llm-commentary">{{ llm_commentary }}</p>
+    </div>
+    {% endif %}
+    
+</div>
+
+<style>
+/* Tool Card Styles */
+.tool-card {
+    background: var(--card-bg, #1e1e2e);
+    border: 1px solid var(--border-color, #313244);
+    border-radius: 12px;
+    margin: 12px 0;
+    overflow: hidden;
+    max-width: 100%;
+    animation: toolCardAppear 0.3s ease-out;
+}
+
+@keyframes toolCardAppear {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.tool-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--header-bg, #181825);
+    border-bottom: 1px solid var(--border-color, #313244);
+}
+
+.tool-icon {
+    font-size: 1.2em;
+}
+
+.tool-title {
+    font-weight: 600;
+    color: var(--text-primary, #cdd6f4);
+    flex: 1;
+}
+
+.tool-status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success-color, #a6e3a1);
+}
+
+.tool-status-indicator.spinning {
+    background: var(--accent-color, #89b4fa);
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.tool-card-body {
+    padding: 16px;
+    min-height: 60px;
+}
+
+/* Loading State */
+.tool-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 20px;
+}
+
+.spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border-color, #313244);
+    border-top-color: var(--accent-color, #89b4fa);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.loading-text {
+    color: var(--text-secondary, #a6adc8);
+    font-size: 0.9em;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--border-color, #313244);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--accent-color, #89b4fa);
+    transition: width 0.3s ease;
+}
+
+/* Image Result */
+.tool-result-image {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.tool-result-image img {
+    max-width: 100%;
+    max-height: 400px;
+    border-radius: 8px;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+}
+
+.tool-result-image img.loaded {
+    opacity: 1;
+}
+
+.tool-result-image img.error {
+    opacity: 0.5;
+    filter: grayscale(1);
+}
+
+/* List Result */
+.tool-result-list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.tool-result-list li {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color, #313244);
+    color: var(--text-primary, #cdd6f4);
+}
+
+.tool-result-list li:last-child {
+    border-bottom: none;
+}
+
+/* Text Result */
+.tool-result-text pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    color: var(--text-primary, #cdd6f4);
+    font-family: inherit;
+    font-size: 0.95em;
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* Code Result */
+.tool-result-code {
+    background: var(--code-bg, #11111b);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.tool-result-code pre {
+    padding: 12px;
+    margin: 0;
+    overflow-x: auto;
+}
+
+.tool-result-code code {
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 0.85em;
+    color: var(--text-primary, #cdd6f4);
+}
+
+/* Error State */
+.tool-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px;
+    text-align: center;
+}
+
+.error-icon {
+    font-size: 2em;
+}
+
+.error-message {
+    color: var(--error-color, #f38ba8);
+    font-size: 0.9em;
+}
+
+.retry-btn {
+    padding: 8px 16px;
+    background: var(--accent-color, #89b4fa);
+    color: var(--bg-color, #11111b);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: opacity 0.2s;
+}
+
+.retry-btn:hover {
+    opacity: 0.9;
+}
+
+/* Footer */
+.tool-card-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border-color, #313244);
+    background: var(--footer-bg, #181825);
+}
+
+.llm-commentary {
+    color: var(--text-secondary, #a6adc8);
+    font-size: 0.9em;
+    font-style: italic;
+    margin: 0;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    .tool-card {
+        margin: 8px -8px;
+        border-radius: 8px;
+    }
+    
+    .tool-card-body {
+        padding: 12px;
+    }
+}
+</style>
