@@ -11,8 +11,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tools.orchestration import (
     IntentDetector, ToolIntent, DetectedIntent,
-    ToolRouter, ToolType, ToolResult,
-    ResultProcessor, DisplayType
+    ToolRouter, ToolType,
+    ProcessedResult,
+    DisplayType,
+    escapeHtml
 )
 from database import Database, init_db
 
@@ -28,20 +30,13 @@ def test_tc1_image_loading_state():
     assert intent.confidence >= 0.6, f"Confidence too low: {intent.confidence}"
     
     # Simulate creating loading state
+    from tools.orchestration.result_processor import ResultProcessor
     processor = ResultProcessor()
-    loading_result = processor.format_result(
-        ToolResult(
-            type=DisplayType.IMAGE,
-            content={},
-            success=False,
-            error=None,
-            metadata={'loading': True, 'tool_name': 'image_generate'}
-        ),
-        "Send me your picture"
-    )
+    loading_result = processor.create_loading_state('image_generate', 'creating image')
     
-    assert loading_result.display_type == 'loading', "Should be loading display"
-    assert '🖼️' in loading_result.html or 'Creating' in loading_result.text, "Should show image loading text"
+    assert loading_result.display_type == DisplayType.LOADING, "Should be loading display"
+    assert loading_result.content.get('icon') == '🖼️', "Should have image icon"
+    assert 'Creating' in loading_result.content.get('description', ''), "Should show creating text"
     
     print("  ✅ PASS - Shows 🖼️ Creating image...")
     return True
@@ -52,7 +47,7 @@ def test_tc2_image_success():
     
     processor = ResultProcessor()
     result = processor.format_result(
-        ToolResult(
+        ProcessedResult(
             type=DisplayType.IMAGE,
             content={'image_path': 'static/generated_images/test.png'},
             success=True,
@@ -79,7 +74,7 @@ def test_tc3_weather_loading():
     
     processor = ResultProcessor()
     loading = processor.format_result(
-        ToolResult(
+        ProcessedResult(
             type=DisplayType.JSON,
             content={},
             success=False,
@@ -101,7 +96,7 @@ def test_tc4_weather_result():
     
     processor = ResultProcessor()
     result = processor.format_result(
-        ToolResult(
+        ProcessedResult(
             type=DisplayType.WEATHER,
             content={
                 'temperature': 28,
@@ -133,7 +128,7 @@ def test_tc5_search_loading():
     
     processor = ResultProcessor()
     loading = processor.format_result(
-        ToolResult(
+        ProcessedResult(
             type=DisplayType.TEXT,
             content={},
             success=False,
@@ -155,7 +150,7 @@ def test_tc6_search_results():
     
     processor = ResultProcessor()
     result = processor.format_result(
-        ToolResult(
+        ProcessedResult(
             type=DisplayType.SEARCH,
             content=[
                 {'title': 'Python Tutorial', 'url': 'https://python.org', 'snippet': 'Learn Python'},
@@ -180,7 +175,7 @@ def test_tc7_error_state():
     
     processor = ResultProcessor()
     result = processor.format_result(
-        ToolResult(
+        ProcessedResult(
             type=DisplayType.IMAGE,
             content={},
             success=False,
@@ -200,13 +195,13 @@ def test_tc8_state_transition():
     """TC8: Smooth state transition"""
     print("\nTC8: State transition...")
     
-    from tools.orchestration.result_processor import ToolResult, DisplayType
+    from tools.orchestration.result_processor import ProcessedResult, DisplayType
     
     processor = ResultProcessor()
     
     # Loading state
     loading = processor.format_result(
-        ToolResult(
+        ProcessedResult(
             type=DisplayType.IMAGE,
             content={},
             success=False,
@@ -218,7 +213,7 @@ def test_tc8_state_transition():
     
     # Success state
     success = processor.format_result(
-        ToolResult(
+        ProcessedResult(
             type=DisplayType.IMAGE,
             content={'image_path': 'test.png'},
             success=True,
@@ -331,7 +326,7 @@ def test_tc14_memory_loading():
     
     processor = ResultProcessor()
     loading = processor.format_result(
-        ToolResult(
+        ProcessedResult(
             type=DisplayType.MEMORY,
             content={},
             success=False,
@@ -353,7 +348,7 @@ def test_tc15_memory_results():
     
     processor = ResultProcessor()
     result = processor.format_result(
-        ToolResult(
+        ProcessedResult(
             type=DisplayType.MEMORY,
             content=[
                 'User likes cats',
