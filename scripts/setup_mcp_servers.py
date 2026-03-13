@@ -44,27 +44,27 @@ CORE_SERVERS = [
 
 # Optional servers (uncomment to enable)
 OPTIONAL_SERVERS = [
-    # {
-    #     "name": "github",
-    #     "transport": "stdio",
-    #     "command": "npx",
-    #     "args": ["-y", "@modelcontextprotocol/server-github"],
-    #     "description": "GitHub API access (needs GITHUB_TOKEN env var)",
-    # },
-    # {
-    #     "name": "git",
-    #     "transport": "stdio",
-    #     "command": "python",
-    #     "args": ["-m", "mcp_server_git"],
-    #     "description": "Git operations",
-    # },
-    # {
-    #     "name": "time",
-    #     "transport": "stdio",
-    #     "command": "python",
-    #     "args": ["-m", "mcp_server_time"],
-    #     "description": "Time and date utilities",
-    # },
+    {
+        "name": "github",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "description": "GitHub API access (needs GITHUB_TOKEN env var)",
+    },
+    {
+        "name": "git",
+        "transport": "stdio",
+        "command": "python",
+        "args": ["-m", "mcp_server_git"],
+        "description": "Git operations",
+    },
+    {
+        "name": "time",
+        "transport": "stdio",
+        "command": "python",
+        "args": ["-m", "mcp_server_time"],
+        "description": "Time and date utilities",
+    },
 ]
 
 def setup_mcp_servers():
