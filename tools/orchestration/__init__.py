@@ -1,15 +1,30 @@
 # Tool Orchestration Module
 # Phase 2: Tool Orchestration Engine
 
-from .intent_detector import IntentDetector, ToolIntent
-from .tool_router import ToolRouter, ToolResult
-from .result_processor import ResultProcessor, ProcessedResult
+from .intent_detector import (
+    IntentDetector,
+    ToolIntent,
+    DetectedIntent
+)
+
+from .tool_router import (
+    ToolRouter,
+    ToolType,
+    ToolResult
+)
+
+from .result_processor import (
+    ResultProcessor,
+    DisplayType
+)
 
 __all__ = [
     'IntentDetector',
-    'ToolIntent', 
+    'ToolIntent',
+    'DetectedIntent',
     'ToolRouter',
+    'ToolType',
     'ToolResult',
     'ResultProcessor',
-    'ProcessedResult'
+    'DisplayType'
 ]
