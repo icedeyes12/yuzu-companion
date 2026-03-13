@@ -16,14 +16,24 @@ function toggleSidebar() {
     const overlay = document.getElementById('sidebarOverlay');
     const hamburger = document.getElementById('hamburgerMenu');
     
-    if (sidebar.classList.contains('open')) {
+    // Defensive: check if elements exist
+    if (!sidebar) {
+        console.error('Sidebar element not found!');
+        return;
+    }
+    
+    const isOpen = sidebar.classList.contains('open');
+    
+    if (isOpen) {
+        // Close sidebar
         sidebar.classList.remove('open');
-        overlay.classList.remove('active');
-        hamburger.classList.remove('active');
+        if (overlay) overlay.classList.remove('active');
+        if (hamburger) hamburger.classList.remove('active');
     } else {
+        // Open sidebar
         sidebar.classList.add('open');
-        overlay.classList.add('active');
-        hamburger.classList.add('active');
+        if (overlay) overlay.classList.add('active');
+        if (hamburger) hamburger.classList.add('active');
         
         // Load sessions if on chat page
         if (window.location.pathname === '/chat') {
