@@ -1,0 +1,511 @@
+/**
+ * ToolCard Styles
+ * Unified design system for tool interactions
+ * Phase 3: UI Component System
+ */
+
+/* ============================================
+   BASE TOOL CARD
+   ============================================ */
+
+.tool-card {
+  margin: 0.8rem 0;
+  border-radius: 12px;
+  border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+  background: var(--card-bg, rgba(255,255,255,0.03));
+  overflow: hidden;
+  transition: all 0.3s ease;
+  animation: toolCardSlideIn 0.3s ease;
+}
+
+@keyframes toolCardSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================
+   HEADER (always visible)
+   ============================================ */
+
+.tool-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s ease;
+}
+
+.tool-card-header:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.tool-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+/* Tool type icons */
+.tool-icon-image { background: linear-gradient(135deg, #ff6b9d, #ff8e53); }
+.tool-icon-weather { background: linear-gradient(135deg, #4facfe, #00f2fe); }
+.tool-icon-search { background: linear-gradient(135deg, #43e97b, #38f9d7); }
+.tool-icon-memory { background: linear-gradient(135deg, #fa709a, #fee140); }
+.tool-icon-default { background: linear-gradient(135deg, #a8edea, #fed6e3); }
+
+.tool-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-color, #fff);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tool-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-secondary, rgba(255,255,255,0.6));
+  margin-top: 0.15rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================
+   STATUS INDICATORS
+   ============================================ */
+
+.tool-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* Loading spinner */
+.tool-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: var(--accent-pink, #ff6b9d);
+  border-radius: 50%;
+  animation: toolSpinner 1s linear infinite;
+}
+
+@keyframes toolSpinner {
+  to { transform: rotate(360deg); }
+}
+
+/* Success checkmark */
+.tool-success-icon {
+  width: 20px;
+  height: 20px;
+  background: #4caf50;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 0.8rem;
+}
+
+/* Error icon */
+.tool-error-icon {
+  width: 20px;
+  height: 20px;
+  background: #ff5252;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 0.8rem;
+}
+
+/* ============================================
+   STATUS VARIANTS
+   ============================================ */
+
+.tool-card.loading {
+  border-color: var(--accent-pink, #ff6b9d);
+  box-shadow: 0 0 15px rgba(255,107,157,0.2);
+}
+
+.tool-card.success {
+  border-color: #4caf50;
+}
+
+.tool-card.error {
+  border-color: #ff5252;
+}
+
+.tool-card.pending {
+  opacity: 0.7;
+  border-style: dashed;
+}
+
+/* ============================================
+   EXPANDABLE CONTENT
+   ============================================ */
+
+.tool-card-toggle {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.tool-card-toggle:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+.tool-card-toggle.expanded {
+  transform: rotate(180deg);
+}
+
+.tool-card-content {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+  border-top: 1px solid transparent;
+}
+
+.tool-card.expanded .tool-card-content {
+  max-height: 2000px;
+  border-top-color: var(--border-color);
+}
+
+.tool-card-inner {
+  padding: 1rem;
+}
+
+/* ============================================
+   RESULT DISPLAYS BY TYPE
+   ============================================ */
+
+/* --- Image Result --- */
+.tool-result-image {
+  text-align: center;
+}
+
+.tool-result-image img {
+  max-width: 100%;
+  max-height: 512px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.tool-image-caption {
+  margin-top: 0.75rem;
+  font-style: italic;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* --- Weather Result --- */
+.tool-result-weather {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1rem;
+  align-items: center;
+}
+
+.weather-main {
+  text-align: center;
+  padding: 1rem;
+  background: linear-gradient(135deg, rgba(79,172,254,0.1), rgba(0,242,254,0.1));
+  border-radius: 12px;
+}
+
+.weather-temp {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.weather-condition {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+
+.weather-details {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+}
+
+.weather-detail-item {
+  background: rgba(255,255,255,0.05);
+  padding: 0.6rem;
+  border-radius: 8px;
+}
+
+.weather-detail-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.weather-detail-value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-top: 0.2rem;
+}
+
+/* --- Search Result --- */
+.tool-result-search {
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.search-result-item {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.search-result-title {
+  font-weight: 600;
+  color: var(--accent-color, #8a6de9);
+  font-size: 0.9rem;
+  margin-bottom: 0.2rem;
+}
+
+.search-result-title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.search-result-title a:hover {
+  text-decoration: underline;
+}
+
+.search-result-snippet {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.search-result-url {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  margin-top: 0.2rem;
+}
+
+/* --- JSON/Generic Result --- */
+.tool-result-json {
+  background: rgba(0,0,0,0.3);
+  border-radius: 8px;
+  padding: 0.75rem;
+  overflow-x: auto;
+}
+
+.tool-result-json pre {
+  margin: 0;
+  font-family: 'Fira Code', 'Monaco', monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-color);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* --- Memory Result --- */
+.tool-result-memory {
+  background: linear-gradient(135deg, rgba(250,112,154,0.1), rgba(254,225,64,0.1));
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.memory-result-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.memory-result-item:last-child {
+  border-bottom: none;
+}
+
+.memory-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.memory-text {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text-color);
+  line-height: 1.4;
+}
+
+.memory-date {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* ============================================
+   ERROR STATES
+   ============================================ */
+
+.tool-error-message {
+  background: rgba(255,82,82,0.1);
+  border: 1px solid rgba(255,82,82,0.3);
+  border-radius: 8px;
+  padding: 0.75rem;
+  color: #ff6b6b;
+  font-size: 0.9rem;
+}
+
+.tool-error-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.tool-retry-btn,
+.tool-cancel-btn {
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.tool-retry-btn {
+  background: var(--accent-pink, #ff6b9d);
+  color: white;
+}
+
+.tool-retry-btn:hover {
+  background: #ff1493;
+}
+
+.tool-cancel-btn {
+  background: rgba(255,255,255,0.1);
+  color: var(--text-secondary);
+}
+
+.tool-cancel-btn:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+/* ============================================
+   RAW DATA (collapsible debug info)
+   ============================================ */
+
+.tool-raw-data {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+
+.tool-raw-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+}
+
+.tool-raw-toggle:hover {
+  color: var(--text-color);
+}
+
+.tool-raw-content {
+  display: none;
+  background: rgba(0,0,0,0.2);
+  border-radius: 6px;
+  padding: 0.5rem;
+  font-family: monospace;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tool-raw-content.visible {
+  display: block;
+}
+
+/* ============================================
+   RESPONSIVE (Mobile)
+   ============================================ */
+
+@media (max-width: 480px) {
+  .tool-card-header {
+    padding: 0.6rem 0.8rem;
+  }
+
+  .tool-icon {
+    width: 28px;
+    height: 28px;
+    font-size: 1rem;
+  }
+
+  .tool-title {
+    font-size: 0.9rem;
+  }
+
+  .tool-subtitle {
+    font-size: 0.75rem;
+  }
+
+  .tool-result-weather {
+    grid-template-columns: 1fr;
+  }
+
+  .weather-main {
+    padding: 0.75rem;
+  }
+
+  .weather-temp {
+    font-size: 2rem;
+  }
+
+  .tool-card-inner {
+    padding: 0.75rem;
+  }
+}
