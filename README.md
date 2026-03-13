@@ -26,6 +26,10 @@ If you insist on actually installing this, go read [INSTALL.md](INSTALL.md) for 
 
 But honestly, just ask ChatGPT. It will explain it better.
 
+## Technical Details
+
+If you really want to know how this thing works (why would you?), check out [docs/README.md](docs/README.md). It has diagrams and everything. Your attention span probably won't survive it, but it's there.
+
 ---
 
 ## For the 3 People Actually Reading This
