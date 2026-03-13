@@ -1,4 +1,4 @@
-from tools import image_generate, http_request, memory_search, memory_sql, image_analyze
+from tools import image_generate, http_request, memory_search, memory_sql
 import json
 
 # Tool name → tool role used for DB storage
@@ -10,7 +10,6 @@ TOOL_ROLE_MAP = {
     "request": "request_tools",
     "memory_search": "memory_search_tools",
     "memory_sql": "memory_sql_tools",
-    "image_analyze": "image_analyze_tools",
 }
 
 # Tools that are TERMINAL — no second LLM pass after successful execution
@@ -22,7 +21,6 @@ _TOOLS = {
     "request": http_request,
     "memory_search": memory_search,
     "memory_sql": memory_sql,
-    "image_analyze": image_analyze,
 }
 
 def build_markdown_contract(tool_role, full_command, output_lines, partner_name):

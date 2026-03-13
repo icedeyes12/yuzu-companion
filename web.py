@@ -822,5 +822,97 @@ def api_update_global_knowledge():
         print(f"Error updating global knowledge: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/update_image_model', methods=['POST'])
+def api_update_image_model():
+    try:
+        data = request.get_json()
+        image_model = data.get('image_model', '').strip()
+        
+        if not image_model:
+            return jsonify({'status': 'error', 'message': 'Image model required'})
+        
+        Database.update_profile({'image_model': image_model})
+        return jsonify({'status': 'success', 'message': f'Image model set to: {image_model}'})
+    except Exception as e:
+        print(f"Error updating image model: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/get_vision_model', methods=['GET'])
+def api_get_vision_model():
+    try:
+        profile = Database.get_profile()
+        vision_model = profile.get('vision_model', 'moonshotai/Kimi-K2.5-TEE')
+        return jsonify({'status': 'success', 'vision_model': vision_model})
+    except Exception as e:
+        print(f"Error getting vision model: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/update_vision_model', methods=['POST'])
+def api_update_vision_model():
+    try:
+        data = request.get_json()
+        vision_model = data.get('vision_model', '').strip()
+        
+        if not vision_model:
+            return jsonify({'status': 'error', 'message': 'Vision model required'})
+        
+        Database.update_profile({'vision_model': vision_model})
+        return jsonify({'status': 'success', 'message': f'Vision model set to: {vision_model}'})
+    except Exception as e:
+        print(f"Error updating vision model: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    import argparse
+    import sys
+    
+    # Detect Termux environment
+    TERMUX_MODE = os.environ.get('TERMUX_VERSION') is not None or os.environ.get('TERMUX_MODE') == '1'
+    
+    # Default settings
+    if TERMUX_MODE:
+        default_host = os.environ.get('HOST', '0.0.0.0')
+        default_port = int(os.environ.get('PORT', 8080))
+        print("📱 Termux mode detected")
+    else:
+        default_host = os.environ.get('HOST', '127.0.0.1')
+        default_port = int(os.environ.get('PORT', 5000))
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Yuzu Companion Web Interface')
+    parser.add_argument('--host', default=default_host, help=f'Host to bind to (default: {default_host})')
+    parser.add_argument('--port', type=int, default=default_port, help=f'Port to bind to (default: {default_port})')
+    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
+    args = parser.parse_args()
+    
+    # Initialize database
+    from database import init_db
+    init_db()
+    
+    print(f"🍊 Starting Yuzu Companion...")
+    print(f"   Host: {args.host}")
+    print(f"   Port: {args.port}")
+    
+    if TERMUX_MODE:
+        import socket
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+            print(f"   Local IP: http://{local_ip}:{args.port}")
+        except:
+            pass
+        print(f"   URL: http://localhost:{args.port}")
+    else:
+        print(f"   URL: http://{args.host}:{args.port}")
+    
+    print("")
+    print("Press Ctrl+C to stop")
+    print("")
+    
+    try:
+        app.run(debug=args.debug, host=args.host, port=args.port, threaded=True)
+    except KeyboardInterrupt:
+        print("\n👋 Goodbye!")
+        sys.exit(0)
