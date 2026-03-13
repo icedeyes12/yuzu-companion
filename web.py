@@ -862,6 +862,149 @@ def api_update_vision_model():
         print(f"Error updating vision model: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+
+# ============== MCP Server Management API ==============
+
+@app.route('/api/mcp/servers', methods=['GET'])
+def api_mcp_list_servers():
+    """List all MCP servers"""
+    try:
+        from app import get_mcp_servers_status
+        status = get_mcp_servers_status()
+        return jsonify({
+            'status': 'success',
+            'available': status.get('available', False),
+            'servers': status.get('servers', [])
+        })
+    except Exception as e:
+        print(f"Error listing MCP servers: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/mcp/servers', methods=['POST'])
+def api_mcp_create_server():
+    """Create a new MCP server configuration"""
+    try:
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        transport = data.get('transport', 'stdio')  # stdio or http
+        command = data.get('command', '')
+        args = data.get('args', [])
+        url = data.get('url', '')
+        env_vars = data.get('env_vars', {})
+        
+        if not name:
+            return jsonify({'status': 'error', 'message': 'Server name required'}), 400
+        
+        # Save to database
+        server_id = Database.create_mcp_server(
+            name=name,
+            transport=transport,
+            command=command,
+            args=args,
+            url=url,
+            env_vars=env_vars
+        )
+        
+        if server_id:
+            return jsonify({'status': 'success', 'server_id': server_id})
+        else:
+            return jsonify({'status': 'error', 'message': 'Server name already exists'}), 400
+            
+    except Exception as e:
+        print(f"Error creating MCP server: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/mcp/servers/<int:server_id>', methods=['DELETE'])
+def api_mcp_delete_server(server_id):
+    """Delete an MCP server configuration"""
+    try:
+        success = Database.delete_mcp_server(server_id)
+        return jsonify({'status': 'success' if success else 'error'})
+    except Exception as e:
+        print(f"Error deleting MCP server: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/mcp/servers/<int:server_id>/start', methods=['POST'])
+def api_mcp_start_server(server_id):
+    """Start an MCP server"""
+    try:
+        from tools.orchestration.mcp_manager import get_mcp_manager
+        mcp = get_mcp_manager()
+        
+        # Get server name from database
+        server = Database.get_mcp_server(server_id=server_id)
+        if not server:
+            return jsonify({'status': 'error', 'message': 'Server not found'}), 404
+        
+        success = mcp.start_server(server['name'])
+        return jsonify({'status': 'success' if success else 'error'})
+    except Exception as e:
+        print(f"Error starting MCP server: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/mcp/servers/<int:server_id>/stop', methods=['POST'])
+def api_mcp_stop_server(server_id):
+    """Stop an MCP server"""
+    try:
+        from tools.orchestration.mcp_manager import get_mcp_manager
+        mcp = get_mcp_manager()
+        
+        server = Database.get_mcp_server(server_id=server_id)
+        if not server:
+            return jsonify({'status': 'error', 'message': 'Server not found'}), 404
+        
+        success = mcp.stop_server(server['name'])
+        return jsonify({'status': 'success' if success else 'error'})
+    except Exception as e:
+        print(f"Error stopping MCP server: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/mcp/servers/<int:server_id>/tools', methods=['GET'])
+def api_mcp_list_tools(server_id):
+    """List available tools on an MCP server"""
+    try:
+        from tools.orchestration.mcp_manager import get_mcp_manager
+        mcp = get_mcp_manager()
+        
+        server = Database.get_mcp_server(server_id=server_id)
+        if not server:
+            return jsonify({'status': 'error', 'message': 'Server not found'}), 404
+        
+        instance = mcp.get_server(server['name'])
+        if not instance:
+            return jsonify({'status': 'error', 'message': 'Server not running'}), 400
+        
+        tools = [{"name": t.name, "description": t.description} for t in instance.tools]
+        return jsonify({'status': 'success', 'tools': tools})
+    except Exception as e:
+        print(f"Error listing MCP tools: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/orchestration/status', methods=['GET'])
+def api_orchestration_status():
+    """Get orchestration framework status"""
+    try:
+        from app import ORCHESTRATION_AVAILABLE, get_mcp_servers_status
+        
+        mcp_status = get_mcp_servers_status()
+        
+        return jsonify({
+            'status': 'success',
+            'orchestration_available': ORCHESTRATION_AVAILABLE,
+            'mcp_available': mcp_status.get('available', False),
+            'mcp_servers': mcp_status.get('servers', [])
+        })
+    except Exception as e:
+        print(f"Error getting orchestration status: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 if __name__ == '__main__':
     import argparse
     import sys

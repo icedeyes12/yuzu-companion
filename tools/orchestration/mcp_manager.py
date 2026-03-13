@@ -560,6 +560,11 @@ class MCPManager:
                 "connection_count": instance.connection_count
             }
     
+    def get_server(self, server_name: str) -> Optional[MCPServerInstance]:
+        """Get a running MCP server instance"""
+        with self._lock:
+            return self._servers.get(server_name)
+    
     def list_servers(self) -> List[Dict[str, Any]]:
         """List all MCP servers and their status"""
         result = []

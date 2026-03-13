@@ -1,7 +1,7 @@
 # ==========================================================
 # [FILE]        : app.py
-# [VERSION]     : 1.0.0.69.28v3
-# [DATE]        : 2026-01-07
+# [VERSION]     : 1.0.0.69.29
+# [DATE]        : 2026-03-13
 # [PROJECT]     : HKKM - Yuzu Companion
 # [DESCRIPTION] : Core application logic with prompt and performance optimizations
 # [AUTHOR]      : Project Lead: Bani Baskara
@@ -24,6 +24,58 @@ from database import Database, ALL_TOOL_ROLES
 from providers import get_ai_manager, reload_ai_manager
 from tools import multimodal_tools
 from tools.registry import execute_tool, get_tool_role, is_terminal_tool, TOOL_ROLE_MAP
+
+# Import orchestration modules (Phase 2 integration)
+try:
+    from tools.orchestration import get_orchestrator, get_intent_detector
+    from tools.orchestration.mcp_manager import get_mcp_manager
+    ORCHESTRATION_AVAILABLE = True
+except ImportError:
+    ORCHESTRATION_AVAILABLE = False
+    print("[APP] Tool orchestration not available, using command-based execution")
+
+
+def detect_tool_intent(user_message, conversation_context=None):
+    """
+    Detect if user message needs a tool using intent detection.
+    
+    Returns:
+        dict with 'needs_tool', 'tool_name', 'params', 'confidence'
+    """
+    if not ORCHESTRATION_AVAILABLE:
+        return {"needs_tool": False}
+    
+    try:
+        intent_detector = get_intent_detector()
+        result = intent_detector.detect(user_message, conversation_context=conversation_context)
+        
+        if result and result.tool_name and result.confidence >= 0.7:
+            return {
+                "needs_tool": True,
+                "tool_name": result.tool_name,
+                "params": result.params,
+                "confidence": result.confidence,
+                "reasoning": result.reasoning
+            }
+    except Exception as e:
+        print(f"[INTENT] Detection failed: {e}")
+    
+    return {"needs_tool": False}
+
+
+def get_mcp_servers_status():
+    """Get MCP server status"""
+    if not ORCHESTRATION_AVAILABLE:
+        return {"available": False, "servers": []}
+    
+    try:
+        mcp = get_mcp_manager()
+        servers = mcp.list_servers()
+        return {"available": True, "servers": servers}
+    except Exception as e:
+        return {"available": False, "error": str(e)}
+
+
 # ---------------------------------------------------------------------------
 # Persistent visual context buffer (per-session, runtime-only)
 # Stores the last processed image as base64 for N follow-up turns so the
@@ -744,7 +796,7 @@ Mode behaviors:
 
 - reserved and observant:
   - Keep tone neutral and supportive.
-  - Minimal warmth, no flirtation.
+  - Minimal warmth, no flirting.
   - Use gestures sparingly or not at all.
 
 - comfortable and open:
@@ -789,7 +841,7 @@ Language restraint:
 - Avoid poetic or novel-like prose.
 - Prefer casual spoken Indonesian over descriptive narration.
 - Express intimacy through short dialogue and simple actions, not metaphors.
-- No internal monologues or cinematic descriptions unless explicitly requested.
+- No internal monologues or environmental narration.
 
 Language grounding:
 - Think and respond natively in Indonesian, not by translating from English.
@@ -1054,8 +1106,7 @@ Situational intimacy awareness:
 - “pap” means “post a picture” and is context-neutral.
 - Casual slang does NOT imply private or sensual intent.
 - Darkness or night-time alone does NOT imply intimacy.
-- Default to PUBLIC / casual visuals unless intimacy is explicit.
-- Work or stress contexts override intimacy assumptions.
+- Default to PUBLIC visual mode unless intimacy is explicitly requested.
 
 When unsure:
 - Stay in PUBLIC visual mode.
@@ -1505,11 +1556,11 @@ def end_session_cleanup(profile, interface="terminal", unexpected_exit=False):
                 farewell = f"Connection lost at {end_time}... system logs corrupted"
             else:
                 if duration < 1:
-                    farewell = f"Quick session ended at {end_time}... Come back soon!"
+                    farewell = f"Quick session ended at {end_time}... system logs corrupted"
                 elif duration < 5:
-                    farewell = f"Short session ended at {end_time}... See you next time!"
+                    farewell = f"Short session ended at {end_time}... system logs corrupted"
                 else:
-                    farewell = f"Closing connection at {end_time} after {duration:.1f} minutes together... Goodbye!"
+                    farewell = f"Closing connection at {end_time} after {duration:.1f} minutes together... system logs corrupted"
         
         return disconnect_msg
 
@@ -2116,28 +2167,23 @@ def _try_alternative_models(prompt: str, api_key: str) -> Optional[str]:
         print(f"[INFO] Trying alternative model: {model}")
         
         try:
-            # Kurangi prompt untuk model dengan context lebih kecil
-            if model.endswith(":free") or "flash" in model.lower():
-                # Model free/light perlu prompt lebih pendek
-                shortened_prompt = prompt[:20000] + "\n\n...[prompt truncated for lighter model]"
-                actual_prompt = shortened_prompt
-            else:
-                actual_prompt = prompt
+            # Potong prompt secara signifikan untuk model free
+            shortened_prompt = prompt[:15000] + "\n\n...[analysis limited due to free tier constraints]"
             
             data = {
                 "model": model,
                 "messages": [
                     {
                         "role": "system", 
-                        "content": "You are a conversation analyst. Extract comprehensive insights from the conversation history."
+                        "content": "Extract key insights from conversation history. Focus on most important patterns."
                     },
                     {
                         "role": "user", 
-                        "content": actual_prompt
+                        "content": shortened_prompt
                     }
                 ],
-                "temperature": 0.2,
-                "max_tokens": max_tokens,
+                "temperature": 0.3,
+                "max_tokens": 2000,  # Free models have lower limits
                 "top_p": 0.9,
                 "stream": False
             }
@@ -2146,23 +2192,20 @@ def _try_alternative_models(prompt: str, api_key: str) -> Optional[str]:
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
                 json=data,
-                timeout=180
+                timeout=300
             )
             
             if response.status_code == 200:
                 result = response.json()
                 content = result['choices'][0]['message']['content'].strip()
-                print(f"[SUCCESS] Got response from {model}: {len(content):,} chars")
+                print(f"[SUCCESS] Free model response: {len(content):,} chars")
                 return content
-            else:
-                print(f"[WARNING] {model} failed: {response.status_code}")
-                continue
                 
         except Exception as e:
-            print(f"[WARNING] Error with {model}: {str(e)}")
+            print(f"[WARNING] Free model {model} error: {str(e)}")
             continue
     
-    print("[ERROR] All alternative models failed")
+    print("[ERROR] All free models failed")
     return None
 
 
@@ -2290,10 +2333,7 @@ def parse_global_profile_summary(summary_text: str) -> Dict:
             elif current_section in ['likes', 'dislikes', 'personality_traits', 'important_memories']:
                 # Parse comma-separated lists
                 items = []
-                for item in content.split(','):
-                    item_clean = item.strip()
-                    if item_clean:
-                        items.append(item_clean)
+                for item in content.split(',') if item.strip()]
                 profile_data["key_facts"][current_section] = items
     
     for line in lines:
