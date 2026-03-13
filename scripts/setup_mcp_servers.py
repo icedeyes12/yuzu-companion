@@ -53,6 +53,20 @@ ALL_SERVERS = [
         "args": ["-y", "@modelcontextprotocol/server-time"],
         "description": "Time and date utilities",
     },
+    {
+        "name": "puppeteer",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+        "description": "Browser automation and screenshots",
+    },
+    {
+        "name": "shell",
+        "transport": "stdio",
+        "command": "python3",
+        "args": ["/home/icedeyes12/projects/yuzu-companion/tools/shell_tool.py"],
+        "description": "Execute shell commands",
+    },
 ]
 
 def setup_mcp_servers():
@@ -88,6 +102,7 @@ def setup_mcp_servers():
         print(f"  {status} {s['name']}: {s['transport']} | cmd: {cmd}")
     
     print("")
+    print("⚠️  WARNING: shell server allows ANY command execution!")
     print("Next: Restart Yuzu Companion to start MCP servers")
 
 if __name__ == "__main__":
