@@ -421,6 +421,18 @@ All tool results are stored as markdown contracts:
 </details>
 ```
 
+### Tool Orchestration Framework
+
+The tool orchestration framework is designed to be flexible and extensible. It consists of three main components:
+
+1. **Tool Registry**: A central registry that maps commands to their corresponding tool implementations. This is responsible for parsing the LLM response, extracting the command and arguments, and dispatching the request to the appropriate tool.
+
+2. **Tool Interface**: A simple interface that all tools must implement. This ensures that the orchestration layer can call any tool in a consistent way, regardless of the underlying implementation.
+
+3. **Tool Execution**: The actual execution of the tool. This is where the business logic for each tool is implemented. The orchestration layer is responsible for calling the tool, passing in the arguments, and handling the result.
+
+The framework is designed to be easily extended. New tools can be added by implementing the `ToolInterface` and registering them with the `ToolRegistry`. The orchestration layer will automatically detect and use the new tool.
+
 ---
 
 ## Provider Architecture
