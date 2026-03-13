@@ -1034,22 +1034,26 @@ if __name__ == '__main__':
     
     # Auto-setup default MCP servers if none exist
     try:
-        from database import Database
         servers = Database.list_mcp_servers()
         if not servers:
             print("🍊 Setting up default MCP servers...")
-            DEFAULT_SERVERS = [
-                {"name": "filesystem", "transport": "stdio", "command": "npx", 
-                 "args": ["-y", "@modelcontextprotocol/server-filesystem", "/sdcard/Documents"]},
-                {"name": "fetch", "transport": "stdio", "command": "uvx", "args": ["mcp-server-fetch"]},
-                {"name": "sqlite", "transport": "stdio", "command": "npx", 
-                 "args": ["-y", "@modelcontextprotocol/server-sqlite"]},
-                {"name": "memory", "transport": "stdio", "command": "npx", 
-                 "args": ["-y", "@modelcontextprotocol/server-memory"]},
-            ]
-            for s in DEFAULT_SERVERS:
-                Database.create_mcp_server(s["name"], s["transport"], s["command"], s["args"])
-                print(f"   ✅ Added {s['name']}")
+            from scripts.setup_mcp_servers import setup_mcp_servers
+            setup_mcp_servers()
+            print("✅ Default MCP servers configured")
+        
+        # Auto-start MCP servers that are marked as active
+        try:
+            from tools.orchestration.mcp_manager import get_mcp_manager
+            mcp_manager = get_mcp_manager()
+            for server in Database.list_mcp_servers(active_only=True):
+                try:
+                    print(f"🚀 Starting MCP server: {server['name']}...")
+                    mcp_manager.start_server(server['name'])
+                    print(f"✅ MCP server started: {server['name']}")
+                except Exception as se:
+                    print(f"⚠️  Failed to start {server['name']}: {se}")
+        except Exception as e:
+            print(f"   ⚠️  MCP auto-start skipped: {e}")
     except Exception as e:
         print(f"   ⚠️  MCP setup skipped: {e}")
     
