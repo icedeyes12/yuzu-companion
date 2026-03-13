@@ -1249,6 +1249,26 @@ class Database:
                 'completed_at': te.completed_at
             } for te in tool_execs]
 
+    @staticmethod
+    def save_tool_execution(session_id, message_id, tool_type, tool_name, status, 
+                          input_params, output_result, error_message):
+        """Save tool execution record to database."""
+        with get_db_session() as session:
+            tool_exec = ToolExecution(
+                session_id=session_id,
+                message_id=message_id,
+                tool_type=tool_type,
+                tool_name=tool_name,
+                status=status,
+                input_params=json.dumps(input_params),
+                output_result=json.dumps(output_result) if output_result else None,
+                error_message=error_message,
+                created_at=datetime.now()
+            )
+            session.add(tool_exec)
+            session.commit()
+            return tool_exec.id
+
     # MCP Server methods
 
     @staticmethod
@@ -1336,6 +1356,11 @@ class Database:
                 'is_connected': s.is_connected,
                 'last_error': s.last_error
             } for s in servers]
+
+    @staticmethod
+    def get_mcp_servers(active_only=False):
+        """Get MCP servers with optional active filter."""
+        return Database.list_mcp_servers(active_only=active_only)
 
     @staticmethod
     def delete_mcp_server(server_id):
