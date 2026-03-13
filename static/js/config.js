@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadGlobalKnowledge();
     loadProviderSettings();
     loadImageModel();
+    loadVisionModel();
     setupEventListeners();
     initializeConfigAnimations();
 });
@@ -264,6 +265,12 @@ function setupEventListeners() {
     const saveImageModelBtn = document.getElementById('save-image-model');
     if (saveImageModelBtn) {
         saveImageModelBtn.addEventListener('click', saveImageModel);
+    }
+
+    // Vision model
+    const saveVisionModelBtn = document.getElementById('save-vision-model');
+    if (saveVisionModelBtn) {
+        saveVisionModelBtn.addEventListener('click', saveVisionModel);
     }
 
     const useCurrentLocationBtn = document.getElementById('use-current-location');
@@ -971,3 +978,46 @@ function useCurrentLocation() {
 // Load location on page load
 document.addEventListener('DOMContentLoaded', loadLocation);
 window.showError = showError;
+
+// Load vision model setting
+async function loadVisionModel() {
+    try {
+        const response = await fetch('/api/get_profile');
+        const data = await response.json();
+        const visionModel = data.vision_model || 'hunyuan';
+        const select = document.getElementById('vision-model');
+        if (select) select.value = visionModel;
+    } catch (error) {
+        console.error('Error loading vision model:', error);
+    }
+}
+
+// Save vision model setting
+async function saveVisionModel() {
+    const select = document.getElementById('vision-model');
+    if (!select) return;
+
+    const btn = document.getElementById('save-vision-model');
+    const originalText = btn.textContent;
+    btn.textContent = 'Saving...';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch('/api/update_profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vision_model: select.value })
+        });
+        if (response.ok) {
+            showSuccess('Vision model saved successfully!');
+        } else {
+            showError('Error saving vision model');
+        }
+    } catch (error) {
+        console.error('Error saving vision model:', error);
+        showError('Error saving vision model');
+    } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+    }
+}

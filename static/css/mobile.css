@@ -1,0 +1,341 @@
+/* [FILE: mobile.css] */
+/* [VERSION: 1.0.0] */
+/* [DATE: 2026-03-13] */
+/* [PROJECT: HKKM - Yuzu Companion] */
+/* [DESCRIPTION: Mobile-first enhancements and touch optimizations] */
+/* [AUTHOR: Project Lead: Bani Baskara] */
+
+/* ==================== MOBILE-FIRST BASE ==================== */
+
+/* iOS momentum scrolling */
+.chat-container {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent pull-to-refresh on chat container */
+.chat-container {
+  overscroll-behavior-y: contain;
+}
+
+/* ==================== TOUCH TARGET OPTIMIZATIONS ==================== */
+
+/* Minimum 44px touch targets for all interactive elements */
+@media (pointer: coarse) {
+  .hamburger-menu {
+    width: 44px !important;
+    height: 44px !important;
+    padding: 10px !important;
+  }
+  
+  .hamburger-menu span {
+    height: 2px;
+  }
+  
+  .close-sidebar {
+    width: 44px;
+    height: 44px;
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  #sendButton {
+    min-width: 60px;
+    height: 48px;
+    font-size: 0.9rem;
+    touch-action: manipulation;
+  }
+  
+  .multimodal-toggle-btn {
+    width: 48px;
+    height: 48px;
+  }
+  
+  .sidebar-link {
+    padding: 1rem 0.75rem;
+    min-height: 48px;
+  }
+  
+  .multimodal-option {
+    padding: 1rem 0.8rem;
+    min-height: 56px;
+  }
+  
+  .scroll-to-bottom-btn {
+    width: 48px;
+    height: 48px;
+  }
+  
+  .copy-message-btn {
+    min-width: 36px;
+    min-height: 36px;
+  }
+}
+
+/* ==================== VIEWPORT AND SAFE AREAS ==================== */
+
+/* Dynamic viewport units for modern mobile browsers */
+@supports (height: 100dvh) {
+  .chat-app {
+    height: 100dvh;
+  }
+  
+  html, body {
+    height: 100dvh;
+  }
+}
+
+/* Safe area insets for notched phones */
+@supports (padding: max(0px)) {
+  .chat-header {
+    padding-top: max(0.8rem, env(safe-area-inset-top));
+    padding-left: max(0.5rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+  
+  .input-area {
+    padding-bottom: max(0.8rem, env(safe-area-inset-bottom));
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+  
+  .sidebar {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+/* ==================== INPUT OPTIMIZATIONS ==================== */
+
+/* Prevent zoom on iOS when focusing input */
+#messageInput {
+  font-size: 16px !important;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Better input area on mobile */
+@media (max-width: 480px) {
+  .input-area {
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+  }
+  
+  #messageInput {
+    min-height: 44px;
+    padding: 0.6rem 0.875rem;
+    border-radius: 16px;
+  }
+  
+  #sendButton {
+    border-radius: 16px;
+    padding: 0 1rem;
+  }
+}
+
+/* Keyboard-aware positioning */
+.keyboard-open .input-area {
+  position: absolute;
+  bottom: 0;
+}
+
+/* ==================== SIDEBAR IMPROVEMENTS ==================== */
+
+/* Smoother sidebar transitions on mobile */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 85%;
+    max-width: 320px;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .sidebar-overlay {
+    transition: opacity 0.25s ease;
+  }
+}
+
+/* ==================== MESSAGE IMPROVEMENTS ==================== */
+
+@media (max-width: 480px) {
+  .chat-container {
+    padding: 4.2rem 0.5rem 7rem;
+    gap: 0.6rem;
+  }
+  
+  .message {
+    max-width: 96%;
+    padding: 0.7rem 0.875rem;
+    border-radius: 14px;
+  }
+  
+  .message.ai {
+    max-width: 98%;
+    padding: 0.875rem 0.5rem;
+  }
+  
+  .message-content {
+    font-size: 0.9375rem;
+    line-height: 1.55;
+  }
+  
+  .timestamp {
+    font-size: 0.65rem;
+  }
+}
+
+/* ==================== HEADER IMPROVEMENTS ==================== */
+
+@media (max-width: 480px) {
+  .chat-header {
+    min-height: 56px;
+    padding: 0.5rem 0.75rem;
+    gap: 0.5rem;
+  }
+  
+  .partner-name {
+    font-size: 1.05rem;
+  }
+  
+  .session-name {
+    font-size: 0.7rem;
+    max-width: 200px;
+  }
+  
+  .affection-bar {
+    width: 70px;
+    height: 6px;
+  }
+  
+  .affection-icon {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* ==================== MULTIMODAL DROPDOWN ==================== */
+
+@media (max-width: 480px) {
+  .multimodal-dropdown {
+    min-width: calc(100vw - 2rem);
+    max-width: 320px;
+    left: 0.5rem !important;
+    right: 0.5rem !important;
+  }
+  
+  .image-previews-grid {
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+  }
+}
+
+/* ==================== CODE BLOCKS ==================== */
+
+@media (max-width: 480px) {
+  .code-block-container {
+    margin: 0.75rem -0.25rem;
+    border-radius: 6px;
+  }
+  
+  .code-block-container code {
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+  
+  .code-block-container pre {
+    padding: 0.75rem;
+  }
+  
+  .code-block-header {
+    padding: 0.4rem 0.75rem;
+  }
+}
+
+/* ==================== SCROLL BUTTON ==================== */
+
+@media (max-width: 480px) {
+  .scroll-to-bottom-btn {
+    right: 12px;
+    width: 44px;
+    height: 44px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+  }
+}
+
+/* ==================== LOADING STATES ==================== */
+
+/* Smooth loading transitions */
+.loading {
+  transition: opacity 0.2s ease;
+}
+
+/* Better typing indicator on mobile */
+@media (max-width: 480px) {
+  .typing-indicator {
+    padding: 0.75rem;
+  }
+  
+  .typing-indicator span {
+    width: 6px;
+    height: 6px;
+  }
+}
+
+/* ==================== GESTURE SUPPORT ==================== */
+
+/* Enable touch-action for better gesture handling */
+.chat-container {
+  touch-action: pan-y pinch-zoom;
+}
+
+/* Swipe hint animation */
+@keyframes swipeHint {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(10px); }
+}
+
+.sidebar-closed .hamburger-menu {
+  animation: swipeHint 2s ease-in-out 1;
+}
+
+/* ==================== DARK MODE OPTIMIZATIONS ==================== */
+
+/* Respect system dark mode preference */
+@media (prefers-color-scheme: dark) {
+  /* Only apply if no explicit theme is set */
+  body:not([data-theme]) {
+    color-scheme: dark;
+  }
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .message,
+  .scroll-to-bottom-btn,
+  .input-area {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ==================== PRINT STYLES ==================== */
+
+@media print {
+  .hamburger-menu,
+  .sidebar,
+  .sidebar-overlay,
+  .input-area,
+  .scroll-to-bottom-btn,
+  .typing-indicator {
+    display: none !important;
+  }
+  
+  .chat-container {
+    padding: 1rem;
+    height: auto;
+    overflow: visible;
+  }
+  
+  .message {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

@@ -46,7 +46,7 @@ class Profile(Base):
     providers_config_json = Column(Text, nullable=False, default='{}')
     context = Column(Text, nullable=False, default='{}')
     image_model = Column(String(50), nullable=False, default='hunyuan')
-    vision_model = Column(String(100), nullable=False, default='moonshotai/kimi-k2.5')
+    vision_model = Column(String(100), nullable=False, default='moonshotai/Kimi-K2.5-TEE')
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 

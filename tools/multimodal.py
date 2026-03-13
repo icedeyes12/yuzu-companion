@@ -26,10 +26,14 @@ class MultimodalTools:
     IMAGE_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static', 'image_cache')
 
     def __init__(self):
-        # ONLY moonshotai/kimi-k2.5 for vision (OpenRouter only)
+        # Vision models - now configurable via profile
         self.vision_models = {
             'openrouter': [
-                "moonshotai/kimi-k2.5"  # Only this model for vision
+                "moonshotai/kimi-k2.5"  # OpenRouter Kimi
+            ],
+            'chutes': [
+                "moonshotai/Kimi-K2.5-TEE",  # Chutes Kimi
+                "Qwen/Qwen3.5-397B-A17B-TEE"  # Chutes Qwen 3.5
             ]
         }
         
@@ -38,10 +42,6 @@ class MultimodalTools:
             'openrouter': "https://openrouter.ai/api/v1/chat/completions",
             'chutes_image': "https://image.chutes.ai/generate"
         }
-        
-        # Image generation logic moved to tools/image_generate.py
-        # This module is now only for multimodal input processing.
-        self.image_generation_models = {}
         
         # Image cache for base64 encoded images
         self.image_cache = {}
@@ -57,6 +57,15 @@ class MultimodalTools:
         return self.provider_endpoints.get(provider)
     
     def is_vision_model(self, model_name: str, provider: str = None) -> bool:
+        # Get the configured vision model from profile
+        profile = Database.get_profile()
+        configured_vision_model = profile.get('vision_model', 'moonshotai/Kimi-K2.5-TEE')
+        
+        # Check if the model matches the configured vision model
+        if model_name == configured_vision_model:
+            return True
+            
+        # Fallback to checking against known vision models
         if provider:
             return any(vision_model.lower() in model_name.lower() 
                       for vision_model in self.vision_models.get(provider, []))
@@ -470,14 +479,26 @@ class MultimodalTools:
     
     def get_best_vision_provider(self) -> Tuple[Optional[str], Optional[str]]:
         api_keys = Database.get_api_keys()
+        profile = Database.get_profile()
         
-        # ONLY check for openrouter with kimi-k2.5
-        if 'openrouter' in api_keys:
-            openrouter_models = self.get_available_vision_models('openrouter')
-            if openrouter_models:
-                return 'openrouter', openrouter_models[0]  # Will be "moonshotai/kimi-k2.5"
+        # Get the configured vision model from profile
+        configured_vision_model = profile.get('vision_model', 'moonshotai/Kimi-K2.5-TEE')
         
-        # No vision from chutes anymore - ONLY OpenRouter
+        # Check if it's a Chutes model
+        chutes_vision_models = self.get_available_vision_models('chutes')
+        if configured_vision_model in chutes_vision_models and 'chutes' in api_keys:
+            return 'chutes', configured_vision_model
+        
+        # Check for OpenRouter (fallback)
+        openrouter_vision_models = self.get_available_vision_models('openrouter')
+        if 'openrouter' in api_keys and openrouter_vision_models:
+            # If configured model is OpenRouter compatible, use it
+            if configured_vision_model in openrouter_vision_models:
+                return 'openrouter', configured_vision_model
+            # Otherwise use the first available OpenRouter vision model
+            return 'openrouter', openrouter_vision_models[0]
+        
+        # No vision provider available
         return None, None
     
     def should_use_vision(self, user_message: str, current_provider: str, current_model: str) -> bool:
