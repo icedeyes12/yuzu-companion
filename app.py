@@ -730,9 +730,21 @@ def _build_generation_context(profile, session_id, interface="terminal"):
     # =========================
     # Available tools list
     # =========================
-    available_tools = "\n".join(
-        [f"- /{cmd} -> maps to role '{role}'" for cmd, role in TOOL_ROLE_MAP.items()]
-    )
+    tool_list = [f"- /{cmd} -> maps to role '{role}'" for cmd, role in TOOL_ROLE_MAP.items()]
+    
+    # Add MCP tools if available
+    try:
+        from tools.orchestration.mcp_manager import get_mcp_manager
+        mcp_manager = get_mcp_manager()
+        mcp_tools = mcp_manager.get_all_tools()
+        if mcp_tools:
+            tool_list.append("\nMCP TOOLS (Local):")
+            for tool in mcp_tools:
+                tool_list.append(f"- MCP:{tool.server_name}:{tool.name} -> {tool.description}")
+    except Exception as e:
+        print(f"[MCP] Could not load MCP tools: {e}")
+    
+    available_tools = "\n".join(tool_list)
 
     # =========================
     # System message
@@ -1218,7 +1230,7 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
     Same deterministic model as generate_ai_response:
       1. Build context + append pending user_message.
       2. Single LLM call.
-      3. If tool command → execute → yield result.
+      4. If tool command → execute → yield result.
       4. Otherwise yield natural reply.
     """
     if session_id is None:
