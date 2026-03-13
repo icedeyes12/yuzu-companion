@@ -2,6 +2,8 @@
 """
 Setup default MCP servers for Yuzu Companion
 Run this to add common MCP servers to the database
+
+Usage: python scripts/setup_mcp_servers.py
 """
 
 import sys
@@ -10,7 +12,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import Database
 
+# ============================================
+# DEFAULT MCP SERVERS
+# Edit this list to add/remove servers
+# ============================================
 DEFAULT_MCP_SERVERS = [
+    # Core servers (recommended)
     {
         "name": "filesystem",
         "transport": "stdio",
@@ -29,7 +36,8 @@ DEFAULT_MCP_SERVERS = [
         "name": "sqlite",
         "transport": "stdio",
         "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-sqlite", "--db-path", "/data/data/com.termux/files/home/yuzu-companion/yuzu_core.db"],
+        "args": ["-y", "@modelcontextprotocol/server-sqlite", 
+                  "--db-path", "/data/data/com.termux/files/home/yuzu-companion/yuzu_core.db"],
         "description": "Query SQLite databases",
     },
     {
@@ -39,19 +47,67 @@ DEFAULT_MCP_SERVERS = [
         "args": ["-y", "@modelcontextprotocol/server-memory"],
         "description": "Persistent key-value storage",
     },
+    
+    # ============================================
+    # OPTIONAL SERVERS - Uncomment to enable
+    # ============================================
+    
+    # Git support
+    # {
+    #     "name": "git",
+    #     "transport": "stdio",
+    #     "command": "uvx",
+    #     "args": ["mcp-server-git", "--repository", "/path/to/repo"],
+    #     "description": "Git repository operations",
+    # },
+    
+    # Time utilities
+    # {
+    #     "name": "time",
+    #     "transport": "stdio",
+    #     "command": "uvx",
+    #     "args": ["mcp-server-time"],
+    #     "description": "Time and date utilities",
+    # },
+    
+    # Puppeteer browser automation
+    # {
+    #     "name": "puppeteer",
+    #     "transport": "stdio",
+    #     "command": "npx",
+    #     "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+    #     "description": "Browser automation and screenshots",
+    # },
+    
+    # ============================================
+    # DANGER ZONE - HIGH RISK
+    # ============================================
+    
+    # ⚠️ Shell access - NO CONFIRMATION
+    # Can delete files, install malware, exfiltrate data
+    # {
+    #     "name": "shell",
+    #     "transport": "stdio",
+    #     "command": "uvx",
+    #     "args": ["mcp-shell"],
+    #     "description": "⚠️ Shell command execution WITHOUT confirmation",
+    # },
 ]
 
 def setup_mcp_servers():
     print("🍊 Setting up default MCP servers...")
+    print("=" * 50)
+    
+    added = 0
+    skipped = 0
     
     for server in DEFAULT_MCP_SERVERS:
-        # Check if already exists
         existing = Database.get_mcp_server(name=server["name"])
         if existing:
-            print(f"  ⏭️  {server['name']} already exists, skipping")
+            print(f"  ⏭️  {server['name']}: already exists")
+            skipped += 1
             continue
         
-        # Create new server
         server_id = Database.create_mcp_server(
             name=server["name"],
             transport=server["transport"],
@@ -62,14 +118,21 @@ def setup_mcp_servers():
         )
         
         if server_id:
-            print(f"  ✅ Added {server['name']}: {server['description']}")
+            print(f"  ✅ {server['name']}: {server['description']}")
+            added += 1
         else:
-            print(f"  ❌ Failed to add {server['name']}")
+            print(f"  ❌ {server['name']}: failed")
     
+    print("=" * 50)
+    print(f"\n📊 Summary: {added} added, {skipped} skipped")
     print("\n📋 Current MCP servers:")
     servers = Database.list_mcp_servers()
     for s in servers:
-        print(f"  - {s['name']}: {s['transport']} | active: {s['is_active']}")
+        status = "🟢" if s['is_active'] else "🔴"
+        print(f"  {status} {s['name']}: {s['transport']}")
+    
+    print("\n💡 To add more servers, edit this file and uncomment optional servers")
+    print("   Then run: python scripts/setup_mcp_servers.py")
 
 if __name__ == "__main__":
     from database import init_db
