@@ -31,7 +31,17 @@ echo -e "${BLUE}📦 Step 1: Updating packages...${NC}"
 pkg update -y
 
 echo -e "${BLUE}📦 Step 2: Installing dependencies...${NC}"
-pkg install -y python python-pip git sqlite
+pkg install -y python git sqlite
+
+# Install pip if not present
+if ! command -v pip &> /dev/null; then
+    echo -e "${BLUE}🐍 Installing pip...${NC}"
+    pkg install -y python-pip || {
+        # Try alternative method
+        curl -sS https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
+        python /tmp/get-pip.py --user
+    }
+fi
 
 # Install optional dependencies if available
 echo -e "${BLUE}📦 Step 3: Installing optional tools...${NC}"
@@ -68,22 +78,42 @@ if [ -f "$YUZU_DIR/web.py" ]; then
     fi
 else
     echo -e "${BLUE}📥 Step 6: Downloading Yuzu Companion...${NC}"
-    # Clone or download the project
-    # For now, assume files are copied manually or via git
-    echo -e "${YELLOW}⚠️  Please copy the yuzu-companion files to $YUZU_DIR${NC}"
-    echo "You can use:"
-    echo "  - termux-open to share files from phone"
-    echo "  - git clone if you have the repo"
-    echo "  - Or manually copy with a file manager"
+    # Clone from git repo (recommended)
+    echo "Choose download method:"
+    echo "  1) git clone (recommended)"
+    echo "  2) Manual copy"
+    read -p "Select (1/2): " -n 1 -r
+    echo
     
-    read -p "Press Enter when files are copied..."
+    if [[ $REPLY =~ ^[1]$ ]]; then
+        # Clone the repository
+        if [ -d "$YUZU_DIR/.git" ]; then
+            cd "$YUZU_DIR"
+            git pull origin main
+        else
+            rm -rf "$YUZU_DIR"
+            git clone https://github.com/icedeyes12/yuzu-companion.git "$YUZU_DIR"
+        fi
+        echo -e "${GREEN}✅ Repository cloned${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Please copy the yuzu-companion files to $YUZU_DIR${NC}"
+        echo "You can use:"
+        echo "  - termux-open to share files from phone"
+        echo "  - Or manually copy with a file manager"
+        
+        read -p "Press Enter when files are copied..."
+    fi
 fi
 
 # Install Python dependencies
 echo -e "${BLUE}🐍 Step 7: Installing Python packages...${NC}"
 cd "$YUZU_DIR"
-pip install --upgrade pip
-pip install -r requirements.txt
+
+# Fix for newer Termux - don't upgrade pip, just install requirements
+pip install -r requirements.txt || {
+    echo -e "${YELLOW}⚠️  First pip install failed, trying with --user flag...${NC}"
+    pip install --user -r requirements.txt
+}
 
 # Create launcher script
 echo -e "${BLUE}🚀 Step 8: Creating launcher...${NC}"
