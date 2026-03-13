@@ -1,0 +1,643 @@
+/* ============================================
+ * YUZU COMPANION - AESTHETIC SYSTEM
+ * A warm, intimate digital companion interface
+ * Inspired by: Soft UI, Japanese minimalism, 
+ *              anime visual novels, cozy aesthetics
+ * ============================================ */
+
+/* ============================================
+ * DESIGN TOKENS - Core Variables
+ * ============================================ */
+:root {
+  /* Primary Palette - Warm & Intimate */
+  --yuzu-primary: #FFB8D0;
+  --yuzu-primary-soft: #FFE4ED;
+  --yuzu-primary-glow: rgba(255, 184, 208, 0.4);
+  
+  /* Secondary - Cool contrast */
+  --yuzu-secondary: #A8D8EA;
+  --yuzu-secondary-soft: #E0F4F8;
+  
+  /* Accent - Playful highlights */
+  --yuzu-accent: #FFD93D;
+  --yuzu-accent-soft: #FFF4D9;
+  
+  /* Neutrals - Soft, not stark */
+  --yuzu-bg: #FDF6F9;
+  --yuzu-surface: #FFFFFF;
+  --yuzu-surface-elevated: #FFFFFF;
+  --yuzu-text-primary: #3D2C38;
+  --yuzu-text-secondary: #8B6F7C;
+  --yuzu-text-muted: #B8A4AD;
+  
+  /* Status Colors */
+  --yuzu-success: #A8E6CF;
+  --yuzu-warning: #FFD3B6;
+  --yuzu-error: #FFAAA5;
+  
+  /* Dimensions */
+  --sidebar-width: 300px;
+  --sidebar-hidden: -320px;
+  --header-height: 70px;
+  --border-radius: 20px;
+  --border-radius-sm: 12px;
+  --border-radius-xs: 8px;
+  
+  /* Shadows - Soft, diffused */
+  --shadow-sm: 0 2px 8px rgba(139, 111, 124, 0.08);
+  --shadow-md: 0 4px 20px rgba(139, 111, 124, 0.12);
+  --shadow-lg: 0 8px 40px rgba(139, 111, 124, 0.16);
+  --shadow-glow: 0 0 30px var(--yuzu-primary-glow);
+  
+  /* Transitions */
+  --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* Typography - Distinctive, characterful */
+  --font-display: 'Quicksand', 'Nunito', sans-serif;
+  --font-body: 'Nunito', 'Open Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* ============================================
+ * BASE STYLES
+ * ============================================ */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--yuzu-bg);
+  color: var(--yuzu-text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================
+ * SIDEBAR - Sliding Companion Panel
+ * ============================================ */
+.yuzu-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: var(--sidebar-width);
+  height: 100vh;
+  background: var(--yuzu-surface);
+  z-index: 1000;
+  transform: translateX(var(--sidebar-hidden));
+  transition: transform var(--transition-normal);
+  box-shadow: var(--shadow-lg);
+  border-radius: 0 var(--border-radius) var(--border-radius) 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.yuzu-sidebar.is-open {
+  transform: translateX(0);
+}
+
+/* Sidebar Header - Soft gradient */
+.yuzu-sidebar__header {
+  padding: 24px 20px;
+  background: linear-gradient(135deg, var(--yuzu-primary-soft) 0%, var(--yuzu-surface) 100%);
+  border-bottom: 1px solid rgba(255, 184, 208, 0.3);
+  position: relative;
+}
+
+.yuzu-sidebar__header::after {
+  content: '';
+  position: absolute;
+  bottom: -10px;
+  left: 20px;
+  right: 20px;
+  height: 20px;
+  background: var(--yuzu-primary-glow);
+  filter: blur(20px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.yuzu-sidebar__title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--yuzu-text-primary);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.yuzu-sidebar__title-icon {
+  font-size: 1.8rem;
+  animation: gentle-bounce 2s ease-in-out infinite;
+}
+
+@keyframes gentle-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+/* Close Button - Floating pill */
+.yuzu-sidebar__close {
+  position: absolute;
+  top: 20px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--yuzu-surface);
+  color: var(--yuzu-text-secondary);
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-fast);
+}
+
+.yuzu-sidebar__close:hover {
+  background: var(--yuzu-error);
+  color: white;
+  transform: rotate(90deg);
+}
+
+/* Sidebar Content */
+.yuzu-sidebar__content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 12px;
+}
+
+/* Navigation Section */
+.yuzu-nav-section {
+  margin-bottom: 24px;
+}
+
+.yuzu-nav-section__title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--yuzu-text-muted);
+  margin: 0 0 12px 8px;
+  font-weight: 600;
+}
+
+.yuzu-nav-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.yuzu-nav-item {
+  margin-bottom: 4px;
+}
+
+.yuzu-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--border-radius-sm);
+  color: var(--yuzu-text-secondary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+  position: relative;
+  overflow: hidden;
+}
+
+.yuzu-nav-link::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--yuzu-primary);
+  border-radius: 0 2px 2px 0;
+  transform: scaleY(0);
+  transition: transform var(--transition-fast);
+}
+
+.yuzu-nav-link:hover,
+.yuzu-nav-link.is-active {
+  background: var(--yuzu-primary-soft);
+  color: var(--yuzu-text-primary);
+}
+
+.yuzu-nav-link.is-active::before {
+  transform: scaleY(1);
+}
+
+.yuzu-nav-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+/* ============================================
+ * HAMBURGER MENU - Floating Orb
+ * ============================================ */
+.yuzu-hamburger {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  background: var(--yuzu-surface);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  box-shadow: var(--shadow-md);
+  z-index: 999;
+  transition: all var(--transition-fast);
+}
+
+.yuzu-hamburger:hover {
+  box-shadow: var(--shadow-glow);
+  transform: scale(1.05);
+}
+
+.yuzu-hamburger.is-active {
+  background: var(--yuzu-primary);
+}
+
+.yuzu-hamburger__line {
+  width: 20px;
+  height: 2px;
+  background: var(--yuzu-text-primary);
+  border-radius: 2px;
+  transition: all var(--transition-fast);
+}
+
+.yuzu-hamburger.is-active .yuzu-hamburger__line:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+
+.yuzu-hamburger.is-active .yuzu-hamburger__line:nth-child(2) {
+  opacity: 0;
+}
+
+.yuzu-hamburger.is-active .yuzu-hamburger__line:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
+/* ============================================
+ * OVERLAY - Soft blur
+ * ============================================ */
+.yuzu-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(61, 44, 56, 0.4);
+  backdrop-filter: blur(8px);
+  z-index: 998;
+  opacity: 0;
+  visibility: hidden;
+  transition: all var(--transition-normal);
+}
+
+.yuzu-overlay.is-visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ============================================
+ * TOOL CARDS - Elegant Result Display
+ * ============================================ */
+.yuzu-tool-card {
+  background: var(--yuzu-surface);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  margin: 16px 0;
+  border: 1px solid rgba(255, 184, 208, 0.3);
+  transition: all var(--transition-fast);
+}
+
+.yuzu-tool-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+.yuzu-tool-card__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, var(--yuzu-primary-soft) 0%, transparent 100%);
+  border-bottom: 1px solid rgba(255, 184, 208, 0.2);
+}
+
+.yuzu-tool-card__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--border-radius-sm);
+  background: var(--yuzu-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  box-shadow: 0 4px 12px var(--yuzu-primary-glow);
+}
+
+.yuzu-tool-card__title {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--yuzu-text-primary);
+  margin: 0;
+}
+
+.yuzu-tool-card__status {
+  margin-left: auto;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.yuzu-tool-card__status--running {
+  background: var(--yuzu-accent-soft);
+  color: #B8860B;
+  animation: pulse-soft 1.5s ease-in-out infinite;
+}
+
+.yuzu-tool-card__status--success {
+  background: var(--yuzu-success);
+  color: #2D6A4F;
+}
+
+.yuzu-tool-card__status--error {
+  background: var(--yuzu-error);
+  color: #9B2335;
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.yuzu-tool-card__content {
+  padding: 20px;
+}
+
+.yuzu-tool-card__result {
+  background: var(--yuzu-bg);
+  border-radius: var(--border-radius-sm);
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--yuzu-text-secondary);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* ============================================
+ * CHAT INTERFACE - Intimate Conversation
+ * ============================================ */
+.yuzu-chat-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 90px 20px 120px;
+}
+
+.yuzu-message {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  animation: fade-in-up 0.4s ease-out;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.yuzu-message--user {
+  flex-direction: row-reverse;
+}
+
+.yuzu-message__avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--yuzu-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
+}
+
+.yuzu-message--user .yuzu-message__avatar {
+  background: var(--yuzu-secondary);
+}
+
+.yuzu-message__bubble {
+  max-width: 70%;
+  padding: 16px 20px;
+  border-radius: var(--border-radius);
+  background: var(--yuzu-surface);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+}
+
+.yuzu-message--user .yuzu-message__bubble {
+  background: var(--yuzu-primary);
+  color: var(--yuzu-text-primary);
+}
+
+.yuzu-message__time {
+  font-size: 0.7rem;
+  color: var(--yuzu-text-muted);
+  margin-top: 8px;
+  display: block;
+}
+
+/* ============================================
+ * INPUT AREA - Floating Composer
+ * ============================================ */
+.yuzu-composer {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 48px);
+  max-width: 700px;
+  background: var(--yuzu-surface);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-lg);
+  padding: 16px 20px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  z-index: 100;
+  border: 1px solid rgba(255, 184, 208, 0.3);
+}
+
+.yuzu-composer__input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  resize: none;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--yuzu-text-primary);
+  line-height: 1.5;
+  max-height: 120px;
+  min-height: 24px;
+}
+
+.yuzu-composer__input:focus {
+  outline: none;
+}
+
+.yuzu-composer__input::placeholder {
+  color: var(--yuzu-text-muted);
+}
+
+.yuzu-composer__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.yuzu-composer__btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--border-radius-sm);
+  border: none;
+  background: var(--yuzu-bg);
+  color: var(--yuzu-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  transition: all var(--transition-fast);
+}
+
+.yuzu-composer__btn:hover {
+  background: var(--yuzu-primary-soft);
+  color: var(--yuzu-primary);
+}
+
+.yuzu-composer__btn--send {
+  background: var(--yuzu-primary);
+  color: white;
+}
+
+.yuzu-composer__btn--send:hover {
+  background: var(--yuzu-accent);
+  transform: scale(1.05);
+  box-shadow: var(--shadow-glow);
+}
+
+/* ============================================
+ * RESPONSIVE ADJUSTMENTS
+ * ============================================ */
+@media (max-width: 768px) {
+  :root {
+    --sidebar-width: 280px;
+    --sidebar-hidden: -300px;
+  }
+  
+  .yuzu-chat-container {
+    padding: 80px 16px 100px;
+  }
+  
+  .yuzu-message__bubble {
+    max-width: 85%;
+  }
+  
+  .yuzu-composer {
+    bottom: 16px;
+    padding: 12px 16px;
+  }
+}
+
+/* ============================================
+ * DARK MODE SUPPORT
+ * ============================================ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --yuzu-bg: #2A1F26;
+    --yuzu-surface: #3D2C38;
+    --yuzu-surface-elevated: #4A3644;
+    --yuzu-text-primary: #FDF6F9;
+    --yuzu-text-secondary: #C4B0BC;
+    --yuzu-text-muted: #8B6F7C;
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* ============================================
+ * ANIMATION UTILITIES
+ * ============================================ */
+.yuzu-fade-in {
+  animation: fade-in-up 0.4s ease-out;
+}
+
+.yuzu-slide-in-left {
+  animation: slide-in-left 0.3s ease-out;
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.yuzu-pulse {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+/* ============================================
+ * ACCESSIBILITY
+ * ============================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Focus visible styles */
+.yuzu-nav-link:focus-visible,
+.yuzu-hamburger:focus-visible,
+.yuzu-composer__btn:focus-visible {
+  outline: 3px solid var(--yuzu-primary);
+  outline-offset: 2px;
+}
