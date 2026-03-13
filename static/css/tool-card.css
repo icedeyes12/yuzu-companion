@@ -1,8 +1,26 @@
 /**
  * ToolCard Styles
- * Unified design system for tool interactions
- * Phase 3: UI Component System
+ * Unified design system for tool execution UI
  */
+
+/* === CSS VARI
+[truncated]
+ needed */
+}
+
+/* === PREFERS REDUCED MOTION === */
+@media (prefers-reduced-motion: reduce) {
+  .tool-card,
+  .tool-loading,
+  .tool-result {
+    animation: none !important;
+    transition: none !important;
+  }
+  
+  .tool-spinner {
+    animation: none !important;
+  }
+}
 
 /* ============================================
    BASE TOOL CARD

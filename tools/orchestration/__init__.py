@@ -15,7 +15,9 @@ from .tool_router import (
 
 from .result_processor import (
     ResultProcessor,
-    DisplayType
+    DisplayType,
+    escapeHtml,
+    ProcessedResult
 )
 
 __all__ = [
@@ -26,5 +28,7 @@ __all__ = [
     'ToolType',
     'ToolResult',
     'ResultProcessor',
-    'DisplayType'
+    'ProcessedResult',
+    'DisplayType',
+    'escapeHtml'
 ]

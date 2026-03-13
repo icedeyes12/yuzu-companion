@@ -7,6 +7,16 @@ from enum import Enum
 import json
 
 
+def escapeHtml(text):
+    """Escape HTML entities for safe rendering."""
+    return (str(text)
+        .replace('&', '&amp;')
+        .replace('<', '&lt;')
+        .replace('>', '&gt;')
+        .replace('"', '&quot;')
+        .replace("'", '&#39;'))
+
+
 class DisplayType(Enum):
     """Types of UI displays for tool results."""
     LOADING = "loading"          # Tool is running
@@ -158,6 +168,11 @@ class ResultProcessor:
             tool_visible=True,  # Show loading UI
             inline=True
         )
+    
+    def format_result(self, tool_name: str, result: Any, status: str,
+                     execution_time_ms: float = 0) -> ProcessedResult:
+        """Method alias"""
+        return self.process(tool_name, result, status, execution_time_ms)
     
     def _format_content(self, display_type: DisplayType, result: Any, 
                         tool_name: str) -> Dict[str, Any]:

@@ -238,5 +238,9 @@ class IntentDetector:
         return DetectedIntent(
             intent=ToolIntent.NONE,
             confidence=0.0,
-            reasoning=f"Pattern match confidence too low: {preliminary.confidence}"
+            reasoning="No matching pattern found"
         )
+    
+    def detect_intent(self, user_input: str, context: Optional[Dict] = None) -> DetectedIntent:
+        """Alias for detect() - matches test API expectations."""
+        return self.detect(user_input, context)
