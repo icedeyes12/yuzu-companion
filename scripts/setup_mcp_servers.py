@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Setup MCP servers for Yuzu Companion
+Setup all MCP servers for Yuzu Companion
 Run this after install_mcp_servers.sh
 """
 
@@ -10,8 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import Database
 
-# Core servers (always enabled)
-CORE_SERVERS = [
+ALL_SERVERS = [
     {
         "name": "filesystem",
         "transport": "stdio",
@@ -40,40 +39,27 @@ CORE_SERVERS = [
         "args": ["-y", "@modelcontextprotocol/server-memory"],
         "description": "Persistent key-value storage",
     },
-]
-
-# Optional servers (uncomment to enable)
-OPTIONAL_SERVERS = [
-    {
-        "name": "github",
-        "transport": "stdio",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-github"],
-        "description": "GitHub API access (needs GITHUB_TOKEN env var)",
-    },
     {
         "name": "git",
         "transport": "stdio",
-        "command": "python",
-        "args": ["-m", "mcp_server_git"],
-        "description": "Git operations",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-git"],
+        "description": "Git repository operations",
     },
     {
         "name": "time",
         "transport": "stdio",
-        "command": "python",
-        "args": ["-m", "mcp_server_time"],
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-time"],
         "description": "Time and date utilities",
     },
 ]
 
 def setup_mcp_servers():
-    print("🍊 Setting up MCP servers...")
+    print("🍊 Setting up all MCP servers...")
     print("")
     
-    # Add core servers
-    print("📦 Core servers:")
-    for server in CORE_SERVERS:
+    for server in ALL_SERVERS:
         existing = Database.get_mcp_server(name=server["name"])
         if existing:
             print(f"  ⏭️  {server['name']} already exists")
@@ -93,20 +79,13 @@ def setup_mcp_servers():
         else:
             print(f"  ❌ Failed to add {server['name']}")
     
-    # Show optional servers
-    if OPTIONAL_SERVERS:
-        print("")
-        print("🔧 Optional servers (edit setup_mcp_servers.py to enable):")
-        for server in OPTIONAL_SERVERS:
-            print(f"  # {server['name']}: {server['description']}")
-    
-    # List all
     print("")
-    print("📋 Current MCP servers:")
+    print("📋 All MCP servers:")
     servers = Database.list_mcp_servers()
     for s in servers:
         status = "🟢" if s['is_active'] else "🔴"
-        print(f"  {status} {s['name']}: {s['transport']} | cmd: {s.get('command', 'N/A')}")
+        cmd = s.get('command', 'N/A')
+        print(f"  {status} {s['name']}: {s['transport']} | cmd: {cmd}")
     
     print("")
     print("Next: Restart Yuzu Companion to start MCP servers")
