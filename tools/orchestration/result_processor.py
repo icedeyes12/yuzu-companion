@@ -27,6 +27,10 @@ class DisplayType(Enum):
     JSON = "json"               # Formatted JSON
     ERROR = "error"             # Error message
     COMPACT = "compact"         # Minimal inline display
+    
+    # Aliases for test compatibility
+    SEARCH = "search"           # Alias for SEARCH_RESULTS
+    MEMORY = "text"             # Alias for TEXT (memory uses text display)
 
 
 @dataclass
@@ -37,6 +41,11 @@ class ProcessedResult:
     narrative: Optional[str] = None  # LLM-generated narrative (optional)
     tool_visible: bool = False  # Whether to show tool UI or keep hidden
     inline: bool = True  # Show inline vs as separate card
+    
+    @property
+    def type(self):
+        """Alias for display_type - test compatibility."""
+        return self.display_type
 
 
 class ResultProcessor:
