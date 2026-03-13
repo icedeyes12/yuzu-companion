@@ -1032,6 +1032,27 @@ if __name__ == '__main__':
     from database import init_db
     init_db()
     
+    # Auto-setup default MCP servers if none exist
+    try:
+        from database import Database
+        servers = Database.list_mcp_servers()
+        if not servers:
+            print("🍊 Setting up default MCP servers...")
+            DEFAULT_SERVERS = [
+                {"name": "filesystem", "transport": "stdio", "command": "npx", 
+                 "args": ["-y", "@modelcontextprotocol/server-filesystem", "/sdcard/Documents"]},
+                {"name": "fetch", "transport": "stdio", "command": "uvx", "args": ["mcp-server-fetch"]},
+                {"name": "sqlite", "transport": "stdio", "command": "npx", 
+                 "args": ["-y", "@modelcontextprotocol/server-sqlite"]},
+                {"name": "memory", "transport": "stdio", "command": "npx", 
+                 "args": ["-y", "@modelcontextprotocol/server-memory"]},
+            ]
+            for s in DEFAULT_SERVERS:
+                Database.create_mcp_server(s["name"], s["transport"], s["command"], s["args"])
+                print(f"   ✅ Added {s['name']}")
+    except Exception as e:
+        print(f"   ⚠️  MCP setup skipped: {e}")
+    
     print(f"🍊 Starting Yuzu Companion...")
     print(f"   Host: {args.host}")
     print(f"   Port: {args.port}")
