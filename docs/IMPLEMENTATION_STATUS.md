@@ -109,10 +109,24 @@ Both paths can use the same `ToolRouter` and `ResultProcessor`.
 
 ## Next Steps for Full Integration
 
-To fully integrate into the app:
+To fully integrate into the app (NOT YET COMPLETE):
 
 1. **Update `app.py`** to use `ToolOrchestrator` for intent detection
 2. **Update web.py** to add WebSocket routes
 3. **Update templates** to include tool-card.js
 4. **Add MCP server config UI** in config page
 5. **Test the full flow** with real tool execution
+
+---
+
+## MCP Status (2026-03-13)
+
+**MCP is NOT YET CONNECTED** because the orchestration framework was implemented but NOT integrated into the main application.
+
+To use MCP:
+1. The framework is ready in `tools/orchestration/`
+2. Need to integrate into `app.py` to use IntentDetector
+3. Need MCP servers to be configured in database
+4. Need to add UI for MCP server management
+
+This is the next phase of work.
