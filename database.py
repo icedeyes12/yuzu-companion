@@ -120,6 +120,54 @@ class ConversationSegment(Base):
     importance = Column(Float, default=0.5)
     created_at = Column(DateTime, default=datetime.now)
 
+
+# ============== TOOLS REFACTOR SCHEMA ==============
+# Phase 1: Database Schema Evolution
+
+class ToolExecution(Base):
+    __tablename__ = 'tool_executions'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey('chat_sessions.id'), nullable=False)
+    message_id = Column(Integer, ForeignKey('messages.id'), nullable=True)
+    tool_type = Column(String(20), nullable=False)  # 'internal' or 'mcp'
+    tool_name = Column(String(50), nullable=False)
+    status = Column(String(20), nullable=False, default='pending')  # pending, running, success, error
+    input_params = Column(Text, default='{}')  # JSON string
+    output_result = Column(Text, nullable=True)  # JSON string
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+    completed_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    session = relationship("ChatSession", backref="tool_executions")
+    message = relationship("Message", backref="tool_execution")
+
+
+class MCPServer(Base):
+    __tablename__ = 'mcp_servers'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(50), unique=True, nullable=False)
+    transport = Column(String(10), nullable=False)  # 'stdio' or 'http'
+    command = Column(String(255), nullable=True)  # for stdio transport
+    args = Column(Text, default='[]')  # JSON list of arguments
+    url = Column(String(255), nullable=True)  # for http transport
+    env_vars = Column(Text, default='{}')  # JSON dict
+    is_active = Column(Boolean, default=True)
+    is_connected = Column(Boolean, default=False)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+# Indexes for tool tables
+Index('idx_tool_exec_session', ToolExecution.session_id)
+Index('idx_tool_exec_status', ToolExecution.status)
+Index('idx_tool_exec_message', ToolExecution.message_id)
+Index('idx_mcp_server_name', MCPServer.name)
+Index('idx_mcp_server_active', MCPServer.is_active)
+
 # Indexes for performance
 Index('idx_messages_session_id', Message.session_id)
 Index('idx_messages_timestamp', Message.timestamp)
@@ -1112,6 +1160,190 @@ class Database:
             'failed': failed_count,
             'total': len(message_ids)
         }
+
+    # ============== TOOLS REFACTOR DATABASE METHODS ==============
+    # Phase 1: Database Schema Evolution
+
+    @staticmethod
+    def create_tool_execution(session_id, tool_type, tool_name, input_params, message_id=None):
+        """Create a new tool execution record."""
+        with get_db_session() as session:
+            tool_exec = ToolExecution(
+                session_id=session_id,
+                message_id=message_id,
+                tool_type=tool_type,
+                tool_name=tool_name,
+                status='pending',
+                input_params=json.dumps(input_params),
+                created_at=datetime.now()
+            )
+            session.add(tool_exec)
+            session.commit()
+            return tool_exec.id
+
+    @staticmethod
+    def get_tool_execution(execution_id):
+        """Get a tool execution by ID."""
+        with get_db_session() as session:
+            tool_exec = session.query(ToolExecution).filter_by(id=execution_id).first()
+            if tool_exec:
+                return {
+                    'id': tool_exec.id,
+                    'session_id': tool_exec.session_id,
+                    'message_id': tool_exec.message_id,
+                    'tool_type': tool_exec.tool_type,
+                    'tool_name': tool_exec.tool_name,
+                    'status': tool_exec.status,
+                    'input_params': json.loads(tool_exec.input_params or '{}'),
+                    'output_result': json.loads(tool_exec.output_result or '{}'),
+                    'error_message': tool_exec.error_message,
+                    'created_at': tool_exec.created_at,
+                    'completed_at': tool_exec.completed_at
+                }
+            return None
+
+    @staticmethod
+    def update_tool_execution_status(execution_id, status):
+        """Update tool execution status."""
+        with get_db_session() as session:
+            tool_exec = session.query(ToolExecution).filter_by(id=execution_id).first()
+            if tool_exec:
+                tool_exec.status = status
+                if status in ('success', 'error'):
+                    tool_exec.completed_at = datetime.now()
+                session.commit()
+                return True
+            return False
+
+    @staticmethod
+    def complete_tool_execution(execution_id, output_result=None, error_message=None):
+        """Mark tool execution as complete with result or error."""
+        with get_db_session() as session:
+            tool_exec = session.query(ToolExecution).filter_by(id=execution_id).first()
+            if tool_exec:
+                if error_message:
+                    tool_exec.status = 'error'
+                    tool_exec.error_message = error_message
+                else:
+                    tool_exec.status = 'success'
+                    tool_exec.output_result = json.dumps(output_result) if output_result else None
+                tool_exec.completed_at = datetime.now()
+                session.commit()
+                return True
+            return False
+
+    @staticmethod
+    def list_tool_executions(session_id, status=None, limit=50):
+        """List tool executions for a session."""
+        with get_db_session() as session:
+            query = session.query(ToolExecution).filter_by(session_id=session_id)
+            if status:
+                query = query.filter_by(status=status)
+            tool_execs = query.order_by(ToolExecution.created_at.desc()).limit(limit).all()
+            
+            return [{
+                'id': te.id,
+                'tool_name': te.tool_name,
+                'status': te.status,
+                'created_at': te.created_at,
+                'completed_at': te.completed_at
+            } for te in tool_execs]
+
+    # MCP Server methods
+
+    @staticmethod
+    def create_mcp_server(name, transport, command=None, args=None, url=None, env_vars=None):
+        """Create a new MCP server configuration."""
+        with get_db_session() as session:
+            # Check if name exists
+            existing = session.query(MCPServer).filter_by(name=name).first()
+            if existing:
+                return None
+            
+            server = MCPServer(
+                name=name,
+                transport=transport,
+                command=command,
+                args=json.dumps(args or []),
+                url=url,
+                env_vars=json.dumps(env_vars or {}),
+                is_active=True,
+                is_connected=False,
+                created_at=datetime.now()
+            )
+            session.add(server)
+            session.commit()
+            return server.id
+
+    @staticmethod
+    def get_mcp_server(server_id=None, name=None):
+        """Get MCP server by ID or name."""
+        with get_db_session() as session:
+            if server_id:
+                server = session.query(MCPServer).filter_by(id=server_id).first()
+            elif name:
+                server = session.query(MCPServer).filter_by(name=name).first()
+            else:
+                return None
+            
+            if server:
+                return {
+                    'id': server.id,
+                    'name': server.name,
+                    'transport': server.transport,
+                    'command': server.command,
+                    'args': json.loads(server.args or '[]'),
+                    'url': server.url,
+                    'env_vars': json.loads(server.env_vars or '{}'),
+                    'is_active': server.is_active,
+                    'is_connected': server.is_connected,
+                    'last_error': server.last_error,
+                    'created_at': server.created_at
+                }
+            return None
+
+    @staticmethod
+    def update_mcp_server(server_id, **kwargs):
+        """Update MCP server configuration."""
+        with get_db_session() as session:
+            server = session.query(MCPServer).filter_by(id=server_id).first()
+            if not server:
+                return False
+            
+            for key, value in kwargs.items():
+                if key in ('args', 'env_vars') and value is not None:
+                    value = json.dumps(value)
+                setattr(server, key, value)
+            
+            server.updated_at = datetime.now()
+            session.commit()
+            return True
+
+    @staticmethod
+    def list_mcp_servers(active_only=False):
+        """List all MCP servers."""
+        with get_db_session() as session:
+            query = session.query(MCPServer)
+            if active_only:
+                query = query.filter_by(is_active=True)
+            servers = query.order_by(MCPServer.name).all()
+            
+            return [{
+                'id': s.id,
+                'name': s.name,
+                'transport': s.transport,
+                'is_active': s.is_active,
+                'is_connected': s.is_connected,
+                'last_error': s.last_error
+            } for s in servers]
+
+    @staticmethod
+    def delete_mcp_server(server_id):
+        """Delete an MCP server configuration."""
+        with get_db_session() as session:
+            deleted = session.query(MCPServer).filter_by(id=server_id).delete()
+            session.commit()
+            return deleted > 0
 
 # Initialize database
 init_db()
