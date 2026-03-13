@@ -237,6 +237,76 @@ Enable debug mode:
 python web.py --debug
 ```
 
+### MCP Server Configuration
+
+MCP (Model Context Protocol) servers extend Yuzu Companion with additional tools and capabilities. This is optional and not required for basic usage.
+
+#### Prerequisites
+
+- Node.js 18+ (for running MCP servers)
+- npm or npx
+
+#### Installation
+
+1. Install required MCP servers:
+```bash
+# Filesystem server (read/write local files)
+npm install -g @modelcontextprotocol/server-filesystem
+
+# Fetch server (fetch any URL)
+npm install -g mcp-server-fetch
+
+# SQLite server (query SQLite databases)
+npm install -g @modelcontextprotocol/server-sqlite
+```
+
+2. Configure MCP servers via web interface: **Config > MCP Servers**
+
+3. Add server configuration:
+```json
+{
+  "name": "filesystem",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/notes"],
+  "env": {},
+  "auto_start": true
+}
+```
+
+#### Available MCP Servers
+
+| Server | Use Case | Install |
+|--------|----------|---------|
+| `@modelcontextprotocol/server-filesystem` | Read/write local files | `npx -y @modelcontextprotocol/server-filesystem <path>` |
+| `mcp-server-fetch` | Fetch any URL | `npx -y mcp-server-fetch` |
+| `@modelcontextprotocol/server-sqlite` | Query SQLite databases | `npx -y @modelcontextprotocol/server-sqlite <db-path>` |
+| `@modelcontextprotocol/server-memory` | Persistent key-value storage | `npx -y @modelcontextprotocol/server-memory` |
+
+#### Termux (Android)
+
+For Termux, use npx with the `-y` flag:
+```json
+{
+  "name": "notes",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-filesystem", "/sdcard/Documents/yuzu-notes"]
+}
+```
+
+#### Security
+
+- Only enable servers you need
+- Review server permissions before enabling
+- Keep servers updated
+
+#### Troubleshooting
+
+- Server fails to start: Check Node.js version (`node --version`)
+- Connection refused: Ensure server is running and port is correct
+- Permission denied: Check file/directory permissions
+
 ---
 
 ## Environment Variables
