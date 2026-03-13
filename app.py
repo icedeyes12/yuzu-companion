@@ -1863,7 +1863,7 @@ You are an expert psychologist and data analyst. Your task is to analyze the con
 1. **Personality Analysis**: Identify core personality traits, communication style, emotional patterns
 2. **Interests & Preferences**: What does the user like/dislike? Topics they frequently discuss
 3. **Behavioral Patterns**: How do they interact? Response patterns, engagement style
-4. **Relationship Dynamics**: How is their relationship with the AI? Emotional connection, trust level
+4. **Relationship Dynamics**: How is their relationship with the AI? Emotional tone, trust level
 5. **Significant Content**: Important memories, experiences, or topics that are emotionally charged
 
 ### OUTPUT FORMAT REQUIREMENTS:
@@ -2344,8 +2344,7 @@ def parse_global_profile_summary(summary_text: str) -> Dict:
                 profile_data["relationship_dynamics"] = content
             elif current_section in ['likes', 'dislikes', 'personality_traits', 'important_memories']:
                 # Parse comma-separated lists
-                items = []
-                for item in content.split(',') if item.strip()]
+                items = [item.strip() for item in content.split(',') if item.strip()]
                 profile_data["key_facts"][current_section] = items
     
     for line in lines:
@@ -2421,7 +2420,7 @@ def save_section_content(profile_data, section_key, content):
             
     elif section_key in ['likes', 'dislikes', 'personality_traits', 'important_memories']:
         items = [item.strip() for item in content.split(',') if item.strip()]
-        profile_data["key_facts"][section_key].extend(items)
+        profile_data["key_facts"][section_key] = items
 
 
 def get_available_providers():
