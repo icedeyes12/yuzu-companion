@@ -1,0 +1,155 @@
+/* Simple Tool Cards - Non-WebSocket version */
+
+.tool-execution-card {
+  margin: 12px 20px;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  max-width: 80%;
+  animation: toolCardSlide 0.3s ease;
+}
+
+@keyframes toolCardSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tool-execution-card.tool-pending {
+  border-color: var(--yuzu-soft-yellow);
+  background: rgba(255, 209, 102, 0.1);
+}
+
+.tool-execution-card.tool-running {
+  border-color: var(--yuzu-soft-blue);
+  background: rgba(79, 172, 254, 0.1);
+}
+
+.tool-execution-card.tool-success {
+  border-color: var(--yuzu-mint-green);
+  background: rgba(67, 233, 123, 0.1);
+}
+
+.tool-execution-card.tool-error {
+  border-color: var(--yuzu-soft-pink);
+  background: rgba(255, 154, 158, 0.1);
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tool-icon {
+  font-size: 20px;
+}
+
+.tool-name {
+  font-weight: 600;
+  color: var(--text-color);
+  flex: 1;
+}
+
+.tool-status-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--text-color);
+}
+
+.tool-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tool-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid transparent;
+  border-top-color: var(--text-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tool-status {
+  color: var(--text-color);
+  opacity: 0.8;
+  font-size: 14px;
+}
+
+.tool-result-image {
+  max-width: 100%;
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
+.tool-file-result,
+.tool-text-result,
+.tool-json-result {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 12px;
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 13px;
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.tool-error-message {
+  color: #ff6b6b;
+  padding: 12px;
+  background: rgba(255, 0, 0, 0.1);
+  border-radius: 8px;
+}
+
+/* MCP Server Status Indicator */
+.mcp-status-bar {
+  position: fixed;
+  bottom: 80px;
+  left: 20px;
+  display: flex;
+  gap: 8px;
+  z-index: 100;
+}
+
+.mcp-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff6b6b;
+  transition: background 0.3s;
+}
+
+.mcp-status-dot.connected {
+  background: #4caf50;
+}
+
+.mcp-status-dot.connecting {
+  background: #ffc107;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
