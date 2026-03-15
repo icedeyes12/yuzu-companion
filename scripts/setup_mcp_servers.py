@@ -54,3 +54,43 @@ ALL_SERVERS = [
         "description": "Time and date utilities",
     },
     {
+        "name": "shell",
+        "transport": "stdio",
+        "command": "python3",
+        "args": ["tools/shell_tool.py"],
+        "description": "Execute shell commands (WARNING: High risk)",
+    },
+    {
+        "name": "weather",
+        "transport": "stdio",
+        "command": "python3",
+        "args": ["-c", "import sys; print('Weather MCP placeholder')"],
+        "description": "Weather information",
+    },
+]
+
+def setup_mcp_servers():
+    """Create all MCP server configurations."""
+    print("Setting up MCP servers...")
+    
+    for server in ALL_SERVERS:
+        try:
+            server_id = Database.create_mcp_server(
+                name=server["name"],
+                transport=server["transport"],
+                command=server["command"],
+                args=server["args"],
+                url=server.get("url"),
+                env_vars=server.get("env_vars", {}),
+            )
+            if server_id:
+                print(f"  ✅ {server['name']}: Created")
+            else:
+                print(f"  ℹ️  {server['name']}: Already exists")
+        except Exception as e:
+            print(f"  ⚠️  {server['name']}: Error - {e}")
+    
+    print("MCP server setup complete!")
+
+if __name__ == "__main__":
+    setup_mcp_servers()

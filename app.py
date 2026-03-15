@@ -153,9 +153,10 @@ def _parse_image_result_from_formatted(formatted_result):
 def _detect_command(response_text):
     """
     Detect if the response starts with a tool command on the first line.
+    Supports both internal format (/tool) and MCP format (MCP:server:tool).
     
     Returns:
-        dict: {"command": str, "args": str, "full_command": str} if command detected
+        dict: {"command": str, "args": str, "full_command": str, "type": str} if command detected
         None: if no command on first line or invalid format
     """
     if not response_text or not response_text.strip():
@@ -165,23 +166,42 @@ def _detect_command(response_text):
     lines = response_text.split('\n')
     first_line = lines[0].strip()
     
-    # Check if first line starts with /
-    if not first_line.startswith('/'):
-        return None
+    # Check for MCP format: MCP:server:tool args
+    if first_line.startswith('MCP:'):
+        parts = first_line.split(None, 1)
+        mcp_full = parts[0]  # MCP:server:tool
+        args = parts[1] if len(parts) > 1 else ""
+        
+        # Parse MCP:server:tool format
+        mcp_parts = mcp_full.split(':')
+        if len(mcp_parts) >= 3:
+            server = mcp_parts[1]
+            tool = ':'.join(mcp_parts[2:])  # Handle tools with : in name
+            return {
+                "command": tool,
+                "args": args,
+                "full_command": first_line,
+                "type": "mcp",
+                "server": server
+            }
     
-    # Parse command
-    parts = first_line.split(None, 1)  # Split on first whitespace
-    command = parts[0]  # e.g., "/request"
-    args = parts[1] if len(parts) > 1 else ""
+    # Check for internal format: /tool args
+    if first_line.startswith('/'):
+        parts = first_line.split(None, 1)
+        command = parts[0]  # e.g., "/request"
+        args = parts[1] if len(parts) > 1 else ""
+        
+        # Extract tool name (remove /)
+        tool_name = command[1:]
+        
+        return {
+            "command": tool_name,
+            "args": args,
+            "full_command": first_line,
+            "type": "internal"
+        }
     
-    # Extract tool name (remove /)
-    tool_name = command[1:]  # Remove leading /
-    
-    return {
-        "command": tool_name,
-        "args": args,
-        "full_command": first_line
-    }
+    return None
 
 def _is_tool_markdown(response_text):
     """True when response is a formatted tool markdown contract."""
@@ -991,8 +1011,29 @@ AVAILABLE TOOLS & COMMANDS:
 The following tools are available for execution via command syntax:
 {available_tools}
 
-When tool execution is needed, output the command as the FIRST line.
-Do not add explanations or acknowledgments before the command.
+
+TOOL FORMAT:
+- Internal tools: /tool_name arguments
+- MCP tools: MCP:server_name:tool_name arguments
+
+Available Internal Tools:
+- /imagine <prompt> - Generate images
+- /request <URL> - Fetch web data
+- /memory_search <query> - Search conversation history
+- /memory_sql <query> - Query memory database
+
+Available MCP Tools (MCP:memory):
+- MCP:memory:search_nodes <query> - Search memory graph
+- MCP:memory:get_entity <name> - Get specific entity
+- MCP:memory:create_entities <entities> - Create new entities
+- MCP:memory:add_observations <entity, observations> - Add observations
+
+CRITICAL RULES:
+1. ONLY use tools from the lists above
+2. For memory operations, use MCP:memory:search_nodes or MCP:memory:get_entity
+3. Do NOT use non-existent tools like "read_graph" or "search_nodes location"
+4. Output the command as the FIRST line without explanations
+5. If a tool fails, report the error naturally without retrying automatically
 
 ---
 

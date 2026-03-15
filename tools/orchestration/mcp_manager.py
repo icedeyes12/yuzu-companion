@@ -273,6 +273,10 @@ class MCPManager:
             instance.process.stdin.write(json.dumps(notif) + "\n")
             instance.process.stdin.flush()
             
+            # Small delay for server readiness
+            import time
+            time.sleep(0.2)
+            
             return True
             
         except Exception as e:
