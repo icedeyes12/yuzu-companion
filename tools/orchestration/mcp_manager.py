@@ -294,11 +294,17 @@ class MCPManager:
             self._discover_http_tools(instance)
     
     def _discover_stdio_tools(self, instance: MCPServerInstance):
-        """Discover tools via stdio"""
+        """Discover tools via stdio with timeout and error handling"""
         if not instance.process:
             return
         
         try:
+            import select
+            import time
+            
+            # Small delay to ensure server is ready
+            time.sleep(0.3)
+            
             # Send tools/list request
             request = {
                 "jsonrpc": "2.0",
@@ -310,12 +316,36 @@ class MCPManager:
             instance.process.stdin.write(json.dumps(request) + "\n")
             instance.process.stdin.flush()
             
+            # Wait for response with timeout
+            ready, _, _ = select.select([instance.process.stdout], [], [], 5.0)
+            if not ready:
+                # Try to get stderr for diagnosis
+                stderr_output = ""
+                try:
+                    import os
+                    fd = instance.process.stderr.fileno()
+                    ready_err, _, _ = select.select([instance.process.stderr], [], [], 0.5)
+                    if ready_err:
+                        stderr_output = instance.process.stderr.read(1024)
+                except:
+                    pass
+                
+                print(f"[MCPManager] ⚠️ Tool discovery timeout for {instance.name}")
+                if stderr_output:
+                    print(f"[MCPManager]   stderr: {stderr_output[:200]}")
+                return
+            
             # Read response
             response_line = instance.process.stdout.readline()
             if not response_line:
+                print(f"[MCPManager] ⚠️ No tool response from {instance.name}")
                 return
             
             response = json.loads(response_line)
+            
+            if "error" in response:
+                print(f"[MCPManager] ⚠️ Tool discovery error for {instance.name}: {response['error']}")
+                return
             
             if "result" in response:
                 tools_data = response["result"].get("tools", [])
@@ -328,9 +358,12 @@ class MCPManager:
                     )
                     for t in tools_data
                 ]
+                print(f"[MCPManager] ✅ {instance.name}: Discovered {len(instance.tools)} tools")
                 
+        except json.JSONDecodeError as e:
+            print(f"[MCPManager] ⚠️ Invalid JSON from {instance.name}: {e}")
         except Exception as e:
-            print(f"[MCPManager] Tool discovery failed for {instance.name}: {e}")
+            print(f"[MCPManager] ⚠️ Tool discovery failed for {instance.name}: {e}")
     
     def _discover_http_tools(self, instance: MCPServerInstance):
         """Discover tools via HTTP"""

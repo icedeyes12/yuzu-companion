@@ -10,26 +10,30 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import Database
 
+# Get the project root directory
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WORKSPACE_DIR = os.path.expanduser("~/workspace") if os.path.exists(os.path.expanduser("~/workspace")) else "/home/workspace"
+
 ALL_SERVERS = [
     {
         "name": "filesystem",
         "transport": "stdio",
         "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/sdcard/Documents"],
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", WORKSPACE_DIR],
         "description": "Access files on device storage",
     },
     {
         "name": "fetch",
         "transport": "stdio",
-        "command": "python",
-        "args": ["-m", "mcp_server_fetch"],
+        "command": "uvx",
+        "args": ["mcp-server-fetch"],
         "description": "Fetch URLs and web content",
     },
     {
         "name": "sqlite",
         "transport": "stdio",
         "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-sqlite", "--db-path", "/data/data/com.termux/files/home/yuzu-companion/yuzu_core.db"],
+        "args": ["-y", "@modelcontextprotocol/server-sqlite", "--db-path", os.path.join(PROJECT_DIR, "/yuzu_core.db")],
         "description": "Query SQLite databases",
     },
     {
@@ -43,7 +47,7 @@ ALL_SERVERS = [
         "name": "git",
         "transport": "stdio",
         "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-git"],
+        "args": ["-y", "@modelcontextprotocol/server-git", PROJECT_DIR],
         "description": "Git repository operations",
     },
     {
@@ -54,24 +58,19 @@ ALL_SERVERS = [
         "description": "Time and date utilities",
     },
     {
-        "name": "shell",
-        "transport": "stdio",
-        "command": "python3",
-        "args": ["tools/shell_tool.py"],
-        "description": "Execute shell commands (WARNING: High risk)",
-    },
-    {
         "name": "weather",
         "transport": "stdio",
-        "command": "python3",
-        "args": ["-c", "import sys; print('Weather MCP placeholder')"],
-        "description": "Weather information",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-fetch"],  # Using fetch as weather API caller
+        "description": "Weather information (requires manual configuration)",
     },
 ]
 
 def setup_mcp_servers():
     """Create all MCP server configurations."""
     print("Setting up MCP servers...")
+    print(f"Project directory: {PROJECT_DIR}")
+    print(f"Workspace directory: {WORKSPACE_DIR}")
     
     for server in ALL_SERVERS:
         try:
