@@ -23,7 +23,7 @@ from typing import Dict, Optional, List
 from database import Database, ALL_TOOL_ROLES
 from providers import get_ai_manager, reload_ai_manager
 from tools import multimodal_tools
-from tools.registry import execute_tool, get_tool_role, is_terminal_tool, TOOL_ROLE_MAP
+from tools.registry import execute_tool, get_tool_role, is_terminal_tool, TOOL_ROLE_MAP, build_markdown_contract
 
 # Import orchestration modules (Phase 2 integration)
 try:
@@ -2305,7 +2305,7 @@ def _try_alternative_models(prompt: str, api_key: str) -> Optional[str]:
         "Authorization": f"Bearer {api_key}"
     }
     
-    for model, max_tokens in alternatives:
+    for model in alternatives:
         print(f"[INFO] Trying alternative model: {model}")
         
         try:
