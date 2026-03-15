@@ -60,6 +60,41 @@ class AgenticToolLoop:
         
     def execute(
         self,
+        initial_command: str,
+        command_info: Dict[str, Any],
+        generate_ai_response_func: Callable,
+        interface: str = "web"
+    ) -> Tuple[str, List[ToolAttempt]]:
+        """
+        Simplified single-pass tool execution.
+        
+        Executes tool once and generates final response.
+        No retry loop - simple and predictable.
+        
+        Returns:
+            (final_response, attempts_list)
+        """
+        # Execute the tool
+        attempt = self._execute_tool_attempt(1, command_info)
+        self.attempts.append(attempt)
+        
+        # Build display output for user
+        if attempt.error:
+            display_output = f"Error: {attempt.error}"
+        else:
+            display_output = attempt.result or "(no output)"
+        
+        # Generate final response with tool result in context
+        final_response = self._generate_final_response(
+            generate_ai_response_func,
+            interface
+        )
+        
+        return final_response, self.attempts
+
+    def _execute_tool_attempt(
+        self,
+        attempt_number: int,
         command_info: Dict[str, Any]
     ) -> ToolAttempt:
         """
@@ -95,7 +130,7 @@ class AgenticToolLoop:
                     raw_result = result.get("result", {})
                     output_text = self._extract_mcp_output(raw_result)
                     return ToolAttempt(
-                        attempt_number=1,
+                        attempt_number=attempt_number,
                         tool_type="mcp",
                         tool_name=tool_name,
                         server_name=server_name,
@@ -105,7 +140,7 @@ class AgenticToolLoop:
                     )
                 else:
                     return ToolAttempt(
-                        attempt_number=1,
+                        attempt_number=attempt_number,
                         tool_type="mcp",
                         tool_name=tool_name,
                         server_name=server_name,
@@ -123,7 +158,7 @@ class AgenticToolLoop:
                 # Check if result contains error
                 if "Error:" in result or "error" in result.lower():
                     return ToolAttempt(
-                        attempt_number=1,
+                        attempt_number=attempt_number,
                         tool_type="internal",
                         tool_name=tool_name,
                         server_name=None,
@@ -133,7 +168,7 @@ class AgenticToolLoop:
                     )
                 else:
                     return ToolAttempt(
-                        attempt_number=1,
+                        attempt_number=attempt_number,
                         tool_type="internal",
                         tool_name=tool_name,
                         server_name=None,
@@ -145,7 +180,7 @@ class AgenticToolLoop:
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
             return ToolAttempt(
-                attempt_number=1,
+                attempt_number=attempt_number,
                 tool_type=tool_type,
                 tool_name=tool_name,
                 server_name=server_name,
@@ -216,6 +251,21 @@ class AgenticToolLoop:
         
         # Fallback: return the whole thing as JSON
         return json.dumps(result, indent=2)
+
+    def _generate_final_response(
+        self,
+        generate_ai_response_func: Callable,
+        interface: str
+    ) -> str:
+        """Generate final response after tool execution."""
+        # Tool results are now in DB context
+        # LLM responds naturally based on conversation history
+        return generate_ai_response_func(
+            self.profile,
+            "",  # Empty prompt - respond based on context
+            interface,
+            self.session_id
+        )
 
 
 # Legacy compatibility - redirect to simpler implementation
