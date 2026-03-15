@@ -769,8 +769,11 @@ async function loadChatHistory() {
                         role: msg.role,
                         preview: String(msg.content || '').slice(0, 200)
                     });
+                    // Pass actual role (including tool roles) to createMessageElement
+                    const displayRole = msg.role === "user" ? "user" : 
+                                       msg.role.endsWith("_tools") ? msg.role : "ai";
                     const msgElement = createMessageElement(
-                        msg.role === "user" ? "user" : "ai", 
+                        displayRole,
                         msg.content, 
                         msg.timestamp
                     );
@@ -845,8 +848,11 @@ function addScrollLoadListener(fullHistory) {
                             role: msg.role,
                             preview: String(msg.content || '').slice(0, 200)
                         });
+                        // Preserve tool roles for proper rendering
+                        const displayRole = msg.role === "user" ? "user" : 
+                                           msg.role.endsWith("_tools") ? msg.role : "ai";
                         const msgElement = createMessageElement(
-                            msg.role === "user" ? "user" : "ai", 
+                            displayRole, 
                             msg.content, 
                             msg.timestamp
                         );
