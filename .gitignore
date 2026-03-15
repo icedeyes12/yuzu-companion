@@ -47,3 +47,10 @@ copilot/
 *.gz
 
 yuzu_images/
+
+# Agent/AI artifacts
+.agent/
+*.prompt.md
+AGENTS.md
+SOUL.md
+

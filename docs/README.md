@@ -658,3 +658,152 @@ flowchart LR
 - [INSTALL.md](../INSTALL.md) - Setup instructions
 - [QUICK_FIXES.md](../QUICK_FIXES.md) - Recent improvements summary
 - [AUDIT_REPORT.md](../AUDIT_REPORT.md) - Full codebase audit
+
+---
+
+## 🆕 New Clean Architecture (v2 Refactoring)
+
+As of March 2026, Yuzu Companion is undergoing a phased refactoring to implement **Clean Architecture** principles. This new structure exists alongside the legacy codebase and is activated via feature flags.
+
+### 📁 New Directory Structure
+
+```
+yuzu-companion/
+├── src/yuzu/                    # New Clean Architecture source
+│   ├── domain/                  # Business logic (no external deps)
+│   │   ├── interfaces/          # Ports (abstract contracts)
+│   │   ├── models/              # Domain entities
+│   │   └── services/            # Domain services
+│   ├── application/             # Use cases
+│   │   ├── handlers/            # Request handlers
+│   │   └── events/              # Domain events
+│   ├── infrastructure/          # External concerns
+│   │   ├── ai/                  # AI providers
+│   │   ├── db/                  # Database repositories
+│   │   ├── tools/               # Tool implementations
+│   │   ├── security/            # Encryption
+│   │   └── monitoring/          # Shadow mode, metrics
+│   └── interfaces/              # UI adapters
+│       ├── cli/                 # Terminal adapter
+│       └── web/                 # Web adapter
+└── tests/                       # Organized test suite
+    ├── unit/
+    ├── integration/
+    └── benchmarks/
+```
+
+### 🏗️ Architecture Layers
+
+```mermaid
+flowchart TB
+    subgraph "Interfaces Layer"
+        CLI["CLI Adapter"]
+        WEB["Web Adapter"]
+    end
+
+    subgraph "Application Layer"
+        HANDLER["Chat Handler"]
+        SERVICES["App Services"]
+    end
+
+    subgraph "Domain Layer"
+        DOMAIN["Domain Services"]
+        MODELS["Domain Models"]
+        PORTS["Interfaces (Ports)"]
+    end
+
+    subgraph "Infrastructure Layer"
+        REPOS["Repositories"]
+        PROVIDERS["AI Providers"]
+        TOOLS["Tool Executors"]
+        SHADOW["Shadow Mode"]
+    end
+
+    CLI --> HANDLER
+    WEB --> HANDLER
+    HANDLER --> SERVICES
+    SERVICES --> DOMAIN
+    DOMAIN --> PORTS
+    PORTS --> REPOS
+    PORTS --> PROVIDERS
+    PORTS --> TOOLS
+    SHADOW --> HANDLER
+```
+
+### 🎯 Key Improvements
+
+| Aspect | Legacy | Clean Architecture |
+|--------|--------|-------------------|
+| **Testability** | 9 tests | 34+ tests |
+| **Separation** | Mixed concerns | Clear layer boundaries |
+| **Dependencies** | Tight coupling | Dependency inversion |
+| **Providers** | Ad-hoc logic | Base class + circuit breaker |
+| **Tools** | Registry pattern | Domain service + orchestration |
+| **Rollback** | Difficult | Feature flags enable instant rollback |
+
+### 🚦 Feature Flags
+
+Controlled rollout via environment variables:
+
+| Flag | Variable | Default | Effect |
+|------|----------|---------|--------|
+| New Database | `YUZU_USE_NEW_DB` | `false` | Use SQLAlchemy repositories |
+| New Chat Handler | `YUZU_USE_NEW_CHAT` | `false` | Use domain service chat flow |
+| New Providers | `YUZU_USE_NEW_PROVIDERS` | `false` | Use BaseAIProvider pattern |
+| New Tools | `YUZU_USE_NEW_TOOLS` | `false` | Use ToolService orchestration |
+| Debug Mode | `YUZU_DEBUG` | `false` | Extra logging |
+
+### 🧪 Shadow Mode Testing
+
+Compare old vs new implementations side-by-side:
+
+```python
+from yuzu.infrastructure.monitoring import shadow_compare
+
+@shadow_compare("chat_handler")
+def handle_user_message(user_input, interface="terminal"):
+    # Both implementations run, results compared
+    return response
+```
+
+Metrics logged to `logs/shadow_mode/`:
+- Response differences
+- Performance comparison
+- Error rates
+- Latency percentiles
+
+### 🔄 Migration Phases
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| 1. Foundation | ✅ Complete | Interfaces, models, DI container |
+| 2. Repositories | ✅ Complete | SQLAlchemy adapters |
+| 3. Business Logic | ✅ Complete | ChatService, ToolService |
+| 4. Adapters | ✅ Complete | CLI, Web bridges |
+| 5. Shadow Testing | ✅ Complete | A/B comparison, rollout |
+| 6. Full Cutover | ⏳ Future | Remove legacy code |
+
+### 📊 Test Coverage
+
+```
+34 tests passing:
+├── Unit: Domain Models (9)
+├── Unit: Chat Handler (6)
+├── Unit: Adapters (7)
+├── Unit: Shadow Mode (6)
+└── Integration: Repositories (4)
+```
+
+### 🏛️ Clean Architecture Principles Applied
+
+1. **Dependency Inversion**: Domain depends only on abstractions (interfaces)
+2. **Separation of Concerns**: Each layer has single responsibility
+3. **Testability**: 34+ unit tests with mocked dependencies
+4. **Framework Independence**: Domain has zero external dependencies
+5. **Feature Flags**: Zero-downtime migration with instant rollback
+
+### 📖 Further Reading
+
+- Architecture Decision Records: `.agent/archive/`
+- Refactoring Roadmap: `.agent/archive/REFACTOR_ROADMAP.md`
+- Phase Summaries: `.agent/archive/PHASE*_SUMMARY.md`

@@ -329,3 +329,149 @@ After installation:
 4. Explore Config page for advanced settings
 
 See [README.md](README.md) for full architecture documentation.
+
+---
+
+## 🆕 Clean Architecture Setup (Advanced)
+
+For developers working with the new Clean Architecture structure.
+
+### Prerequisites
+
+| Requirement | Version |
+|-------------|---------|
+| Python | 3.11+ |
+| pytest | 7.0+ |
+| SQLite | 3.35+ |
+
+### New Architecture Installation
+
+```bash
+# Install with dev dependencies
+pip install -r requirements.txt
+pip install pytest pytest-asyncio  # For testing
+
+# Verify imports work
+python -c "import sys; sys.path.insert(0, 'src'); from yuzu.domain.models import Profile; print('✅ Clean Architecture imports OK')"
+```
+
+### Running Tests
+
+```bash
+# All tests
+cd yuzu-companion
+python -m pytest tests/unit/ tests/integration/ -v
+
+# With coverage
+python -m pytest --cov=src/yuzu tests/
+
+# Specific test file
+python -m pytest tests/unit/test_chat_handler.py -v
+```
+
+### Feature Flag Configuration
+
+Create `.env` file for local development:
+
+```bash
+# .env
+YUZU_USE_NEW_DB=false
+YUZU_USE_NEW_CHAT=false
+YUZU_USE_NEW_PROVIDERS=false
+YUZU_USE_NEW_TOOLS=false
+YUZU_DEBUG=true
+```
+
+Or set inline:
+```bash
+YUZU_USE_NEW_CHAT=true python web.py
+```
+
+### Shadow Mode Testing
+
+Enable side-by-side comparison:
+
+```bash
+# Shadow mode compares old vs new implementations
+YUZU_SHADOW_MODE=true YUZU_SHADOW_LOG_LEVEL=debug python web.py
+```
+
+Logs written to: `logs/shadow_mode/YYYY-MM-DD.jsonl`
+
+### Provider Testing (New Architecture)
+
+```bash
+# Test new Ollama provider with circuit breaker
+python -c "
+import sys
+sys.path.insert(0, 'src')
+from yuzu.infrastructure.ai.providers.ollama import OllamaProvider
+from yuzu.infrastructure.config.container import get_container
+
+provider = OllamaProvider()
+print(f'Available: {provider.is_available}')
+print(f'Models: {provider.get_models()[:3]}...')
+"
+```
+
+### Architecture Verification
+
+```bash
+# Verify no circular dependencies
+python -c "
+import sys
+sys.path.insert(0, 'src')
+from yuzu.domain.models import Profile
+from yuzu.domain.services import ChatService
+from yuzu.infrastructure.ai import get_provider_registry
+from yuzu.application.handlers import get_chat_handler
+from yuzu.interfaces.cli import get_cli_adapter
+print('✅ All layers import successfully')
+"
+```
+
+### Migration Checklist
+
+For contributors working on the migration:
+
+- [ ] Tests pass: `python -m pytest tests/ -q`
+- [ ] No circular imports: Verify with script above
+- [ ] Feature flags work: Toggle via env vars
+- [ ] Shadow mode clean: No major discrepancies
+- [ ] Documentation updated: This README section
+
+### Debugging New Architecture
+
+```bash
+# Enable debug logging
+YUZU_DEBUG=true python main.py
+
+# Run specific component in isolation
+python -m pytest tests/unit/test_chat_handler.py::TestChatHandler::test_handle_message -v -s
+
+# Profile performance
+python -m cProfile -o profile.stats -c "
+import sys
+sys.path.insert(0, 'src')
+from yuzu.application.handlers.chat_handler import handle_user_message
+handle_user_message('Hello', 'test')
+"
+```
+
+### Clean Architecture Development Workflow
+
+1. **Make changes** in `src/yuzu/`
+2. **Run tests**: `python -m pytest tests/`
+3. **Check shadow mode**: Enable and compare
+4. **Update docs**: Add ADR to `.agent/archive/`
+5. **Commit**: With clear migration phase tag
+
+### Troubleshooting New Architecture
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| ImportError: No module named 'yuzu' | Path not set | `sys.path.insert(0, 'src')` |
+| Feature flag not working | Env var name | Check `YUZU_` prefix |
+| Shadow mode not logging | Log dir missing | `mkdir -p logs/shadow_mode` |
+| Test failures after changes | Breaking change | Update tests or use adapter pattern |
+
