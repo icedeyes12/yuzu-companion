@@ -642,7 +642,7 @@ function createMessageElement(role, content, timestamp = null) {
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
             </svg>
         `;
-        copyBtn.onclick = () => copyFullMessage(content);
+        copyBtn.onclick = (e) => copyFullMessage(content, e.target);
         footer.appendChild(copyBtn);
     }
 
@@ -651,12 +651,64 @@ function createMessageElement(role, content, timestamp = null) {
     return msg;
 }
 
-function copyFullMessage(content) {
-    navigator.clipboard.writeText(content).then(() => {
-        console.log('Message copied to clipboard');
-    }).catch(err => {
-        console.error('Failed to copy message:', err);
-    });
+function copyFullMessage(content, btnElement = null) {
+    // Try modern clipboard API first
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(content).then(() => {
+            console.log('Message copied to clipboard');
+            showCopyFeedback(btnElement, 'Copied!');
+        }).catch(err => {
+            console.error('Failed to copy with clipboard API:', err);
+            fallbackCopy(content, btnElement);
+        });
+    } else {
+        // Fallback for non-secure contexts
+        fallbackCopy(content, btnElement);
+    }
+}
+
+function fallbackCopy(text, btnElement = null) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    
+    try {
+        textarea.select();
+        textarea.setSelectionRange(0, 99999); // For mobile
+        const success = document.execCommand('copy');
+        if (success) {
+            console.log('Message copied via fallback');
+            showCopyFeedback(btnElement, 'Copied!');
+        } else {
+            console.error('Fallback copy failed');
+            showCopyFeedback(btnElement, 'Failed to copy', true);
+        }
+    } catch (err) {
+        console.error('Fallback copy error:', err);
+        showCopyFeedback(btnElement, 'Failed to copy', true);
+    } finally {
+        document.body.removeChild(textarea);
+    }
+}
+
+function showCopyFeedback(btnElement, message, isError = false) {
+    if (!btnElement) return;
+    
+    const originalHTML = btnElement.innerHTML;
+    const originalTitle = btnElement.title;
+    
+    btnElement.innerHTML = `<span style="font-size: 12px;">${message}</span>`;
+    btnElement.style.color = isError ? '#ff6b6b' : '#4ade80';
+    btnElement.title = message;
+    
+    setTimeout(() => {
+        btnElement.innerHTML = originalHTML;
+        btnElement.style.color = '';
+        btnElement.title = originalTitle;
+    }, 2000);
 }
 
 function addMessage(role, content, timestamp = null, isHistory = false) {
