@@ -538,13 +538,22 @@ def handle_user_message(user_message, interface="terminal"):
             # Save assistant response
             Database.add_message('assistant', final_response, session_id=session_id)
             
-            # Build display response showing all attempts
+            # Build display response showing all attempts WITH their output
             display_parts = []
             for attempt in attempts:
                 status = "✅" if not attempt.error else "❌"
                 display_parts.append(f"Attempt {attempt.attempt_number}: {status} {attempt.tool_name}")
+                
+                # Show actual output preview (first 500 chars)
+                if attempt.result:
+                    output_preview = attempt.result[:500]
+                    if len(attempt.result) > 500:
+                        output_preview += "..."
+                    display_parts.append(output_preview)
+                elif attempt.error:
+                    display_parts.append(f"Error: {attempt.error}")
             
-            combined_display = "\n".join(display_parts) + "\n\n" + final_response
+            combined_display = "\n\n".join(display_parts) + "\n\n---\n\n" + final_response
             
             auto_name_session_if_needed(session_id, active_session)
             if should_summarize_memory(profile, user_message, session_id):
