@@ -1,418 +1,155 @@
 /**
- * Tool Card JavaScript Component
- * Handles rendering and WebSocket updates for tool execution results
+ * Tool Cards System - Beautiful tool execution display
+ * Shows tool results as styled cards instead of plain markdown
  */
 
-class ToolCardManager {
-    constructor(options = {}) {
-        this.options = {
-            wsEnabled: options.wsEnabled || false,
-            wsUrl: options.wsUrl || null,
-            animationDuration: options.animationDuration || 300,
-            ...options
+class ToolCards {
+    constructor() {
+        this.icons = {
+            image: '🖼️',
+            request: '🌐',
+            memory: '🧠',
+            mcp: '🔌',
+            shell: '⚡',
+            filesystem: '📁',
+            fetch: '📡',
+            default: '🔧'
         };
-        
-        this.ws = null;
-        this.activeExecutions = new Map();
-        
-        if (this.options.wsEnabled && this.options.wsUrl) {
-            this.initWebSocket();
+    }
+
+    /**
+     * Parse tool markdown contract and extract info
+     */
+    parseToolContract(markdown) {
+        const result = {
+            tool_name: 'unknown',
+            command: '',
+            output: [],
+            isError: false,
+            server_name: null
+        };
+
+        // Extract summary/tool name
+        const summaryMatch = markdown.match(/<summary>🔧\s*(.+?)<\/summary>/);
+        if (summaryMatch) {
+            result.tool_name = summaryMatch[1].trim();
         }
-    }
-    
-    // ==================== WebSocket ====================
-    
-    initWebSocket() {
-        if (!this.options.wsUrl) return;
-        
-        try {
-            this.ws = new WebSocket(this.options.wsUrl);
-            
-            this.ws.onopen = () => {
-                console.log('[ToolCard] WebSocket connected');
-                this.authenticate();
-            };
-            
-            this.ws.onmessage = (event) => {
-                this.handleMessage(JSON.parse(event.data));
-            };
-            
-            this.ws.onclose = () => {
-                console.log('[ToolCard] WebSocket disconnected');
-                this.reconnect();
-            };
-            
-            this.ws.onerror = (error) => {
-                console.error('[ToolCard] WebSocket error:', error);
-            };
-            
-        } catch (e) {
-            console.error('[ToolCard] Failed to init WebSocket:', e);
-        }
-    }
-    
-    authenticate() {
-        // Send session info for authentication
-        const sessionId = this.getSessionId();
-        if (sessionId && this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({
-                type: 'auth',
-                data: { session_id: sessionId }
-            }));
-        }
-    }
-    
-    reconnect() {
-        // Auto-reconnect after delay
-        setTimeout(() => {
-            if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-                this.initWebSocket();
-            }
-        }, 3000);
-    }
-    
-    handleMessage(message) {
-        const { type, data } = message;
-        
-        switch (type) {
-            case 'tool_update':
-                this.handleToolUpdate(data);
-                break;
-            case 'tool_complete':
-                this.handleToolComplete(data);
-                break;
-            case 'stream_chunk':
-                this.handleStreamChunk(data);
-                break;
-            case 'error':
-                this.handleError(data);
-                break;
-        }
-    }
-    
-    // ==================== Tool Update Handlers ====================
-    
-    handleToolUpdate(data) {
-        const { execution_id, status, progress, status_text } = data;
-        
-        if (!execution_id) return;
-        
-        this.activeExecutions.set(execution_id, { status, progress, status_text });
-        
-        const card = this.findCard(execution_id);
-        if (!card) return;
-        
-        // Update status indicator
-        const indicator = card.querySelector('.tool-status-indicator');
-        if (indicator) {
-            if (status === 'running') {
-                indicator.classList.add('spinning');
-            } else {
-                indicator.classList.remove('spinning');
-            }
-        }
-        
-        // Update status text
-        if (status_text) {
-            const statusEl = card.querySelector('.loading-text');
-            if (statusEl) {
-                statusEl.textContent = status_text;
-            }
-        }
-        
-        // Update progress bar
-        if (progress !== undefined && progress !== null) {
-            const progressFill = card.querySelector('.progress-fill');
-            if (progressFill) {
-                progressFill.style.width = `${progress}%`;
-            }
-        }
-    }
-    
-    handleToolComplete(data) {
-        const { execution_id, card_spec, llm_prompt } = data;
-        
-        if (!execution_id) return;
-        
-        this.activeExecutions.delete(execution_id);
-        
-        const card = this.findCard(execution_id);
-        
-        if (card_spec) {
-            this.renderCardContent(card, card_spec);
-        }
-        
-        // Handle LLM commentary
-        if (llm_prompt) {
-            this.requestLLMCommentary(execution_id, llm_prompt);
-        }
-    }
-    
-    handleStreamChunk(data) {
-        const { message_id, content, is_tool_commentary } = data;
-        
-        // Find or create message element
-        let messageEl = document.querySelector(`[data-message-id="${message_id}"]`);
-        
-        if (!messageEl) {
-            messageEl = this.createAssistantMessage(message_id);
-        }
-        
-        // Append content
-        const contentEl = messageEl.querySelector('.message-content');
-        if (contentEl) {
-            contentEl.textContent += content;
-        }
-        
-        if (is_tool_commentary) {
-            messageEl.classList.add('tool-commentary');
-        }
-    }
-    
-    handleError(data) {
-        const { code, message } = data;
-        console.error('[ToolCard] Error:', code, message);
-        
-        // Could show error toast here
-        this.showErrorToast(message);
-    }
-    
-    // ==================== Rendering ====================
-    
-    renderCard(spec) {
-        const container = document.createElement('div');
-        container.className = 'tool-card-container';
-        container.dataset.executionId = spec.execution_id || this.generateId();
-        
-        // Build card HTML
-        container.innerHTML = this.buildCardHTML(spec);
-        
-        // Add to DOM
-        const chatMessages = document.getElementById('chat-messages');
-        if (chatMessages) {
-            chatMessages.appendChild(container);
-            this.scrollToBottom();
-        }
-        
-        return container;
-    }
-    
-    buildCardHTML(spec) {
-        const {
-            header_icon = '🔧',
-            header_title = 'Tool',
-            card_type = 'text',
-            status = 'pending',
-            content = {},
-            error_message = null,
-            progress = null,
-            status_text = null,
-            llm_commentary = null
-        } = spec;
-        
-        let bodyContent = '';
-        
-        if (status === 'pending' || status === 'running') {
-            bodyContent = `
-                <div class="tool-loading">
-                    <div class="spinner"></div>
-                    <p class="loading-text">${status_text || 'Processing...'}</p>
-                    ${progress !== null ? `
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${progress}%"></div>
-                    </div>
-                    ` : ''}
-                </div>
-            `;
-        } else if (status === 'success') {
-            bodyContent = this.renderSuccessContent(card_type, content);
-        } else if (status === 'error') {
-            bodyContent = `
-                <div class="tool-error">
-                    <span class="error-icon">⚠️</span>
-                    <p class="error-message">${error_message || 'An error occurred'}</p>
-                </div>
-            `;
-        }
-        
-        return `
-            <div class="tool-card" data-status="${status}">
-                <div class="tool-card-header">
-                    <span class="tool-icon">${header_icon}</span>
-                    <span class="tool-title">${header_title}</span>
-                    <span class="tool-status-indicator ${status === 'running' ? 'spinning' : ''}"></span>
-                </div>
-                <div class="tool-card-body">
-                    ${bodyContent}
-                </div>
-                ${llm_commentary ? `
-                <div class="tool-card-footer">
-                    <p class="llm-commentary">${llm_commentary}</p>
-                </div>
-                ` : ''}
-            </div>
-        `;
-    }
-    
-    renderSuccessContent(cardType, content) {
-        switch (cardType) {
-            case 'image':
-                return `
-                    <div class="tool-result-image">
-                        <img src="${content.path || content.url || ''}" 
-                             alt="${content.alt || 'Result'}"
-                             onload="this.classList.add('loaded')"
-                             onerror="this.classList.add('error')" />
-                    </div>
-                `;
-            
-            case 'list':
-                const items = content.items || [];
-                return `
-                    <div class="tool-result-list">
-                        <ul>
-                            ${items.map(item => `<li>${item.text || JSON.stringify(item)}</li>`).join('')}
-                        </ul>
-                    </div>
-                `;
-            
-            case 'code':
-                return `
-                    <div class="tool-result-code">
-                        <pre><code>${this.escapeHtml(content.code || '')}</code></pre>
-                    </div>
-                `;
-            
-            default:
-                return `
-                    <div class="tool-result-text">
-                        <pre>${this.escapeHtml(content.text || JSON.stringify(content, null, 2))}</pre>
-                    </div>
-                `;
-        }
-    }
-    
-    renderCardContent(card, spec) {
-        const body = card.querySelector('.tool-card-body');
-        const status = card.dataset.status;
-        
-        if (body && spec) {
-            body.innerHTML = this.renderSuccessContent(spec.card_type || 'text', spec.content || {});
-        }
-        
-        // Update status
-        card.dataset.status = 'success';
-        
-        const indicator = card.querySelector('.tool-status-indicator');
-        if (indicator) {
-            indicator.classList.remove('spinning');
-            indicator.style.background = 'var(--success-color, #a6e3a1)';
-        }
-    }
-    
-    // ==================== Utilities ====================
-    
-    findCard(executionId) {
-        return document.querySelector(`[data-execution-id="${executionId}"]`);
-    }
-    
-    generateId() {
-        return 'exec_' + Math.random().toString(36).substr(2, 9);
-    }
-    
-    getSessionId() {
-        // Get session ID from page data or URL
-        return window.YUZU_SESSION_ID || null;
-    }
-    
-    scrollToBottom() {
-        const chatMessages = document.getElementById('chat-messages');
-        if (chatMessages) {
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-    }
-    
-    createAssistantMessage(messageId) {
-        const container = document.createElement('div');
-        container.className = 'message assistant-message';
-        container.dataset.messageId = messageId;
-        
-        container.innerHTML = `
-            <div class="message-avatar">🤖</div>
-            <div class="message-content"></div>
-        `;
-        
-        const chatMessages = document.getElementById('chat-messages');
-        if (chatMessages) {
-            chatMessages.appendChild(container);
-        }
-        
-        return container;
-    }
-    
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-    
-    requestLLMCommentary(executionId, prompt) {
-        // This would typically call the backend to get LLM commentary
-        // For now, we'll just log it
-        console.log('[ToolCard] Would request commentary:', prompt);
-    }
-    
-    showErrorToast(message) {
-        // Simple toast - could be enhanced
-        const toast = document.createElement('div');
-        toast.className = 'error-toast';
-        toast.textContent = message;
-        
-        Object.assign(toast.style, {
-            position: 'fixed',
-            bottom: '20px',
-            right: '20px',
-            background: '#f38ba8',
-            color: '#11111b',
-            padding: '12px 20px',
-            borderRadius: '8px',
-            zIndex: '10000',
-            animation: 'fadeIn 0.3s ease'
-        });
-        
-        document.body.appendChild(toast);
-        
-        setTimeout(() => {
-            toast.remove();
-        }, 5000);
-    }
-    
-    // ==================== Retry ====================
-    
-    retryTool(url) {
-        fetch(url, { method: 'POST' })
-            .then(response => response.json())
-            .then(data => {
-                if (data.execution_id) {
-                    this.renderCard(data);
+
+        // Extract command from bash block
+        const commandMatch = markdown.match(/```bash\n\S+\$\s*(.+?)\n```/);
+        if (commandMatch) {
+            result.command = commandMatch[1].trim();
+            // Check if MCP command
+            if (result.command.startsWith('MCP:')) {
+                const parts = result.command.split(':');
+                if (parts.length >= 2) {
+                    result.server_name = parts[1];
                 }
-            })
-            .catch(error => {
-                console.error('[ToolCard] Retry failed:', error);
-                this.showErrorToast('Retry failed. Please try again.');
+            }
+        }
+
+        // Extract output (blockquote lines)
+        const outputMatch = markdown.match(/```[\s\S]*?```\n\n((?:> .+\n?)+)/);
+        if (outputMatch) {
+            result.output = outputMatch[1]
+                .split('\n')
+                .map(line => line.replace(/^>\s*/, ''))
+                .filter(line => line.trim());
+        }
+
+        // Check for error
+        result.isError = markdown.includes('Error:') || 
+                        markdown.includes('❌') ||
+                        result.output.some(line => line.includes('Error:'));
+
+        return result;
+    }
+
+    /**
+     * Get icon for tool type
+     */
+    getIcon(toolName, serverName) {
+        if (serverName) return this.icons.mcp;
+        if (toolName.includes('image')) return this.icons.image;
+        if (toolName.includes('request')) return this.icons.request;
+        if (toolName.includes('memory')) return this.icons.memory;
+        if (toolName.includes('shell')) return this.icons.shell;
+        if (toolName.includes('filesystem')) return this.icons.filesystem;
+        if (toolName.includes('fetch')) return this.icons.fetch;
+        return this.icons.default;
+    }
+
+    /**
+     * Format command for display
+     */
+    formatCommand(command) {
+        if (command.length > 80) {
+            return command.substring(0, 80) + '...';
+        }
+        return command;
+    }
+
+    /**
+     * Render a tool card
+     */
+    renderCard(toolData) {
+        const { tool_name, command, output, isError, server_name } = toolData;
+        const icon = this.getIcon(tool_name, server_name);
+        const statusClass = isError ? 'tool-card-error' : 'tool-card-success';
+        const statusIcon = isError ? '❌' : '✅';
+        
+        // Format output
+        const outputText = output.join('\n');
+        const hasLongOutput = outputText.length > 500 || output.length > 10;
+        const displayOutput = hasLongOutput 
+            ? output.slice(0, 10).join('\n') + '\n...'
+            : outputText;
+
+        const card = document.createElement('div');
+        card.className = `tool-card ${statusClass}`;
+        card.innerHTML = `
+            <div class="tool-card-header">
+                <span class="tool-card-icon">${icon}</span>
+                <span class="tool-card-name">${tool_name}</span>
+                <span class="tool-card-status">${statusIcon}</span>
+            </div>
+            <div class="tool-card-command">
+                <code>${this.formatCommand(command)}</code>
+            </div>
+            <div class="tool-card-output">
+                <pre>${displayOutput || '(no output)'}</pre>
+            </div>
+            ${hasLongOutput ? '<div class="tool-card-expand">Click to expand</div>' : ''}
+        `;
+
+        // Add expand functionality
+        if (hasLongOutput) {
+            card.querySelector('.tool-card-expand').addEventListener('click', () => {
+                const outputDiv = card.querySelector('.tool-card-output pre');
+                if (outputDiv.textContent.includes('...')) {
+                    outputDiv.textContent = outputText;
+                    card.querySelector('.tool-card-expand').textContent = 'Click to collapse';
+                } else {
+                    outputDiv.textContent = displayOutput;
+                    card.querySelector('.tool-card-expand').textContent = 'Click to expand';
+                }
             });
+        }
+
+        return card;
+    }
+
+    /**
+     * Check if content is a tool contract
+     */
+    isToolContract(content) {
+        if (!content || typeof content !== 'string') return false;
+        const trimmed = content.trim();
+        return trimmed.startsWith('<details>') && 
+               trimmed.includes('<summary>🔧') &&
+               trimmed.includes('```bash');
     }
 }
 
-// Initialize on DOM ready
-document.addEventListener('DOMContentLoaded', () => {
-    window.toolCardManager = new ToolCardManager({
-        wsEnabled: typeof window.YUZU_WS_ENABLED !== 'undefined' && window.YUZU_WS_ENABLED,
-        wsUrl: window.YUZU_WS_URL || null
-    });
-});
-
-// Export for module usage
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = ToolCardManager;
-}
+// Create global instance
+window.toolCards = new ToolCards();
