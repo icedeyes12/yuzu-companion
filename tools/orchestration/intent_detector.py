@@ -87,6 +87,31 @@ class IntentDetector:
             "description": "Analyze images to describe their contents",
             "keywords": ["describe", "analyze image", "lihat gambar", "apa ini"],
             "params": {"image_path": "str"}
+        },
+        # MCP Memory Tools (MCP:memory:tool_name format)
+        "MCP:memory:search_nodes": {
+            "description": "Search nodes in memory graph by query",
+            "keywords": ["search memory", "cari memori", "find in memory", "search nodes"],
+            "params": {"query": "str"},
+            "mcp_format": True
+        },
+        "MCP:memory:get_entity": {
+            "description": "Get specific entity from memory by name",
+            "keywords": ["get entity", "read entity", "fetch memory", "lihat memori"],
+            "params": {"entity_name": "str"},
+            "mcp_format": True
+        },
+        "MCP:memory:create_entities": {
+            "description": "Create new entities in memory graph",
+            "keywords": ["create memory", "add entity", "buat memori", "new memory"],
+            "params": {"entities": "list"},
+            "mcp_format": True
+        },
+        "MCP:memory:add_observations": {
+            "description": "Add observations to existing memory entities",
+            "keywords": ["add observation", "update memory", "tambah memori"],
+            "params": {"entity_name": "str", "observations": "list"},
+            "mcp_format": True
         }
     }
     
