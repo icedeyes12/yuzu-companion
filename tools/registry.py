@@ -18,6 +18,7 @@ TERMINAL_TOOL_ROLES = set()
 
 _TOOLS = {
     "image_generate": image_generate,
+    "imagine": image_generate,  # Alias for image generation
     "request": http_request,
     "memory_search": memory_search,
     "memory_sql": memory_sql,
