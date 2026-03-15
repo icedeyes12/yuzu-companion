@@ -158,7 +158,7 @@ python web.py
 ## 📁 Directory Structure
 
 ```mermaid
-tree
+flowchart TB
     root["src/yuzu/"]
     domain["domain/"]
     interfaces["interfaces/"]
@@ -216,14 +216,13 @@ pytest --cov=src/yuzu tests/
 
 ## 📊 Complexity Comparison
 
-```mermaid
-xychart-beta
-    title "Cyclomatic Complexity (Lower is Better)"
-    x-axis ["Legacy Code", "Clean Architecture"]
-    y-axis "Average Complexity" 0 --> 5
-    bar [4.16, 2.04]
-    
-    %% Reduction: 51%
+```
+Cyclomatic Complexity (Lower is Better)
+
+Legacy Code    |████████████| 4.16
+Clean Arch     |██████      | 2.04  ⬇️ 51% reduction
+
+0    1    2    3    4    5
 ```
 
 | Metric | Legacy | New | Change |
@@ -250,10 +249,6 @@ flowchart LR
         Application --> Domain
         Infrastructure --> Domain
         
-        note right of Interface "Depends on Application"
-        note right of Application "Depends on Domain"
-        note right of Infrastructure "Depends on Domain"
-        note left of Domain "No external deps"
     end
 ```
 
