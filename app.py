@@ -507,7 +507,7 @@ def handle_user_message(user_message, interface="terminal"):
             from tools.orchestration.agentic_loop import AgenticToolLoop
             
             loop = AgenticToolLoop(profile, session_id, max_retries=3)
-            final_response, attempts = loop.execute_with_agentic_loop(
+            final_response, attempts = loop.execute(
                 raw_ai_response,
                 cmd_info,
                 generate_ai_response,
