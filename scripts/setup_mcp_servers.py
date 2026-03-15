@@ -19,8 +19,8 @@ ALL_SERVERS = [
         "name": "filesystem",
         "transport": "stdio",
         "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", WORKSPACE_DIR],
-        "description": "Access files on device storage",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/workspace"],
+        "description": "Access files on workspace storage",
     },
     {
         "name": "fetch",
@@ -30,39 +30,18 @@ ALL_SERVERS = [
         "description": "Fetch URLs and web content",
     },
     {
-        "name": "sqlite",
-        "transport": "stdio",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-sqlite", "--db-path", os.path.join(PROJECT_DIR, "/yuzu_core.db")],
-        "description": "Query SQLite databases",
-    },
-    {
         "name": "memory",
         "transport": "stdio",
         "command": "npx",
         "args": ["-y", "@modelcontextprotocol/server-memory"],
-        "description": "Persistent key-value storage",
+        "description": "Persistent knowledge graph memory",
     },
     {
-        "name": "git",
+        "name": "shell",
         "transport": "stdio",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-git", PROJECT_DIR],
-        "description": "Git repository operations",
-    },
-    {
-        "name": "time",
-        "transport": "stdio",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-time"],
-        "description": "Time and date utilities",
-    },
-    {
-        "name": "weather",
-        "transport": "stdio",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-fetch"],  # Using fetch as weather API caller
-        "description": "Weather information (requires manual configuration)",
+        "command": "python3",
+        "args": ["tools/shell_tool.py"],
+        "description": "Execute shell commands (WARNING: High risk)",
     },
 ]
 
