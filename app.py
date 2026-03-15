@@ -250,9 +250,85 @@ def _execute_command_tool(command_info, session_id=None):
     Returns:
         tuple: (tool_name, formatted_markdown_contract)
     """
+    tool_type = command_info.get("type", "internal")
     tool_name = command_info["command"]
     args_str = command_info["args"]
     
+    # Handle MCP tools
+    if tool_type == "mcp":
+        server_name = command_info.get("server")
+        print(f"[COMMAND] Detected MCP command: MCP:{server_name}:{tool_name} {args_str}")
+        
+        try:
+            from tools.orchestration.mcp_manager import get_mcp_manager
+            from tools.registry import build_markdown_contract
+            
+            mcp_manager = get_mcp_manager()
+            
+            # Prepare arguments - for most MCP tools, the args string is the main parameter
+            if tool_name == "fetch":
+                args = {"url": args_str.strip()}
+            elif tool_name == "execute_command":
+                args = {"command": args_str.strip()}
+            else:
+                # Try to parse as JSON, otherwise use as string argument
+                try:
+                    args = json.loads(args_str) if args_str.strip() else {}
+                except json.JSONDecodeError:
+                    # For tools like read_file, search_nodes, etc.
+                    args = {"path": args_str.strip()} if args_str.strip() else {}
+            
+            # Call the MCP tool
+            result = mcp_manager.call_tool(server_name, tool_name, args)
+            
+            # Format the result
+            profile = Database.get_profile() or {}
+            partner_name = profile.get("partner_name", "Yuzu")
+            
+            if result.get("success"):
+                output = result.get("result", {})
+                # Extract content from MCP result format
+                if isinstance(output, dict) and "content" in output:
+                    content_items = output["content"]
+                    if isinstance(content_items, list) and len(content_items) > 0:
+                        output_text = content_items[0].get("text", str(output))
+                    else:
+                        output_text = str(content_items)
+                else:
+                    output_text = str(output)
+                
+                output_lines = output_text.split('\n') if isinstance(output_text, str) else [str(output_text)]
+            else:
+                error_msg = result.get("error", "Unknown error")
+                output_lines = [f"Error: {error_msg}"]
+            
+            # Build markdown contract
+            full_command = f"MCP:{server_name}:{tool_name} {args_str}".strip()
+            formatted_result = build_markdown_contract(
+                f"mcp_{server_name}_tools",
+                full_command,
+                output_lines,
+                partner_name,
+            )
+            
+            return f"mcp_{server_name}:{tool_name}", formatted_result
+            
+        except Exception as e:
+            print(f"[MCP ERROR] Failed to execute MCP tool: {e}")
+            import traceback
+            traceback.print_exc()
+            profile = Database.get_profile() or {}
+            partner_name = profile.get("partner_name", "Yuzu")
+            full_command = f"MCP:{server_name}:{tool_name} {args_str}".strip()
+            formatted_result = build_markdown_contract(
+                f"mcp_{server_name}_tools",
+                full_command,
+                [f"Error: MCP tool execution failed: {str(e)}"],
+                partner_name,
+            )
+            return f"mcp_{server_name}:{tool_name}", formatted_result
+    
+    # Handle internal tools (existing code)
     print(f"[COMMAND] Detected command: /{tool_name} {args_str}")
     
     # Prepare arguments based on tool type

@@ -802,10 +802,15 @@ class Database:
             active_session = Database.get_active_session()
             session_id = active_session['id']
         
+        from sqlalchemy import or_
+        
         with get_db_session() as session:
             query = session.query(Message).filter(
                 Message.session_id == session_id,
-                Message.role.in_(['user', 'assistant'] + ALL_TOOL_ROLES)
+                or_(
+                    Message.role.in_(['user', 'assistant'] + ALL_TOOL_ROLES),
+                    Message.role.like('mcp_%_tools')  # Include MCP tool roles
+                )
             )
             
             if recent and limit:
@@ -852,10 +857,15 @@ class Database:
             active_session = Database.get_active_session()
             session_id = active_session['id']
 
+        from sqlalchemy import or_
+
         with get_db_session() as session:
             query = session.query(Message).filter(
                 Message.session_id == session_id,
-                Message.role.in_(['user', 'assistant', 'system'] + ALL_TOOL_ROLES)
+                or_(
+                    Message.role.in_(['user', 'assistant', 'system'] + ALL_TOOL_ROLES),
+                    Message.role.like('mcp_%_tools')  # Include MCP tool roles
+                )
             )
 
             if recent and limit:
