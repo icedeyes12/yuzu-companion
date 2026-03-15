@@ -208,7 +208,7 @@ class AgenticToolLoop:
                 
                 if result.get("success"):
                     # Format as markdown contract
-                    output_text = json.dumps(result.get("result", {}), indent=2)
+                    output_text = self._extract_mcp_output(result.get("result", {}))
                     return ToolAttempt(
                         attempt_number=attempt_number,
                         tool_type="mcp",
@@ -397,6 +397,31 @@ Respond with ONLY a JSON object:
                     if count == 0:
                         return text[start:start+i+1]
         return None
+    
+    def _extract_mcp_output(self, result: Dict) -> str:
+        """Extract readable text from MCP tool result."""
+        if not result:
+            return "(no output)"
+        
+        # Handle content array format: {"content": [{"type": "text", "text": "..."}]}
+        content = result.get("content")
+        if isinstance(content, list):
+            texts = []
+            for item in content:
+                if isinstance(item, dict):
+                    if item.get("type") == "text" and "text" in item:
+                        texts.append(item["text"])
+                    elif "data" in item:  # For images/audio
+                        texts.append(f"[{item.get('type', 'blob')}: {len(item['data'])} bytes]")
+            return "\n".join(texts) if texts else json.dumps(result, indent=2)
+        
+        # Handle structuredContent format: {"structuredContent": {"content": "..."}}
+        structured = result.get("structuredContent")
+        if isinstance(structured, dict) and "content" in structured:
+            return structured["content"]
+        
+        # Fallback: return the whole thing as JSON
+        return json.dumps(result, indent=2)
     
     def _generate_final_response(
         self,
