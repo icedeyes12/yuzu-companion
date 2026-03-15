@@ -91,19 +91,34 @@ def main():
         try:
             request = json.loads(line)
             method = request.get("method")
+            request_id = request.get("id")
             
+            # Handle notifications (no id, no response needed)
+            if method == "notifications/initialized":
+                # This is a notification, no response needed
+                continue
+            
+            # Handle requests (have id, need response)
             if method == "initialize":
                 response = handle_initialize()
+                response["id"] = request_id
             elif method == "tools/list":
                 response = handle_tools_list()
+                response["id"] = request_id
             elif method == "tools/call":
                 response = handle_tool_call(request.get("params", {}))
+                response["id"] = request_id
             else:
-                response = {
-                    "jsonrpc": "2.0",
-                    "id": request.get("id"),
-                    "error": {"code": -32601, "message": f"Method not found: {method}"}
-                }
+                # Only return error for requests (with id)
+                if request_id is not None:
+                    response = {
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "error": {"code": -32601, "message": f"Method not found: {method}"}
+                    }
+                else:
+                    # Notification with unknown method, ignore
+                    continue
             
             print(json.dumps(response), flush=True)
             
