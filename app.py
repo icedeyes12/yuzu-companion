@@ -503,41 +503,54 @@ def handle_user_message(user_message, interface="terminal"):
         cmd_info = _detect_command(raw_ai_response)
         
         if cmd_info:
-            # TOOL DETECTED: Execute via registry
-            exec_tool_name, tool_output = _execute_command_tool(cmd_info, session_id=session_id)
-            tool_role = get_tool_role(exec_tool_name)
+            # TOOL DETECTED: Execute with agentic loop (retry/fix capable)
+            from tools.orchestration.agentic_loop import AgenticToolLoop
             
-            # Save tool output as tool message
-            Database.add_message(tool_role, tool_output, session_id=session_id)
+            loop = AgenticToolLoop(profile, session_id, max_retries=3)
+            final_response, attempts = loop.execute_with_agentic_loop(
+                raw_ai_response,
+                cmd_info,
+                generate_ai_response,
+                interface
+            )
             
-            # PHASE 3: ALL tools trigger second pass (deterministic two-pass architecture)
-            # Section IV: If last tool role == image_tools, prepare base64 for second pass
-            # Section IV: If last tool role == image_tools, prepare base64 for second pass
-            image_base64_for_context = None
-            if tool_role == "image_tools":
-                image_path = _parse_image_result_from_formatted(tool_output)
-                if image_path and os.path.exists(image_path):
-                    import base64
-                    with open(image_path, 'rb') as f:
-                        img_data = f.read()
-                    img_b64 = base64.b64encode(img_data).decode('utf-8')
-                    mime_type = 'image/png' if image_path.endswith('.png') else 'image/jpeg'
-                    image_base64_for_context = f"image_tools: data:{mime_type};base64,{img_b64}"
+            # Save all tool attempts to DB for visibility
+            tool_role = get_tool_role(cmd_info.get("command", "unknown"))
+            for attempt in attempts:
+                if attempt.error:
+                    attempt_output = build_markdown_contract(
+                        f"mcp_{attempt.server_name}_{attempt.tool_name}_tools" if attempt.server_name else f"{attempt.tool_name}_tools",
+                        f"{'MCP:' + attempt.server_name + ':' if attempt.server_name else '/'}{attempt.tool_name} {json.dumps(attempt.arguments)}",
+                        [f"Attempt {attempt.attempt_number}: ❌ {attempt.error}"],
+                        profile.get("partner_name", "Yuzu")
+                    )
+                else:
+                    result_lines = attempt.result.split('\n') if attempt.result else ["(no output)"]
+                    attempt_output = build_markdown_contract(
+                        f"mcp_{attempt.server_name}_{attempt.tool_name}_tools" if attempt.server_name else f"{attempt.tool_name}_tools",
+                        f"{'MCP:' + attempt.server_name + ':' if attempt.server_name else '/'}{attempt.tool_name} {json.dumps(attempt.arguments)}",
+                        [f"Attempt {attempt.attempt_number}: ✅"] + result_lines[:20],
+                        profile.get("partner_name", "Yuzu")
+                    )
+                Database.add_message(tool_role, attempt_output, session_id=session_id)
             
-            second_reply = generate_ai_response(profile, "", interface, session_id, image_base64_for_context=image_base64_for_context)
-            if second_reply and second_reply.strip():
-                second_clean = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', second_reply).strip()
-                Database.add_message('assistant', second_clean, session_id=session_id)
-                final_response = tool_output + "\n\n" + second_clean
-            else:
-                # Synthesis failed — return tool output alone
-                final_response = tool_output
+            # PHASE 3: Generate final response with all tool results in context
+            # Save assistant response
+            Database.add_message('assistant', final_response, session_id=session_id)
+            
+            # Build display response showing all attempts
+            display_parts = []
+            for attempt in attempts:
+                status = "✅" if not attempt.error else "❌"
+                display_parts.append(f"Attempt {attempt.attempt_number}: {status} {attempt.tool_name}")
+            
+            combined_display = "\n".join(display_parts) + "\n\n" + final_response
             
             auto_name_session_if_needed(session_id, active_session)
             if should_summarize_memory(profile, user_message, session_id):
                 summarize_memory(profile, user_message, final_response, session_id)
             _trigger_memory_extraction(session_id)
-            return final_response
+            return combined_display
         
         else:
             # NO TOOL: Save as assistant message and return
@@ -1385,7 +1398,7 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "[Previous image context re-attached for comparison]"},
-                    {"type": "image_url", "image_url": {"url": f"data:{prev_mime};base64,{prev_b64}"}},
+                    {"type": "image_url", "image_url": {"url": f"data:{prev_mime};base64,{prev_b64}"}}
                 ]
             })
             print("[Vision] Re-injected persistent visual context")
@@ -1497,7 +1510,7 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "[Previous image context re-attached for comparison]"},
-                    {"type": "image_url", "image_url": {"url": f"data:{prev_mime};base64,{prev_b64}"}},
+                    {"type": "image_url", "image_url": {"url": f"data:{prev_mime};base64,{prev_b64}"}}
                 ]
             })
             print("[Vision] Re-injected persistent visual context")
