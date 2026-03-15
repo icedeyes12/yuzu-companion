@@ -109,13 +109,19 @@ class ToolCards {
         
         // Format output
         const outputText = output.join('\n');
-        const hasLongOutput = !image_url && (outputText.length > 500 || output.length > 10);
-        const displayOutput = hasLongOutput 
-            ? output.slice(0, 10).join('\n') + '\n...'
+        const outputLength = outputText.length;
+        const isLongOutput = !image_url && (outputLength > 500 || output.length > 10);
+        const isVeryLongOutput = !image_url && (outputLength > 2000 || output.length > 50);
+        
+        // Truncated output for display
+        const maxLines = isVeryLongOutput ? 20 : 10;
+        const displayOutput = isLongOutput 
+            ? output.slice(0, maxLines).join('\n') + (output.length > maxLines ? '\n...' : '')
             : outputText;
 
         const card = document.createElement('div');
         card.className = `tool-card ${statusClass}`;
+        card.dataset.fullOutput = outputText; // Store full output for copy
         
         // Build card HTML
         let cardHTML = `
@@ -144,26 +150,79 @@ class ToolCards {
             `;
         } else {
             // Text output for non-image tools
+            const outputSizeInfo = isLongOutput ? `<span class="tool-card-output-size">${outputLength.toLocaleString()} chars</span>` : '';
+            const fadeClass = isLongOutput ? 'tool-card-output-fade' : '';
+            
             cardHTML += `
-                <div class="tool-card-output">
+                <div class="tool-card-output ${fadeClass}">
                     <pre>${displayOutput || '(no output)'}</pre>
+                    ${outputSizeInfo}
                 </div>
-                ${hasLongOutput ? '<div class="tool-card-expand">Click to expand</div>' : ''}
+                <div class="tool-card-actions">
+                    <button class="tool-card-copy-btn" title="Copy output to clipboard">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        <span>Copy</span>
+                    </button>
+                    ${isLongOutput ? `
+                    <button class="tool-card-expand-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                        <span>Show Full Output</span>
+                    </button>
+                    ` : ''}
+                </div>
             `;
         }
         
         card.innerHTML = cardHTML;
 
-        // Add expand functionality for text output
-        if (hasLongOutput && !image_url) {
-            card.querySelector('.tool-card-expand').addEventListener('click', () => {
+        // Add copy functionality
+        const copyBtn = card.querySelector('.tool-card-copy-btn');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', () => {
+                const fullOutput = card.dataset.fullOutput || outputText;
+                navigator.clipboard.writeText(fullOutput).then(() => {
+                    copyBtn.classList.add('copied');
+                    copyBtn.querySelector('span').textContent = 'Copied!';
+                    setTimeout(() => {
+                        copyBtn.classList.remove('copied');
+                        copyBtn.querySelector('span').textContent = 'Copy';
+                    }, 2000);
+                }).catch(err => {
+                    console.error('Failed to copy:', err);
+                    copyBtn.querySelector('span').textContent = 'Failed';
+                    setTimeout(() => {
+                        copyBtn.querySelector('span').textContent = 'Copy';
+                    }, 2000);
+                });
+            });
+        }
+
+        // Add expand functionality
+        const expandBtn = card.querySelector('.tool-card-expand-btn');
+        if (expandBtn) {
+            expandBtn.addEventListener('click', () => {
                 const outputDiv = card.querySelector('.tool-card-output pre');
-                if (outputDiv.textContent.includes('...')) {
+                const outputContainer = card.querySelector('.tool-card-output');
+                const span = expandBtn.querySelector('span');
+                const svg = expandBtn.querySelector('svg');
+                
+                if (span.textContent === 'Show Full Output') {
                     outputDiv.textContent = outputText;
-                    card.querySelector('.tool-card-expand').textContent = 'Click to collapse';
+                    span.textContent = 'Show Less';
+                    svg.style.transform = 'rotate(180deg)';
+                    outputContainer.classList.remove('tool-card-output-fade');
                 } else {
                     outputDiv.textContent = displayOutput;
-                    card.querySelector('.tool-card-expand').textContent = 'Click to expand';
+                    span.textContent = 'Show Full Output';
+                    svg.style.transform = 'rotate(0deg)';
+                    if (isLongOutput) {
+                        outputContainer.classList.add('tool-card-output-fade');
+                    }
                 }
             });
         }
