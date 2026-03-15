@@ -946,98 +946,30 @@ window.addMessage = addMessage;
 // ==================== Tool Card Integration ====================
 
 /**
- * Parse tool markdown contract to extract tool info
- */
-function parseToolMarkdown(markdown) {
-    const result = {
-        tool_name: null,
-        command: null,
-        content: [],
-        execution_id: 'http_' + Math.random().toString(36).substr(2, 9)
-    };
-    
-    // Extract tool name from <summary>🔧 tool_name</summary>
-    const summaryMatch = markdown.match(/<summary>🔧\s*(\S+)<\/summary>/);
-    if (summaryMatch) {
-        result.tool_name = summaryMatch[1];
-    }
-    
-    // Extract command from bash code block
-    const cmdMatch = markdown.match(/```bash\n[^$]+\$\s*(.+?)\n```/s);
-    if (cmdMatch) {
-        result.command = cmdMatch[1].trim();
-    }
-    
-    // Extract content lines (lines starting with >)
-    const contentMatch = markdown.match(/<\/summary>([\s\S]*?)<\/details>/);
-    if (contentMatch) {
-        const inner = contentMatch[1];
-        const lines = inner.match(/^>\s*(.+)$/gm);
-        if (lines) {
-            result.content = lines.map(line => line.replace(/^>\s*/, ''));
-        }
-    }
-    
-    return result;
-}
-
-/**
- * Create tool card spec from parsed markdown
- */
-function createToolCardSpec(parsedTool) {
-    // Map tool name to display name
-    const displayNames = {
-        'image_tools': 'Image Generation',
-        'request_tools': 'Web Request',
-        'memory_search_tools': 'Memory Search',
-        'memory_sql_tools': 'SQL Query',
-        'shell_tools': 'Shell Command',
-        'mcp_tools': 'MCP Tool'
-    };
-    
-    return {
-        execution_id: parsedTool.execution_id,
-        tool_name: parsedTool.tool_name,
-        status: 'success',
-        card_type: parsedTool.tool_name === 'image_tools' ? 'image' : 'text',
-        header_title: displayNames[parsedTool.tool_name] || parsedTool.tool_name,
-        header_icon: '🔧',
-        content: {
-            type: 'text',
-            text: parsedTool.content.join('\n') || 'Tool executed successfully'
-        },
-        raw_result: {
-            command: parsedTool.command,
-            output: parsedTool.content
-        }
-    };
-}
-
-/**
- * Enhanced addMessage that creates tool cards for tool messages
+ * Enhanced addMessage that creates beautiful tool cards for tool messages
  */
 function addMessageWithToolCard(role, content, timestamp = null, isHistory = false) {
-    // If it's a tool message with markdown contract and toolCards is available
-    if (role === 'tool' && content && typeof toolCards !== 'undefined') {
-        const trimmed = content.trimStart();
-        if (trimmed.startsWith('<details>') && trimmed.includes('🔧')) {
+    // Check if it's a tool message (role ends with '_tools' or is 'tool')
+    const isToolRole = role === 'tool' || 
+                       (typeof role === 'string' && role.endsWith('_tools'));
+    
+    if (isToolRole && content && typeof toolCards !== 'undefined') {
+        if (toolCards.isToolContract(content)) {
             try {
-                const parsedTool = parseToolMarkdown(content);
-                if (parsedTool.tool_name) {
-                    const spec = createToolCardSpec(parsedTool);
-                    const cardContainer = toolCards.renderCard(spec);
+                const toolData = toolCards.parseToolContract(content);
+                const card = toolCards.renderCard(toolData);
+                
+                const chatContainer = document.getElementById("chatContainer");
+                if (chatContainer) {
+                    chatContainer.appendChild(card);
                     
-                    // Scroll to bottom after a short delay
-                    setTimeout(() => {
-                        if (typeof scrollToBottom === 'function') {
-                            scrollToBottom();
-                        }
-                    }, 100);
-                    
-                    return cardContainer;
+                    if (!isHistory) {
+                        setTimeout(() => scrollToBottom(), 50);
+                    }
+                    return card;
                 }
             } catch (e) {
-                console.error('[ToolCard] Error parsing tool markdown:', e);
+                console.error('[ToolCard] Error rendering tool card:', e);
             }
         }
     }
