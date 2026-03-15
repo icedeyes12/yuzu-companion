@@ -305,13 +305,13 @@ def _execute_command_tool(command_info, session_id=None):
             # Build markdown contract
             full_command = f"MCP:{server_name}:{tool_name} {args_str}".strip()
             formatted_result = build_markdown_contract(
-                f"mcp_{server_name}_tools",
+                f"mcp_{server_name}_{tool_name}_tools",
                 full_command,
                 output_lines,
                 partner_name,
             )
             
-            return f"mcp_{server_name}:{tool_name}", formatted_result
+            return f"mcp_{server_name}_{tool_name}", formatted_result
             
         except Exception as e:
             print(f"[MCP ERROR] Failed to execute MCP tool: {e}")
@@ -321,12 +321,12 @@ def _execute_command_tool(command_info, session_id=None):
             partner_name = profile.get("partner_name", "Yuzu")
             full_command = f"MCP:{server_name}:{tool_name} {args_str}".strip()
             formatted_result = build_markdown_contract(
-                f"mcp_{server_name}_tools",
+                f"mcp_{server_name}_{tool_name}_tools",
                 full_command,
                 [f"Error: MCP tool execution failed: {str(e)}"],
                 partner_name,
             )
-            return f"mcp_{server_name}:{tool_name}", formatted_result
+            return f"mcp_{server_name}_{tool_name}", formatted_result
     
     # Handle internal tools (existing code)
     print(f"[COMMAND] Detected command: /{tool_name} {args_str}")
@@ -515,7 +515,11 @@ def handle_user_message(user_message, interface="terminal"):
             )
             
             # Save all tool attempts to DB for visibility
-            tool_role = get_tool_role(cmd_info.get("command", "unknown"))
+            # FIX: Use mcp_*_tools format for MCP tools so they match the DB query pattern
+            if cmd_info.get("type") == "mcp" and cmd_info.get("server"):
+                tool_role = f"mcp_{cmd_info['server']}_{cmd_info['command']}_tools"
+            else:
+                tool_role = get_tool_role(cmd_info.get("command", "unknown"))
             for attempt in attempts:
                 if attempt.error:
                     attempt_output = build_markdown_contract(

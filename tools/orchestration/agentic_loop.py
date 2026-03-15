@@ -1,34 +1,25 @@
 """
-Agentic Tool Loop - Enables LLM to react to tool results and retry/fix
+Agentic Tool Loop - Simplified single-pass execution
 
 Flow:
 1. LLM generates tool command
-2. Tool executes
-3. LLM sees result (in temp context) and decides next action
-4. Loop until success, max retries, or LLM decides to stop
-5. Save final results to DB
+2. Tool executes once
+3. Tool output shown as card
+4. LLM generates final response based on context
+
+No retry loop - keeps it simple and predictable.
 """
 
 import json
 import time
 from typing import Dict, Any, Optional, Callable, List, Tuple
 from dataclasses import dataclass
-from enum import Enum
-from database import Database
-from tools.registry import get_tool_role, build_markdown_contract
 from tools.orchestration.mcp_manager import get_mcp_manager
-
-
-class ToolOutcome(Enum):
-    SUCCESS = "success"
-    ERROR = "error"
-    NEEDS_RETRY = "needs_retry"
-    MAX_RETRIES = "max_retries"
-    GIVE_UP = "give_up"
 
 
 @dataclass
 class ToolAttempt:
+    """Record of a single tool execution attempt."""
     attempt_number: int
     tool_type: str  # "internal" or "mcp"
     tool_name: str
@@ -51,140 +42,34 @@ class ToolAttempt:
 
 class AgenticToolLoop:
     """
-    Manages iterative tool execution with LLM feedback.
+    Simplified tool execution - single pass, no retry loop.
     
-    The LLM can see each tool result and decide to:
-    - Retry with same parameters
-    - Retry with modified parameters
-    - Try a different tool
-    - Give up and explain the failure
-    - Continue with success
+    Why simple?
+    - User sees exactly what happened
+    - LLM responds naturally to results
+    - No confusing "Attempt 1: ✅" messages
+    - Easy to debug and understand
     """
     
-    def __init__(self, profile: Dict, session_id: int, max_retries: int = 3):
+    def __init__(self, profile: Dict, session_id: int, max_retries: int = 1):
         self.profile = profile
         self.session_id = session_id
-        self.max_retries = max_retries
+        self.max_retries = max_retries  # Kept for API compatibility but ignored
         self.attempts: List[ToolAttempt] = []
         self.mcp_manager = get_mcp_manager()
         
-    def execute_with_agentic_loop(
+    def execute(
         self,
-        initial_command: str,
-        command_info: Dict[str, Any],
-        generate_ai_response_func: Callable,
-        interface: str = "web"
-    ) -> Tuple[str, List[ToolAttempt]]:
-        """
-        Execute tool with agentic retry loop.
-        
-        Returns:
-            (final_response, attempts_history)
-        """
-        attempt_number = 0
-        final_response = None
-        
-        while attempt_number < self.max_retries:
-            attempt_number += 1
-            
-            # Execute the tool
-            attempt = self._execute_tool_attempt(
-                attempt_number,
-                command_info
-            )
-            self.attempts.append(attempt)
-            
-            # Check if success
-            if attempt.error is None:
-                # Success! Let LLM decide if we need more tools or we're done
-                decision = self._ask_llm_for_decision(
-                    attempt,
-                    generate_ai_response_func,
-                    interface,
-                    is_success=True
-                )
-                
-                if decision.get("action") == "continue":
-                    # LLM is satisfied, generate final response
-                    final_response = self._generate_final_response(
-                        generate_ai_response_func,
-                        interface
-                    )
-                    return final_response, self.attempts
-                    
-                elif decision.get("action") == "another_tool":
-                    # LLM wants to use another tool
-                    command_info = decision.get("new_command_info", command_info)
-                    continue
-                    
-                else:
-                    # Default: continue with success
-                    final_response = self._generate_final_response(
-                        generate_ai_response_func,
-                        interface
-                    )
-                    return final_response, self.attempts
-            else:
-                # Error! Let LLM decide what to do
-                decision = self._ask_llm_for_decision(
-                    attempt,
-                    generate_ai_response_func,
-                    interface,
-                    is_success=False
-                )
-                
-                action = decision.get("action", "give_up")
-                
-                if action == "retry_same":
-                    # Retry with same parameters
-                    print(f"[AGENTIC] LLM decided to retry (attempt {attempt_number + 1})")
-                    continue
-                    
-                elif action == "retry_modified":
-                    # Retry with modified parameters
-                    new_args = decision.get("modified_arguments", attempt.arguments)
-                    command_info["parsed_args"] = new_args
-                    print(f"[AGENTIC] LLM decided to retry with modifications (attempt {attempt_number + 1})")
-                    continue
-                    
-                elif action == "try_alternative":
-                    # Try a different tool
-                    alt_tool = decision.get("alternative_tool", command_info)
-                    command_info = alt_tool
-                    print(f"[AGENTIC] LLM decided to try alternative tool (attempt {attempt_number + 1})")
-                    continue
-                    
-                elif action == "give_up":
-                    # LLM gives up, explain the failure
-                    final_response = self._generate_failure_explanation(
-                        attempt,
-                        generate_ai_response_func,
-                        interface
-                    )
-                    return final_response, self.attempts
-                    
-                else:
-                    # Unknown action, give up
-                    final_response = self._generate_failure_explanation(
-                        attempt,
-                        generate_ai_response_func,
-                        interface
-                    )
-                    return final_response, self.attempts
-        
-        # Max retries reached
-        final_response = self._generate_max_retries_response(
-            generate_ai_response_func,
-            interface
-        )
-        return final_response, self.attempts
-    
-    def _execute_tool_attempt(
-        self,
-        attempt_number: int,
         command_info: Dict[str, Any]
     ) -> ToolAttempt:
-        """Execute a single tool attempt."""
+        """
+        Execute tool once and return the attempt result.
+        
+        Simple, predictable, no magic.
+        
+        Returns:
+            ToolAttempt with result or error
+        """
         start_time = time.time()
         
         tool_type = command_info.get("type", "internal")
@@ -207,13 +92,10 @@ class AgenticToolLoop:
                 duration_ms = (time.time() - start_time) * 1000
                 
                 if result.get("success"):
-                    # Format as markdown contract
                     raw_result = result.get("result", {})
-                    print(f"[AGENTIC DEBUG] Raw MCP result: {raw_result}")
                     output_text = self._extract_mcp_output(raw_result)
-                    print(f"[AGENTIC DEBUG] Extracted output: {output_text[:100]}...")
                     return ToolAttempt(
-                        attempt_number=attempt_number,
+                        attempt_number=1,
                         tool_type="mcp",
                         tool_name=tool_name,
                         server_name=server_name,
@@ -223,7 +105,7 @@ class AgenticToolLoop:
                     )
                 else:
                     return ToolAttempt(
-                        attempt_number=attempt_number,
+                        attempt_number=1,
                         tool_type="mcp",
                         tool_name=tool_name,
                         server_name=server_name,
@@ -241,7 +123,7 @@ class AgenticToolLoop:
                 # Check if result contains error
                 if "Error:" in result or "error" in result.lower():
                     return ToolAttempt(
-                        attempt_number=attempt_number,
+                        attempt_number=1,
                         tool_type="internal",
                         tool_name=tool_name,
                         server_name=None,
@@ -251,7 +133,7 @@ class AgenticToolLoop:
                     )
                 else:
                     return ToolAttempt(
-                        attempt_number=attempt_number,
+                        attempt_number=1,
                         tool_type="internal",
                         tool_name=tool_name,
                         server_name=None,
@@ -263,7 +145,7 @@ class AgenticToolLoop:
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
             return ToolAttempt(
-                attempt_number=attempt_number,
+                attempt_number=1,
                 tool_type=tool_type,
                 tool_name=tool_name,
                 server_name=server_name,
@@ -279,7 +161,7 @@ class AgenticToolLoop:
         command_info: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Parse tool arguments from command string."""
-        # Use pre-parsed args if available (from retry_modified)
+        # Use pre-parsed args if available
         if "parsed_args" in command_info:
             return command_info["parsed_args"]
         
@@ -296,7 +178,6 @@ class AgenticToolLoop:
         elif tool_name == "execute_command":
             return {"command": args_str}
         elif tool_name == "fetch":
-            # For MCP fetch, args might be URL or JSON
             try:
                 parsed = json.loads(args_str)
                 if "url" in parsed:
@@ -310,96 +191,6 @@ class AgenticToolLoop:
                 return json.loads(args_str) if args_str else {}
             except:
                 return {"query": args_str}
-    
-    def _ask_llm_for_decision(
-        self,
-        attempt: ToolAttempt,
-        generate_ai_response_func: Callable,
-        interface: str,
-        is_success: bool
-    ) -> Dict[str, Any]:
-        """Ask LLM what to do after a tool execution."""
-        
-        # Build context for LLM
-        if is_success:
-            prompt = f"""You just executed a tool. Here is the result:
-
-Tool: {attempt.tool_name}
-Arguments: {json.dumps(attempt.arguments, indent=2)}
-Result: {attempt.result[:500] if attempt.result else "(empty)"}
-
-Based on this result, decide your next action:
-- "continue" - The result is good, continue with your response
-- "another_tool" - You need to use another tool to complete the task
-
-Respond with ONLY a JSON object in this format:
-{{"action": "continue"}} or {{"action": "another_tool", "reason": "why you need another tool"}}
-"""
-        else:
-            # Error case - give LLM options to retry/fix
-            prompt = f"""You just executed a tool but it failed. Here is what happened:
-
-Tool: {attempt.tool_name}
-Arguments: {json.dumps(attempt.arguments, indent=2)}
-Error: {attempt.error}
-
-This is attempt #{attempt.attempt_number} of max {self.max_retries}.
-
-Decide your next action:
-- "retry_same" - Retry with the same arguments (maybe transient error)
-- "retry_modified" - Retry with modified arguments (explain what to change)
-- "try_alternative" - Try a completely different tool/approach
-- "give_up" - Can't fix this, explain the failure to user
-
-Respond with ONLY a JSON object:
-{{"action": "retry_same"}}
-{{"action": "retry_modified", "modified_arguments": {{...}}}}
-{{"action": "try_alternative", "alternative_tool": {{"type": "...", "command": "...", "args": "..."}}}}
-{{"action": "give_up", "reason": "why you're giving up"}}
-"""
-        
-        # Call LLM for decision
-        try:
-            response = generate_ai_response_func(
-                self.profile,
-                prompt,
-                interface,
-                self.session_id
-            )
-            
-            # Extract JSON from response
-            json_match = self._extract_json(response)
-            if json_match:
-                return json.loads(json_match)
-            else:
-                # Default to giving up if we can't parse
-                return {"action": "give_up", "reason": "Could not parse LLM decision"}
-                
-        except Exception as e:
-            print(f"[AGENTIC] Error asking LLM for decision: {e}")
-            return {"action": "give_up", "reason": f"Error: {e}"}
-    
-    def _extract_json(self, text: str) -> Optional[str]:
-        """Extract JSON object from text."""
-        import re
-        # Try to find JSON object in text
-        match = re.search(r'\{[^{}]*\}', text)
-        if match:
-            return match.group(0)
-        
-        # Try with nested braces (simple approach)
-        start = text.find('{')
-        if start != -1:
-            # Count braces to find matching close
-            count = 0
-            for i, char in enumerate(text[start:]):
-                if char == '{':
-                    count += 1
-                elif char == '}':
-                    count -= 1
-                    if count == 0:
-                        return text[start:start+i+1]
-        return None
     
     def _extract_mcp_output(self, result: Dict) -> str:
         """Extract readable text from MCP tool result."""
@@ -425,60 +216,9 @@ Respond with ONLY a JSON object:
         
         # Fallback: return the whole thing as JSON
         return json.dumps(result, indent=2)
-    
-    def _generate_final_response(
-        self,
-        generate_ai_response_func: Callable,
-        interface: str
-    ) -> str:
-        """Generate final response after successful tool execution."""
-        # All attempts are now in the conversation context
-        # Generate response based on accumulated results
-        return generate_ai_response_func(
-            self.profile,
-            "",  # Empty prompt - LLM should respond based on context
-            interface,
-            self.session_id
-        )
-    
-    def _generate_failure_explanation(
-        self,
-        last_attempt: ToolAttempt,
-        generate_ai_response_func: Callable,
-        interface: str
-    ) -> str:
-        """Generate explanation for why tools failed."""
-        prompt = f"""You tried {last_attempt.attempt_number} times but the tool keeps failing.
-
-Final error: {last_attempt.error}
-
-Please explain to the user what happened and what you tried. Be honest about the failure."""
-        
-        return generate_ai_response_func(
-            self.profile,
-            prompt,
-            interface,
-            self.session_id
-        )
-    
-    def _generate_max_retries_response(
-        self,
-        generate_ai_response_func: Callable,
-        interface: str
-    ) -> str:
-        """Generate response when max retries reached."""
-        prompt = f"""You reached the maximum number of retries ({self.max_retries}) but could not succeed.
-
-Please explain to the user that you tried multiple approaches but couldn't complete the task."""
-        
-        return generate_ai_response_func(
-            self.profile,
-            prompt,
-            interface,
-            self.session_id
-        )
 
 
+# Legacy compatibility - redirect to simpler implementation
 def execute_tool_with_agentic_loop(
     profile: Dict,
     user_message: str,
@@ -486,31 +226,31 @@ def execute_tool_with_agentic_loop(
     session_id: int,
     generate_ai_response_func: Callable,
     interface: str = "web",
-    max_retries: int = 3
+    max_retries: int = 1
 ) -> Tuple[str, str, List[ToolAttempt]]:
     """
-    Convenience function to execute tool with agentic loop.
+    Execute tool (legacy compatibility).
+    
+    Now just executes once - no retry loop.
     
     Returns:
         (tool_output_for_display, final_ai_response, attempts_history)
     """
     loop = AgenticToolLoop(profile, session_id, max_retries)
-    final_response, attempts = loop.execute_with_agentic_loop(
-        user_message,
-        command_info,
-        generate_ai_response_func,
-        interface
+    attempt = loop.execute(command_info)
+    
+    # Build simple display output (no "Attempt X:" prefix)
+    if attempt.error:
+        display_output = f"❌ Error: {attempt.error}"
+    else:
+        display_output = attempt.result
+    
+    # Generate final response with tool context already in DB
+    final_response = generate_ai_response_func(
+        profile,
+        "",  # Empty prompt - LLM responds based on context
+        interface,
+        session_id
     )
     
-    # Build combined tool output for display
-    tool_outputs = []
-    for attempt in attempts:
-        if attempt.error:
-            tool_outputs.append(f"Attempt {attempt.attempt_number}: ❌ {attempt.error}")
-        else:
-            preview = attempt.result[:200] + "..." if attempt.result and len(attempt.result) > 200 else attempt.result
-            tool_outputs.append(f"Attempt {attempt.attempt_number}: ✅ {preview}")
-    
-    combined_tool_output = "\n".join(tool_outputs)
-    
-    return combined_tool_output, final_response, attempts
+    return display_output, final_response, [attempt]

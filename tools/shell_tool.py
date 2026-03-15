@@ -106,8 +106,12 @@ def main():
                 response = handle_tools_list()
                 response["id"] = request_id
             elif method == "tools/call":
-                response = handle_tool_call(request.get("params", {}))
-                response["id"] = request_id
+                result_data = handle_tool_call(request.get("params", {}))
+                response = {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": result_data
+                }
             else:
                 # Only return error for requests (with id)
                 if request_id is not None:
