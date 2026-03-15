@@ -208,7 +208,10 @@ class AgenticToolLoop:
                 
                 if result.get("success"):
                     # Format as markdown contract
-                    output_text = self._extract_mcp_output(result.get("result", {}))
+                    raw_result = result.get("result", {})
+                    print(f"[AGENTIC DEBUG] Raw MCP result: {raw_result}")
+                    output_text = self._extract_mcp_output(raw_result)
+                    print(f"[AGENTIC DEBUG] Extracted output: {output_text[:100]}...")
                     return ToolAttempt(
                         attempt_number=attempt_number,
                         tool_type="mcp",
