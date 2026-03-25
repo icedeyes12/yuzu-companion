@@ -20,16 +20,34 @@ def _get_ai_manager():
     return get_ai_manager()
 
 
-# Keywords that indicate preference or identity facts
-_PREFERENCE_PATTERNS = [
-    (r'\b(?:i prefer|i like|i love|i enjoy|i want|i need)\b(.+)', 'Prefers'),
-    (r'\b(?:i hate|i dislike|i don\'t like|i can\'t stand)\b(.+)', 'Dislikes'),
-    (r'\b(?:i am|i\'m|my name is)\b(.+)', 'Is'),
-    (r'\b(?:i use|i work with|i code in|i develop in)\b(.+)', 'Uses'),
-    (r'\b(?:i always|i usually|i often|i tend to)\b(.+)', 'Often'),
-    (r'\b(?:aku suka|aku lebih suka|gue suka)\b(.+)', 'Prefers'),
-    (r'\b(?:aku benci|aku nggak suka|gue nggak suka)\b(.+)', 'Dislikes'),
-    (r'\b(?:aku pakai|aku pake)\b(.+)', 'Uses'),
+# Keywords that indicate semantic facts — maps to memory_store taxonomy:
+# Preference | Identity | Interest | Guideline | Goal | Relationship | Experience | Personality
+_SEMANTIC_PATTERNS = [
+    # Preference — positive
+    (r'\b(?:i prefer|i like|i love|i enjoy|i want|i need|i usually go for)\b(.+)', 'Preference'),
+    # Preference — negative (Dislikes stored as same category, confidence handles sign)
+    (r'\b(?:i hate|i dislike|i don\'t like|i can\'t stand|i avoid|i never want)\b(.+)', 'Preference'),
+    # Identity — who the user is
+    (r'\b(?:i am|i\'m|my name is|i live in|i work at|i work as|i\'m a|i\'m an)\b(.+)', 'Identity'),
+    # Experience — skills, tools, past work
+    (r'\b(?:i use|i work with|i code in|i develop in|i\'ve built|i\'ve made|i built|i made)\b(.+)', 'Experience'),
+    # Personality — behavioral patterns
+    (r'\b(?:i always|i usually|i often|i tend to|i sometimes|i rarely|i never)\b(.+)', 'Personality'),
+    # Interest — topics the user cares about learning/pursuing
+    (r'\b(?:i\'m interested in|i want to learn|i\'m learning|i\'ve been studying|i\'m into)\b(.+)', 'Interest'),
+    # Goal — aspirations and plans
+    (r'\b(?:i want to|i\'m trying to|i\'m planning to|i\'m working on|i\'ll|i\'m going to)\b(.+)', 'Goal'),
+    # Guideline — how the user wants to be treated/addressed
+    (r'\b(?:call me|don\'t call me|don\'t|never|always|please|i prefer you)\b(.+)', 'Guideline'),
+    # Relationship — people in user's life
+    (r'\b(?:my girlfriend|my boyfriend|my partner|my wife|my husband|my friend|my mom|my dad|my sister|my brother)\b(.+)', 'Relationship'),
+    # Indonesian patterns
+    (r'\b(?:aku suka|aku lebih suka|gue suka|gua suka)\b(.+)', 'Preference'),
+    (r'\b(?:aku benci|aku nggak suka|gue nggak suka|gua nggak suka|aku ogah)\b(.+)', 'Preference'),
+    (r'\b(?:aku ini|gue ini|gua ini|aku namanya|gue namanya)\b(.+)', 'Identity'),
+    (r'\b(?:aku pake|aku pakai|gue pake|gue pakai)\b(.+)', 'Experience'),
+    (r'\b(?:aku selalu|gue selalu|aku biasanya|gue biasanya)\b(.+)', 'Personality'),
+    (r'\b(?:aku mau|gue mau|aku pengen|gue pengen|aku lagi belajar)\b(.+)', 'Goal'),
 ]
 
 _EMOTIONAL_KEYWORDS = [
@@ -62,17 +80,25 @@ def _llm_extract_facts(messages) -> list[dict]:
             for m in messages if m.get('role') in ('user', 'assistant')
         )
         prompt = (
-            "Extract factual preferences or identity statements from the user's messages above. "
-            "Return a JSON list of facts, each with fields: entity (always 'User'), relation (one of: "
-            "Prefers, Dislikes, Is, Uses, Often), and target (the specific fact, max 200 chars). "
+            "Extract factual knowledge about the user from their messages above. "
+            "Classify each fact using exactly one of these relation types:\n"
+            "  - Preference: likes, dislikes, habits (e.g. 'Prefers dark mode')\n"
+            "  - Identity: name, location, job, demographics (e.g. 'Is a developer')\n"
+            "  - Interest: topics they want to learn or explore (e.g. 'Interested in AI')\n"
+            "  - Guideline: how they want to be treated or addressed (e.g. 'Guideline: call me Bani')\n"
+            "  - Goal: things they want to achieve or do (e.g. 'Goal: build an app')\n"
+            "  - Relationship: people in their life (e.g. 'Relationship: girlfriend named Sari')\n"
+            "  - Experience: skills, tools, past projects (e.g. 'Experience: uses Python')\n"
+            "  - Personality: behavioral patterns and tendencies (e.g. 'Personality: works late nights')\n\n"
+            "Return a JSON list of facts with entity (always 'User'), relation, and target (max 200 chars). "
             "Return an empty list if nothing meaningful can be extracted. "
-            "Example: [{\"entity\": \"User\", \"relation\": \"Prefers\", \"target\": \"working after 10pm\"}]"
+            "Example: [{\"entity\": \"User\", \"relation\": \"Preference\", \"target\": \"Prefers dark mode\"}]"
         )
         response = ai_manager.send_message(
             provider=None,
             model=None,
             messages=[
-                {"role": "system", "content": "You extract structured preference facts from conversation."},
+                {"role": "system", "content": "You extract structured user facts from conversation using the taxonomy: Preference, Identity, Interest, Guideline, Goal, Relationship, Experience, Personality."},
                 {"role": "user", "content": conversation + "\n\n" + prompt},
             ],
             timeout=30,
@@ -99,7 +125,7 @@ def extract_semantic_facts(messages):
         if msg.get('role') != 'user':
             continue
         content = msg.get('content', '')
-        for pattern, relation in _PREFERENCE_PATTERNS:
+        for pattern, relation in _SEMANTIC_PATTERNS:
             match = re.search(pattern, content, re.IGNORECASE)
             if match:
                 target = match.group(1).strip()
