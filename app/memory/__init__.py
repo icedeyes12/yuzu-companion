@@ -122,6 +122,13 @@ def get_memory_stats(session_id: int) -> dict:
     except Exception:
         legacy_memory_keys = -1
 
+    extraction_errors = 0
+    try:
+        from app.memory.extractor import get_extraction_error_count
+        extraction_errors = get_extraction_error_count()
+    except Exception:
+        pass
+
     return {
         "semantic_count": semantic_count,
         "episodic_count": episodic_count,
@@ -130,6 +137,7 @@ def get_memory_stats(session_id: int) -> dict:
         "index_episodic_size": index_episodic_size,
         "index_segments_size": index_segments_size,
         "ann_errors": ann_errors,
+        "extraction_errors": extraction_errors,
         "last_decay": last_decay,
         "legacy_memory_keys": legacy_memory_keys,
     }

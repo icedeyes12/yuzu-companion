@@ -1611,7 +1611,8 @@ def start_session(interface="terminal"):
             run_decay(session_id)
 
             # Segment unsegmented messages from past sessions
-            segment_session(session_id)
+            segment_count = segment_session(session_id)
+            print(f"[Memory] {segment_count} session segments created/updated")
 
             # Extract semantic facts + episodic memories — idemponent per session
             if not _MEMORY_INIT_DONE.get(session_id):

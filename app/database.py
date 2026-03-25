@@ -91,7 +91,8 @@ class SemanticMemory(Base):
     target = Column(Text, nullable=False)
     confidence = Column(Float, default=0.5)
     importance = Column(Float, default=0.5)
-    embedding_vector = Column(LargeBinary, nullable=True)  # NEW: stored embedding
+    source_episodic_ids = Column(Text, nullable=True)  # JSON array of episodic memory IDs this fact was derived from
+    embedding_vector = Column(LargeBinary, nullable=True)
     last_accessed = Column(DateTime, nullable=True)
     access_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.now)
@@ -231,6 +232,16 @@ def _migrate_add_semantic_embedding_vector(engine):
             conn.execute(text('ALTER TABLE semantic_memories ADD COLUMN embedding_vector BLOB'))
             conn.commit()
 
+def _migrate_add_source_episodic_ids(engine):
+    """Add source_episodic_ids column to semantic_memories if it does not exist."""
+    from sqlalchemy import inspect as sa_inspect, text
+    inspector = sa_inspect(engine)
+    columns = [col['name'] for col in inspector.get_columns('semantic_memories')]
+    if 'source_episodic_ids' not in columns:
+        with engine.connect() as conn:
+            conn.execute(text('ALTER TABLE semantic_memories ADD COLUMN source_episodic_ids TEXT'))
+            conn.commit()
+
 def init_db():
     """
     Initialize database with safety guards.
@@ -305,7 +316,13 @@ def init_db():
         _migrate_add_semantic_embedding_vector(engine)
     except Exception as e:
         print(f"[WARNING] semantic_embedding_vector migration skipped: {e}")
-    
+
+    # Migrate existing databases: add source_episodic_ids column if missing
+    try:
+        _migrate_add_source_episodic_ids(engine)
+    except Exception as e:
+        print(f"[WARNING] source_episodic_ids migration skipped: {e}")
+
     with get_db_session() as session:
         # Create default profile and session if needed
         if session.query(Profile).count() == 0:

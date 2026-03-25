@@ -9,11 +9,10 @@ import joblib
 from scipy.spatial import cKDTree
 
 from app.database import get_db_session, SemanticMemory, EpisodicMemory, ConversationSegment
-from app.memory.embedder import blob_to_vec
+from app.memory.embedder import blob_to_vec, get_embed_dim
 
 _INDEX_DIR = os.path.join(os.path.dirname(__file__), 'nn_indexes')
-_EMBED_DIM = 4096  # Qwen3-Embedding-8B
-_INDEX_VERSION = 2  # schema version — bump to force rebuild on breaking changes
+_INDEX_VERSION = 4  # schema version — bump to force rebuild on breaking changes
 
 # ── Directory setup ────────────────────────────────────────────────────────────
 
@@ -38,7 +37,7 @@ class NNIndex:
         self._normed = (vecs / norms).astype(np.float32)
         self._ids = list(ids)
         self._tree = cKDTree(self._normed)
-        self._embed_dim = _EMBED_DIM  # store actual dim for validation
+        self._embed_dim = get_embed_dim()  # store actual dim for validation
 
     def search(self, query_vec: np.ndarray, k: int) -> list[tuple[int, float]]:
         """Returns [(id, distance), ...] closest to query_vec (cosine distance)."""
@@ -190,9 +189,18 @@ class IndexStore:
             ).all()
         if not rows:
             return None
-        ids = [r.id for r in rows]
-        vecs = np.array([self._pad_or_truncate(blob_to_vec(r.embedding_vector)) for r in rows], dtype=np.float32)
-        idx = NNIndex.build(ids, vecs)
+        ids = []
+        vecs = []
+        for r in rows:
+            vec = blob_to_vec(r.embedding_vector)
+            if len(vec) == 0:
+                continue  # skip zero vectors (from failed embed_text calls)
+            ids.append(r.id)
+            vecs.append(self._pad_or_truncate(vec))
+        if not ids:
+            return None
+        vecs_arr = np.array(vecs, dtype=np.float32)
+        idx = NNIndex.build(ids, vecs_arr)
         idx.save(_index_path(self.session_id, "semantic"))
         return idx
 
@@ -204,9 +212,18 @@ class IndexStore:
             ).all()
         if not rows:
             return None
-        ids = [r.id for r in rows]
-        vecs = np.array([self._pad_or_truncate(blob_to_vec(r.embedding)) for r in rows], dtype=np.float32)
-        idx = NNIndex.build(ids, vecs)
+        ids = []
+        vecs = []
+        for r in rows:
+            vec = blob_to_vec(r.embedding)
+            if len(vec) == 0:
+                continue
+            ids.append(r.id)
+            vecs.append(self._pad_or_truncate(vec))
+        if not ids:
+            return None
+        vecs_arr = np.array(vecs, dtype=np.float32)
+        idx = NNIndex.build(ids, vecs_arr)
         idx.save(_index_path(self.session_id, "episodic"))
         return idx
 
@@ -218,25 +235,35 @@ class IndexStore:
             ).all()
         if not rows:
             return None
-        ids = [r.id for r in rows]
-        vecs = np.array([self._pad_or_truncate(blob_to_vec(r.embedding)) for r in rows], dtype=np.float32)
-        idx = NNIndex.build(ids, vecs)
+        ids = []
+        vecs = []
+        for r in rows:
+            vec = blob_to_vec(r.embedding)
+            if len(vec) == 0:
+                continue
+            ids.append(r.id)
+            vecs.append(self._pad_or_truncate(vec))
+        if not ids:
+            return None
+        vecs_arr = np.array(vecs, dtype=np.float32)
+        idx = NNIndex.build(ids, vecs_arr)
         idx.save(_index_path(self.session_id, "segments"))
         return idx
 
     @staticmethod
     def _pad_or_truncate(vec: list[float]) -> list[float]:
         """Normalize embedding dimension to _EMBED_DIM, logging mismatches."""
-        if len(vec) == _EMBED_DIM:
+        embed_dim = get_embed_dim()
+        if len(vec) == embed_dim:
             return vec
         if len(vec) == 0:
             print("[WARNING] Empty embedding vector encountered, using zeros")
-            return [0.0] * _EMBED_DIM
-        if len(vec) < _EMBED_DIM:
-            print(f"[WARNING] Embedding dim {len(vec)} < {_EMBED_DIM}, padding with zeros")
-            return vec + [0.0] * (_EMBED_DIM - len(vec))
-        print(f"[WARNING] Embedding dim {len(vec)} > {_EMBED_DIM}, truncating")
-        return vec[:_EMBED_DIM]
+            return [0.0] * embed_dim
+        if len(vec) < embed_dim:
+            print(f"[WARNING] Embedding dim {len(vec)} < {embed_dim}, padding with zeros")
+            return vec + [0.0] * (embed_dim - len(vec))
+        print(f"[WARNING] Embedding dim {len(vec)} > {embed_dim}, truncating")
+        return vec[:embed_dim]
 
     # ── Invalidate (mark dirty) ─────────────────────────────────────────────────
 

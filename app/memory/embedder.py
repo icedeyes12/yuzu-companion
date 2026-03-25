@@ -8,8 +8,41 @@ from app.database import Database
 
 CHUTES_EMBED_ENDPOINT = "https://chutes-qwen-qwen3-embedding-8b.chutes.ai/v1/embeddings"
 DEFAULT_MODEL = "Qwen/Qwen3-Embedding-8B"
+_EMBED_DIM: int | None = None  # lazily probed
 
 _session = None
+
+
+def _probe_embedding_dim() -> int:
+    """Probe the Chutes API with a minimal request to detect actual embedding dimension."""
+    try:
+        import requests
+        api_key = Database.get_api_key("chutes")
+        if not api_key:
+            return 4096
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {"input": ["probe"], "model": DEFAULT_MODEL, "encoding_format": "float"}
+        resp = requests.post(CHUTES_EMBED_ENDPOINT, json=payload, headers=headers, timeout=30)
+        resp.raise_for_status()
+        items = resp.json().get("data", [])
+        if items and "embedding" in items[0]:
+            dim = len(items[0]["embedding"])
+            print(f"[EMBEDDER] Probed embedding dimension: {dim}")
+            return dim
+    except Exception as e:
+        print(f"[WARNING] Embedding dimension probe failed, defaulting to 4096: {e}")
+    return 4096
+
+
+def get_embed_dim() -> int:
+    """Return the embedding dimension, probing on first call."""
+    global _EMBED_DIM
+    if _EMBED_DIM is None:
+        _EMBED_DIM = _probe_embedding_dim()
+    return _EMBED_DIM
 
 
 def _get_session():

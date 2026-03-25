@@ -1,6 +1,8 @@
 # [FILE: memory/extractor.py]
 # [DESCRIPTION: Memory extraction layer - semantic + episodic writers with embeddings]
 
+import logging
+
 import math
 import hashlib
 from datetime import datetime
@@ -11,6 +13,16 @@ from app.database import (
     get_db_session, SemanticMemory, EpisodicMemory
 )
 from app.memory.embedder import embed_text, vec_to_blob, blob_to_vec
+
+logger = logging.getLogger(__name__)
+
+# Session-scoped extraction error counter — reset per process
+_extraction_errors: int = 0
+
+
+def get_extraction_error_count() -> int:
+    """Return the number of extraction errors seen this process."""
+    return _extraction_errors
 
 
 def _get_ai_manager():
@@ -31,7 +43,8 @@ def _compute_message_hash(messages: list) -> str:
 def extract_semantic_facts(messages) -> list[dict]:
     """Extract semantic triples from user messages using LLM only.
 
-    Returns a list of dicts: {entity, relation, target}
+    Returns a list of dicts: {entity, relation, target, importance}
+    - importance: 0.0–1.0, how central/key the fact is to the user's identity
     Taxonomy: Preference | Identity | Interest | Guideline | Goal | Relationship | Experience | Personality
     """
     try:
@@ -42,6 +55,10 @@ def extract_semantic_facts(messages) -> list[dict]:
         )
         prompt = (
             "You extract factual knowledge about the user from their messages above.\n"
+            "For each fact, also rate its importance on a scale of 0.0 to 1.0:\n"
+            "  - 0.0–0.3: minor preference or casual mention (e.g. 'likes tea')\n"
+            "  - 0.4–0.6: regular knowledge about the user (e.g. 'lives in Jakarta', 'works as developer')\n"
+            "  - 0.7–1.0: core identity, goals, or emotionally significant (e.g. 'Goal: build a startup', 'girlfriend named Sari')\n\n"
             "Classify each fact using exactly one of these relation types:\n"
             "  - Preference: likes, dislikes, habits (e.g. 'Prefers dark mode')\n"
             "  - Identity: name, location, job, demographics (e.g. 'Is a developer' or 'Lives in Jakarta')\n"
@@ -51,34 +68,40 @@ def extract_semantic_facts(messages) -> list[dict]:
             "  - Relationship: people in their life (e.g. 'Relationship: girlfriend named Sari')\n"
             "  - Experience: skills, tools, past projects (e.g. 'Experience: uses Python' or 'Built a React app')\n"
             "  - Personality: behavioral patterns and tendencies (e.g. 'Personality: works late nights')\n\n"
-            "Return a JSON list of facts with entity (always 'User'), relation, and target (max 200 chars).\n"
+            "Return a JSON list of facts with entity (always 'User'), relation, target (max 200 chars), and importance (float 0.0–1.0).\n"
             "Return an empty list [] if nothing meaningful can be extracted.\n"
             "Only extract facts explicitly stated or strongly implied — do not guess or generalize.\n\n"
-            "Example input: \"I love coding in Python late at night, I'm Bani from Jakarta\"\n"
+            "Example input: \"I love coding in Python late at night, I'm Bani from Jakarta, my goal is to ship yuzu-v2\"\n"
             "Example output: [\n"
-            "  {\"entity\": \"User\", \"relation\": \"Preference\", \"target\": \"Loves coding in Python\"},\n"
-            "  {\"entity\": \"User\", \"relation\": \"Identity\", \"target\": \"Name is Bani, from Jakarta\"},\n"
-            "  {\"entity\": \"User\", \"relation\": \"Personality\", \"target\": \"Works late at night\"}\n"
+            "  {\"entity\": \"User\", \"relation\": \"Preference\", \"target\": \"Loves coding in Python\", \"importance\": 0.6},\n"
+            "  {\"entity\": \"User\", \"relation\": \"Identity\", \"target\": \"Name is Bani, from Jakarta\", \"importance\": 0.7},\n"
+            "  {\"entity\": \"User\", \"relation\": \"Personality\", \"target\": \"Works late at night\", \"importance\": 0.5},\n"
+            "  {\"entity\": \"User\", \"relation\": \"Goal\", \"target\": \"Ship yuzu-v2\", \"importance\": 0.9}\n"
             "]"
         )
         response = ai_manager.send_message(
             provider=None,
             model=None,
             messages=[
-                {"role": "system", "content": "You extract structured user facts from conversation. Use the taxonomy: Preference, Identity, Interest, Guideline, Goal, Relationship, Experience, Personality."},
+                {"role": "system", "content": "You extract structured user facts from conversation. Use the taxonomy: Preference, Identity, Interest, Guideline, Goal, Relationship, Experience, Personality. Also rate importance 0.0–1.0."},
                 {"role": "user", "content": conversation + "\n\n" + prompt},
             ],
             timeout=30,
-            max_tokens=500,
+            max_tokens=600,
         )
         if not response:
             return []
         import json as _json
         facts = _json.loads(response)
         if isinstance(facts, list):
-            return [f for f in facts if f.get('entity') and f.get('relation') and f.get('target')]
+            return [
+                f for f in facts
+                if f.get('entity') and f.get('relation') and f.get('target')
+            ]
     except Exception as e:
-        print(f"[WARNING] LLM fact extraction failed: {e}")
+        logger.warning(f"LLM fact extraction failed: {e}")
+        global _extraction_errors
+        _extraction_errors += 1
     return []
 
 
@@ -113,7 +136,8 @@ def calculate_emotional_weight(messages) -> float:
             if match:
                 return float(match.group())
     except Exception as e:
-        print(f"[WARNING] LLM emotional weight failed: {e}")
+        logger.warning(f"LLM emotional weight failed: {e}")
+        _extraction_errors += 1
     return 0.0
 
 
@@ -166,7 +190,8 @@ def generate_episodic_summary(messages) -> str:
         if response and isinstance(response, str) and response.strip():
             return response.strip()
     except Exception as e:
-        print(f"[WARNING] LLM summarization failed: {e}")
+        logger.warning(f"LLM summarization failed: {e}")
+        _extraction_errors += 1
     return ""
 
 
@@ -205,7 +230,7 @@ def _find_similar_semantic(session_id, entity, relation, target, vector, thresho
     return None
 
 
-def upsert_semantic_memory(session_id, entity, relation, target):
+def upsert_semantic_memory(session_id, entity, relation, target, importance=0.5):
     """Insert or update a semantic memory triple with embedding."""
     text = _build_semantic_text(entity, relation, target)
     vector = embed_text(text)
@@ -249,7 +274,7 @@ def upsert_semantic_memory(session_id, entity, relation, target):
             relation=relation,
             target=target,
             confidence=0.5,
-            importance=0.5,
+            importance=importance,
             embedding_vector=vec_to_blob(vector) if vector is not None else None,
             last_accessed=datetime.now(),
             access_count=1,
@@ -311,14 +336,17 @@ def process_messages_for_memory(session_id, messages, affection_delta=0):
                 fact['entity'],
                 fact['relation'],
                 fact['target'],
+                fact.get('importance', 0.5),
             )
             if mem_id is not None and vector is not None:
                 try:
                     index_store.add_semantic(mem_id, np.array(vector, dtype=np.float32))
                 except Exception as idx_err:
-                    print(f"[WARNING] ANN index update failed (semantic): {idx_err}")
+                    logger.warning(f"ANN index update failed (semantic): {idx_err}")
+                    _extraction_errors += 1
         except Exception as e:
-            print(f"[WARNING] Semantic memory extraction failed: {e}")
+            logger.warning(f"Semantic memory extraction failed: {e}")
+            _extraction_errors += 1
 
     if should_create_episodic(messages, affection_delta):
         emotional_weight = calculate_emotional_weight(messages)
@@ -333,6 +361,8 @@ def process_messages_for_memory(session_id, messages, affection_delta=0):
                     try:
                         index_store.add_episodic(mem_id, np.array(vector, dtype=np.float32))
                     except Exception as idx_err:
-                        print(f"[WARNING] ANN index update failed (episodic): {idx_err}")
+                        logger.warning(f"ANN index update failed (episodic): {idx_err}")
+                        _extraction_errors += 1
             except Exception as e:
-                print(f"[WARNING] Episodic memory creation failed: {e}")
+                logger.warning(f"Episodic memory creation failed: {e}")
+                _extraction_errors += 1

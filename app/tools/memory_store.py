@@ -1,30 +1,59 @@
+# [FILE: app/tools/memory_store.py]
+# [DESCRIPTION: Tool for storing explicit user facts as semantic memories]
+
 from datetime import datetime
 from app.database import Database, get_db_session, SemanticMemory
 from app.memory.embedder import embed_texts, cosine_similarity, blob_to_vec, vec_to_blob
 from app.tools.registry import build_markdown_contract
-import numpy as np
 from app.memory.index_store import get_index_store
 
 
-def _infer_category(fact):
-    s = fact.lower()
-    if any(w in s for w in ["prefer", "like", "love", "hate", "dislike", "favorite", "enjoy"]):
-        return "Preference"
-    if any(w in s for w in ["name", "live", "work", "job", "career", "company", "city", "age", "born"]):
-        return "Identity"
-    if any(w in s for w in ["interest", "hobby", "learn", "study", "passion"]):
-        return "Interest"
-    if any(w in s for w in ["should", "avoid", "never", "always", "tone", "behave", "call me"]):
-        return "Guideline"
-    if any(w in s for w in ["goal", "plan", "want", "aspire", "dream"]):
-        return "Goal"
-    if any(w in s for w in ["family", "friend", "partner", "relationship", "girlfriend", "boyfriend"]):
-        return "Relationship"
-    if any(w in s for w in ["skill", "experience", "past project", "built", "made"]):
-        return "Experience"
-    if any(w in s for w in ["personality", "style", "tend", "usually", "often", "communicat"]):
-        return "Personality"
-    return "Identity"
+def _classify_fact(fact: str) -> tuple[str, float]:
+    """Classify a fact category and rate its importance (0.0–1.0) using LLM.
+
+    Returns (category, importance).
+    """
+    try:
+        ai_manager = _get_ai_manager()
+        prompt = (
+            f"Classify this fact and rate its importance to the user on a scale of 0.0 to 1.0.\n\n"
+            f"Fact: \"{fact}\"\n\n"
+            "Category must be exactly one of:\n"
+            "  - Preference: likes, dislikes, habits\n"
+            "  - Identity: name, location, job, demographics\n"
+            "  - Interest: topics they want to learn or explore\n"
+            "  - Guideline: how they want to be treated or addressed\n"
+            "  - Goal: things they want to achieve or do\n"
+            "  - Relationship: people in their life\n"
+            "  - Experience: skills, tools, past projects\n"
+            "  - Personality: behavioral patterns and tendencies\n\n"
+            "Importance scale:\n"
+            "  - 0.0–0.3: minor preference or casual mention\n"
+            "  - 0.4–0.6: regular knowledge about the user\n"
+            "  - 0.7–1.0: core identity, goals, or emotionally significant\n\n"
+            "Return ONLY a JSON object with keys 'category' and 'importance'. No other text.\n"
+            'Example: {"category": "Preference", "importance": 0.7}'
+        )
+        response = ai_manager.send_message(
+            provider=None,
+            model=None,
+            messages=[
+                {"role": "system", "content": "You classify user facts and rate their importance. Output valid JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            timeout=15,
+            max_tokens=100,
+        )
+        if response:
+            import json as _json
+            result = _json.loads(response.strip())
+            cat = result.get('category', 'Identity')
+            imp = float(result.get('importance', 0.5))
+            imp = max(0.0, min(1.0, imp))
+            return cat, imp
+    except Exception as e:
+        print(f"[WARNING] LLM classification failed: {e}")
+    return 'Identity', 0.5
 
 
 def execute(arguments, **kwargs):
@@ -57,8 +86,14 @@ def execute(arguments, **kwargs):
             partner_name,
         )
 
-    category = arguments.get("category", _infer_category(fact))
-    full_command = f"/memory_store fact=\"{fact[:60]}\" category={category}"
+    # Use LLM for category + importance unless user explicitly provided category
+    if arguments.get("category"):
+        category = arguments["category"]
+        importance = 0.5
+    else:
+        category, importance = _classify_fact(fact)
+
+    full_command = f'/memory_store fact="{fact[:60]}" category={category}'
 
     # Embed the fact text — store as BLOB for ANN index compatibility
     embed_label = f"[{category}] {fact}"
@@ -103,6 +138,7 @@ def execute(arguments, **kwargs):
                 rec.embedding_vector = vector_blob
                 session.commit()
                 try:
+                    import numpy as np
                     index_store.add_semantic(duplicate_id, np.array(vec, dtype=np.float32))
                 except Exception:
                     pass
@@ -113,14 +149,14 @@ def execute(arguments, **kwargs):
                 partner_name,
             )
 
-        # Insert new fact
+        # Insert new fact — importance set by LLM
         new_mem = SemanticMemory(
             session_id=session_id,
             entity="User",
             relation=category,
             target=fact,
             confidence=0.7,
-            importance=0.6,
+            importance=importance,
             embedding_vector=vector_blob,
             last_accessed=datetime.now(),
             access_count=1,
@@ -128,6 +164,7 @@ def execute(arguments, **kwargs):
         session.add(new_mem)
         session.commit()
         try:
+            import numpy as np
             db_id = session.query(SemanticMemory.id).filter(
                 SemanticMemory.session_id == session_id,
                 SemanticMemory.entity == "User",
