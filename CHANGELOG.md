@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.0.70.2] — 2026-03-26
+
+### Fixed
+
+- **ANN staleness on duplication**: `upsert_semantic_memory()` now invalidates the ANN index on both exact-match and semantic-dedup paths; returns `(id, vector)` on dedup so callers can update ANN
+- **Cross-dedup between write paths**: `memory_store.execute()` now delegates directly to `upsert_semantic_memory()`, ensuring both the `/memory_store` tool and auto-extraction use identical embedding text format (`"User {category} {fact}"`)
+- **access_count unbounded growth**: Capped at `ACCESS_COUNT_CAP = 1000`; now decrements by 1 per decay cycle instead of never resetting, allowing stability to adapt over time
+- **Segmenter silent tail discard**: Trailing groups with 2-4 messages are merged into the previous segment instead of being dropped; `MIN_MESSAGES_PER_SEGMENT = 2` added
+- **embed_dim mismatch handling**: `NNIndex.load()` validates stored dimension against current probe and raises `ValueError` to force rebuild rather than returning wrong-dimension vectors
+- **Dead code removal**: Removed unused imports (`embed_texts`, `cosine_similarity`, `blob_to_vec`, `vec_to_blob`, `SemanticMemory`, `get_db_session`, `datetime`) from `memory_store.py`
+
+---
+
 ## [1.0.70.1] — 2026-03-25
 
 ### Fixed
