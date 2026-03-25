@@ -416,6 +416,7 @@ def _trigger_memory_pipeline(session_id):
         from app.memory.extractor import generate_episodic_summary, create_episodic_memory
         from app.memory.extractor import extract_semantic_facts, upsert_semantic_memory
         from app.memory.review import run_decay
+        from app.memory.index_store import get_index_store
 
         recent = Database.get_chat_history(session_id=session_id, limit=20, recent=True)
         if not recent:
@@ -429,6 +430,7 @@ def _trigger_memory_pipeline(session_id):
                 importance = 0.5 + emotional_weight * 0.3
                 try:
                     create_episodic_memory(session_id, summary, emotional_weight, importance)
+                    get_index_store(session_id)._invalidate_episodic()
                 except Exception as e:
                     print(f"[WARNING] Episodic memory creation failed: {e}")
 
@@ -447,20 +449,12 @@ def _trigger_memory_pipeline(session_id):
                 facts = extract_semantic_facts(recent)
                 for fact in facts:
                     upsert_semantic_memory(session_id, fact['entity'], fact['relation'], fact['target'])
+                get_index_store(session_id)._invalidate_semantic()
                 _memory_semantic_last_run[session_id] = datetime.now()
                 _memory_semantic_last_msg_count[session_id] = msg_count
             except Exception as e:
                 print(f"[WARNING] Per-message semantic extraction failed: {e}")
 
-        # --- Decay: time-gated (once per 6 hours) ---
-        try:
-            last_decay = _last_decay_run.get(session_id)
-            now = datetime.now()
-            if last_decay is None or (now - last_decay).total_seconds() >= _DECAY_INTERVAL_HOURS * 3600:
-                run_decay(session_id)
-                _last_decay_run[session_id] = now
-        except Exception as e:
-            print(f"[WARNING] Memory decay failed: {e}")
     except Exception as e:
         print(f"[WARNING] Memory extraction failed: {e}")
 
@@ -1748,6 +1742,7 @@ just a natural paragraph.
             importance = 0.5 + emotional * 0.3
             try:
                 create_episodic_memory(session_id, context_paragraph.strip(), emotional, importance)
+                get_index_store(session_id)._invalidate_episodic()
             except Exception as e:
                 print(f"[WARNING] Sync episodic to DB failed: {e}")
         except Exception as e:

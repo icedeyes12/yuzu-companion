@@ -2,6 +2,7 @@
 # [DESCRIPTION: ANN index per session using scipy cKDTree (cosine metric),
 #               persisted to disk via joblib pickle]
 
+import atexit
 import os
 import numpy as np
 import joblib
@@ -12,6 +13,7 @@ from app.memory.embedder import blob_to_vec
 
 _INDEX_DIR = os.path.join(os.path.dirname(__file__), 'nn_indexes')
 _EMBED_DIM = 4096  # Qwen3-Embedding-8B
+_INDEX_VERSION = 1  # schema version — bump to force rebuild on breaking changes
 
 # ── Directory setup ────────────────────────────────────────────────────────────
 
@@ -75,8 +77,9 @@ class IndexStore:
 
     Indexes are:
     - Loaded lazily on first search
-    - Rebuilt from DB when missing or on explicit rebuild()
-    - Persisted to disk as joblib pickles
+    - Rebuilt from DB when missing, stale, or on explicit rebuild()
+    - Persisted to disk as joblib pickles (atomic write)
+    - Invalidated in-memory when new memories are written (fixes staleness)
     """
 
     def __init__(self, session_id: int):
@@ -88,7 +91,16 @@ class IndexStore:
         self._episodic_loaded = False
         self._segments_loaded = False
 
-    # ── Lazy load / build ─────────────────────────────────────────────────────
+    # ── Atomic save ────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _atomic_save(normed: np.ndarray, path: str):
+        """Write to temp file then atomic-rename to prevent corrupted pickles."""
+        tmp = path + ".tmp"
+        joblib.dump(normed, tmp, compress=3)
+        os.replace(tmp, path)
+
+    # ── Lazy load / build ──────────────────────────────────────────────────────
 
     def _ensure_semantic(self):
         if self._semantic_loaded:
@@ -97,10 +109,11 @@ class IndexStore:
         if os.path.exists(path):
             try:
                 self._semantic = NNIndex.load(path)
+                self._semantic_loaded = True
+                return
             except Exception:
-                self._semantic = self._rebuild_semantic()
-        else:
-            self._semantic = self._rebuild_semantic()
+                pass  # fall through to rebuild
+        self._semantic = self._rebuild_semantic()
         self._semantic_loaded = True
 
     def _ensure_episodic(self):
@@ -110,10 +123,11 @@ class IndexStore:
         if os.path.exists(path):
             try:
                 self._episodic = NNIndex.load(path)
+                self._episodic_loaded = True
+                return
             except Exception:
-                self._episodic = self._rebuild_episodic()
-        else:
-            self._episodic = self._rebuild_episodic()
+                pass
+        self._episodic = self._rebuild_episodic()
         self._episodic_loaded = True
 
     def _ensure_segments(self):
@@ -123,10 +137,11 @@ class IndexStore:
         if os.path.exists(path):
             try:
                 self._segments = NNIndex.load(path)
+                self._segments_loaded = True
+                return
             except Exception:
-                self._segments = self._rebuild_segments()
-        else:
-            self._segments = self._rebuild_segments()
+                pass
+        self._segments = self._rebuild_segments()
         self._segments_loaded = True
 
     # ── Rebuild from DB ────────────────────────────────────────────────────────
@@ -140,9 +155,9 @@ class IndexStore:
         if not rows:
             return None
         ids = [r.id for r in rows]
-        vecs = np.array([blob_to_vec(r.embedding_vector) for r in rows], dtype=np.float32)
+        vecs = np.array([self._pad_or_truncate(blob_to_vec(r.embedding_vector)) for r in rows], dtype=np.float32)
         idx = NNIndex.build(ids, vecs)
-        idx.save(_index_path(self.session_id, "semantic"))
+        self._atomic_save(idx._normed, _index_path(self.session_id, "semantic"))
         return idx
 
     def _rebuild_episodic(self) -> NNIndex | None:
@@ -154,9 +169,9 @@ class IndexStore:
         if not rows:
             return None
         ids = [r.id for r in rows]
-        vecs = np.array([blob_to_vec(r.embedding) for r in rows], dtype=np.float32)
+        vecs = np.array([self._pad_or_truncate(blob_to_vec(r.embedding)) for r in rows], dtype=np.float32)
         idx = NNIndex.build(ids, vecs)
-        idx.save(_index_path(self.session_id, "episodic"))
+        self._atomic_save(idx._normed, _index_path(self.session_id, "episodic"))
         return idx
 
     def _rebuild_segments(self) -> NNIndex | None:
@@ -168,12 +183,40 @@ class IndexStore:
         if not rows:
             return None
         ids = [r.id for r in rows]
-        vecs = np.array([blob_to_vec(r.embedding) for r in rows], dtype=np.float32)
+        vecs = np.array([self._pad_or_truncate(blob_to_vec(r.embedding)) for r in rows], dtype=np.float32)
         idx = NNIndex.build(ids, vecs)
-        idx.save(_index_path(self.session_id, "segments"))
+        self._atomic_save(idx._normed, _index_path(self.session_id, "segments"))
         return idx
 
-    # ── Public search API ─────────────────────────────────────────────────────
+    @staticmethod
+    def _pad_or_truncate(vec: list[float]) -> list[float]:
+        """Normalize embedding dimension to _EMBED_DIM, logging mismatches."""
+        if len(vec) == _EMBED_DIM:
+            return vec
+        if len(vec) == 0:
+            print(f"[WARNING] Empty embedding vector encountered, using zeros")
+            return [0.0] * _EMBED_DIM
+        if len(vec) < _EMBED_DIM:
+            print(f"[WARNING] Embedding dim {len(vec)} < {_EMBED_DIM}, padding with zeros")
+            return vec + [0.0] * (_EMBED_DIM - len(vec))
+        print(f"[WARNING] Embedding dim {len(vec)} > {_EMBED_DIM}, truncating")
+        return vec[:_EMBED_DIM]
+
+    # ── Invalidate (mark dirty) ─────────────────────────────────────────────────
+
+    def _invalidate_semantic(self):
+        self._semantic = None
+        self._semantic_loaded = False
+
+    def _invalidate_episodic(self):
+        self._episodic = None
+        self._episodic_loaded = False
+
+    def _invalidate_segments(self):
+        self._segments = None
+        self._segments_loaded = False
+
+    # ── Public search API ───────────────────────────────────────────────────────
 
     def search_semantic(self, query_vec: np.ndarray, k: int = 15) -> list[tuple[int, float]]:
         self._ensure_semantic()
@@ -193,7 +236,7 @@ class IndexStore:
             return []
         return self._segments.search(query_vec, k)
 
-    # ── Rebuild ───────────────────────────────────────────────────────────────
+    # ── Rebuild ─────────────────────────────────────────────────────────────────
 
     def rebuild(self):
         self._semantic = self._rebuild_semantic()
@@ -202,6 +245,8 @@ class IndexStore:
         self._semantic_loaded = True
         self._episodic_loaded = True
         self._segments_loaded = True
+
+    # ── Close ───────────────────────────────────────────────────────────────────
 
     def close(self):
         self._semantic = None
@@ -225,3 +270,12 @@ def close_index_store(session_id: int):
     if session_id in _index_cache:
         _index_cache[session_id].close()
         del _index_cache[session_id]
+
+def close_all_index_stores():
+    """Close all cached stores and clear the cache. Called on process exit."""
+    for store in list(_index_cache.values()):
+        store.close()
+    _index_cache.clear()
+
+# Ensure all index stores are closed on interpreter shutdown
+atexit.register(close_all_index_stores)
