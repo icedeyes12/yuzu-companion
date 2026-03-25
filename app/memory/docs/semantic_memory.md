@@ -158,17 +158,11 @@ Typical usage:
 
 ## Module Responsibilities
 
-File: `memory/semantic.py`
+File: `memory/extractor.py`
 
 Responsibilities:
 
-1. Extract facts from episodic memory
-2. Merge or update existing facts
+1. Extract facts from user messages via regex + LLM fallback
+2. Merge or update existing facts (upsert)
 3. Manage confidence
 4. Provide semantic retrieval API
-
-Primary functions:
-
-- extract_semantic_facts(episode)
-- merge_or_insert_fact(triple)
-- get_top_semantic_memories(limit)

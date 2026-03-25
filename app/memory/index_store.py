@@ -38,6 +38,7 @@ class NNIndex:
         self._normed = (vecs / norms).astype(np.float32)
         self._ids = list(ids)
         self._tree = cKDTree(self._normed)
+        self._embed_dim = _EMBED_DIM  # store actual dim for validation
 
     def search(self, query_vec: np.ndarray, k: int) -> list[tuple[int, float]]:
         """Returns [(id, distance), ...] closest to query_vec (cosine distance)."""
@@ -53,22 +54,36 @@ class NNIndex:
     def size(self) -> int:
         return self._normed.shape[0]
 
+    @property
+    def embed_dim(self) -> int:
+        """Return embedding dimension this index was built with."""
+        return self._embed_dim
+
     def save(self, path: str):
-        IndexStore._atomic_save((_INDEX_VERSION, self._ids, self._normed), path)
+        IndexStore._atomic_save((_INDEX_VERSION, self._embed_dim, self._ids, self._normed), path)
 
     @classmethod
     def load(cls, path: str) -> "NNIndex":
         data = joblib.load(path)
-        # New format: (ids, normed) tuple with version marker
-        if isinstance(data, tuple) and len(data) == 3 and data[0] == _INDEX_VERSION:
-            _, ids, normed = data
-            return cls(ids, normed)
-        # Old format (raw ndarray, pre-v2): fall through to rebuild
-        raise ValueError(f"Stale index format at {path}")
+        # New format v2+: (version, embed_dim, ids, normed)
+        if isinstance(data, tuple) and len(data) >= 3:
+            version = data[0]
+            if version == _INDEX_VERSION and len(data) == 4:
+                _, embed_dim, ids, normed = data
+                idx = cls(ids, normed)
+                idx._embed_dim = embed_dim
+                return idx
+            elif version == 1 and len(data) == 3:
+                # Old format (version, ids, normed): assume 4096, force rebuild via ValueError
+                pass
+        raise ValueError(f"Stale or corrupted index format at {path}")
 
     @classmethod
-    def build(cls, ids: list[int], vecs: np.ndarray) -> "NNIndex":
-        return cls(ids, vecs)
+    def build(cls, ids: list[int], vecs: np.ndarray, embed_dim: int | None = None) -> "NNIndex":
+        idx = cls(ids, vecs)
+        if embed_dim is not None:
+            idx._embed_dim = embed_dim
+        return idx
 
 
 # ── Per-session store ──────────────────────────────────────────────────────────
@@ -250,10 +265,11 @@ class IndexStore:
         ids = self._semantic._ids[:]
         vecs = self._semantic._normed[:]
         new_norm = (vec / (np.linalg.norm(vec) + 1e-8)).astype(np.float32)
-        ids.append(mem_id)
-        vecs = np.vstack([vecs, new_norm])
-        self._semantic = NNIndex.build(ids, vecs)
-        self._semantic.save(_index_path(self.session_id, "semantic"))
+        if mem_id not in ids:
+            ids.append(mem_id)
+            vecs = np.vstack([vecs, new_norm])
+            self._semantic = NNIndex.build(ids, vecs)
+            self._semantic.save(_index_path(self.session_id, "semantic"))
 
     def add_episodic(self, mem_id: int, vec: np.ndarray):
         """Incrementally add a new episodic memory to the live index."""
@@ -266,10 +282,11 @@ class IndexStore:
         ids = self._episodic._ids[:]
         vecs = self._episodic._normed[:]
         new_norm = (vec / (np.linalg.norm(vec) + 1e-8)).astype(np.float32)
-        ids.append(mem_id)
-        vecs = np.vstack([vecs, new_norm])
-        self._episodic = NNIndex.build(ids, vecs)
-        self._episodic.save(_index_path(self.session_id, "episodic"))
+        if mem_id not in ids:
+            ids.append(mem_id)
+            vecs = np.vstack([vecs, new_norm])
+            self._episodic = NNIndex.build(ids, vecs)
+            self._episodic.save(_index_path(self.session_id, "episodic"))
 
     def add_segment(self, seg_id: int, vec: np.ndarray):
         """Incrementally add a new segment to the live index."""
@@ -282,10 +299,11 @@ class IndexStore:
         ids = self._segments._ids[:]
         vecs = self._segments._normed[:]
         new_norm = (vec / (np.linalg.norm(vec) + 1e-8)).astype(np.float32)
-        ids.append(seg_id)
-        vecs = np.vstack([vecs, new_norm])
-        self._segments = NNIndex.build(ids, vecs)
-        self._segments.save(_index_path(self.session_id, "segments"))
+        if seg_id not in ids:
+            ids.append(seg_id)
+            vecs = np.vstack([vecs, new_norm])
+            self._segments = NNIndex.build(ids, vecs)
+            self._segments.save(_index_path(self.session_id, "segments"))
 
     # ── Public search API ───────────────────────────────────────────────────────
 

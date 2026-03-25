@@ -10,6 +10,7 @@ from app.database import (
 from app.memory.embedder import embed_text, vec_to_blob
 import hashlib
 import json as _json
+import math
 
 
 def _get_ai_manager():
@@ -220,6 +221,41 @@ def _build_semantic_text(entity, relation, target):
     return f"{entity} {relation} {target}"
 
 
+def _find_similar_semantic(session_id, entity, relation, target, vector, threshold=0.95) -> int | None:
+    """
+    Check if a semantically similar fact already exists for (entity, relation).
+    Uses dot product on stored embedding vectors.
+    Returns existing db id if similarity > threshold, else None.
+    """
+    if vector is None:
+        return None
+    try:
+        import numpy as np
+        norm_target = math.sqrt(sum(x * x for x in vector))
+        if norm_target == 0:
+            return None
+        with get_db_session() as session:
+            existing = session.query(SemanticMemory).filter(
+                SemanticMemory.session_id == session_id,
+                SemanticMemory.entity == entity,
+                SemanticMemory.relation == relation,
+            ).all()
+            for mem in existing:
+                if mem.embedding_vector is None:
+                    continue
+                mem_vec = blob_to_vec(mem.embedding_vector)
+                norm_mem = math.sqrt(sum(x * x for x in mem_vec))
+                if norm_mem == 0:
+                    continue
+                dot = sum(a * b for a, b in zip(vector, mem_vec))
+                sim = dot / (norm_target * norm_mem)
+                if sim > threshold:
+                    return mem.id
+    except Exception:
+        pass
+    return None
+
+
 def upsert_semantic_memory(session_id, entity, relation, target):
     """Insert or update a semantic memory triple with embedding.
     
@@ -246,8 +282,27 @@ def upsert_semantic_memory(session_id, entity, relation, target):
             if vector is not None:
                 existing.embedding_vector = vec_to_blob(vector)
             session.commit()
+            # Detach so caller gets a consistent reference even if session closes
+            session.expunge(existing)
             return existing.id, vector
         else:
+            # Cosine dedup: if same entity+relation but different wording,
+            # boost the existing record instead of creating a near-dupe.
+            dup_id = _find_similar_semantic(session_id, entity, relation, target, vector)
+            if dup_id is not None:
+                existing_dup = session.query(SemanticMemory).filter(
+                    SemanticMemory.id == dup_id
+                ).first()
+                if existing_dup:
+                    existing_dup.confidence = min(existing_dup.confidence + 0.15, 1.0)
+                    existing_dup.access_count += 1
+                    existing_dup.last_accessed = datetime.now()
+                    session.commit()
+                    session.expunge(existing_dup)
+                    print(f"[MEMORY] Dedup: boosted similar fact id={dup_id} "
+                          f"({entity} {relation} {target[:40]})")
+                    return dup_id, None
+
             new_mem = SemanticMemory(
                 session_id=session_id,
                 entity=entity,
@@ -261,12 +316,9 @@ def upsert_semantic_memory(session_id, entity, relation, target):
             )
             session.add(new_mem)
             session.commit()
-            db_id = session.query(SemanticMemory.id).filter(
-                SemanticMemory.session_id == session_id,
-                SemanticMemory.entity == entity,
-                SemanticMemory.relation == relation,
-                SemanticMemory.target == target,
-            ).scalar()
+            # Use the object's .id directly — no separate query (avoids race condition)
+            db_id = new_mem.id
+            session.expunge(new_mem)
             return db_id, vector
 
 
@@ -292,7 +344,9 @@ def create_episodic_memory(session_id, summary, emotional_weight=0.0, importance
         )
         session.add(mem)
         session.commit()
+        # Use the object's .id directly — no separate query
         db_id = mem.id
+        session.expunge(mem)
         return db_id, vector
 
 

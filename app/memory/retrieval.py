@@ -2,6 +2,7 @@
 # [DESCRIPTION: Memory retrieval pipeline - cosine similarity + hybrid scoring]
 
 import math
+import functools
 from datetime import datetime, timedelta
 from app.database import (
     get_db_session, SemanticMemory, EpisodicMemory, ConversationSegment, Message
@@ -115,6 +116,7 @@ def _recency_factor(last_accessed) -> float:
     return math.exp(-delta_hours / 24.0)
 
 
+@functools.lru_cache(maxsize=1024)
 def _embed_query(text: str) -> list[float] | None:
     """Embed a query string via Chutes API."""
     try:
