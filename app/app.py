@@ -1738,6 +1738,12 @@ just a natural paragraph.
                 except Exception as e:
                     print(f"[WARNING] Sync semantic to DB failed: {e}")
 
+            # Invalidate semantic index after all upserts, regardless of episodic outcome
+            try:
+                get_index_store(session_id)._invalidate_semantic()
+            except Exception:
+                pass
+
             emotional = calculate_emotional_weight(chat_history[-20:])
             importance = 0.5 + emotional * 0.3
             try:
