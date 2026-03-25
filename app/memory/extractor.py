@@ -2,15 +2,16 @@
 # [DESCRIPTION: Memory extraction layer - semantic + episodic writers with embeddings]
 
 import re
-import numpy as np
+import math
+import hashlib
 from datetime import datetime
+
+import numpy as np
+
 from app.database import (
     get_db_session, SemanticMemory, EpisodicMemory
 )
-from app.memory.embedder import embed_text, vec_to_blob
-import hashlib
-import json as _json
-import math
+from app.memory.embedder import embed_text, vec_to_blob, blob_to_vec
 
 
 def _get_ai_manager():
@@ -230,7 +231,6 @@ def _find_similar_semantic(session_id, entity, relation, target, vector, thresho
     if vector is None:
         return None
     try:
-        import numpy as np
         norm_target = math.sqrt(sum(x * x for x in vector))
         if norm_target == 0:
             return None
@@ -258,7 +258,7 @@ def _find_similar_semantic(session_id, entity, relation, target, vector, thresho
 
 def upsert_semantic_memory(session_id, entity, relation, target):
     """Insert or update a semantic memory triple with embedding.
-    
+
     Returns:
         tuple (db_id, embedding) — the memory id and its embedding vector,
         or (None, None) on failure. Callers use this to incrementally update
@@ -282,12 +282,9 @@ def upsert_semantic_memory(session_id, entity, relation, target):
             if vector is not None:
                 existing.embedding_vector = vec_to_blob(vector)
             session.commit()
-            # Detach so caller gets a consistent reference even if session closes
             session.expunge(existing)
             return existing.id, vector
         else:
-            # Cosine dedup: if same entity+relation but different wording,
-            # boost the existing record instead of creating a near-dupe.
             dup_id = _find_similar_semantic(session_id, entity, relation, target, vector)
             if dup_id is not None:
                 existing_dup = session.query(SemanticMemory).filter(
@@ -316,7 +313,6 @@ def upsert_semantic_memory(session_id, entity, relation, target):
             )
             session.add(new_mem)
             session.commit()
-            # Use the object's .id directly — no separate query (avoids race condition)
             db_id = new_mem.id
             session.expunge(new_mem)
             return db_id, vector
@@ -324,7 +320,7 @@ def upsert_semantic_memory(session_id, entity, relation, target):
 
 def create_episodic_memory(session_id, summary, emotional_weight=0.0, importance=0.5):
     """Create a new episodic memory record with embedding.
-    
+
     Returns:
         tuple (db_id, embedding) — the memory id and its embedding vector,
         or (None, None) on failure. Callers use this to incrementally update
@@ -344,7 +340,6 @@ def create_episodic_memory(session_id, summary, emotional_weight=0.0, importance
         )
         session.add(mem)
         session.commit()
-        # Use the object's .id directly — no separate query
         db_id = mem.id
         session.expunge(mem)
         return db_id, vector
@@ -355,7 +350,6 @@ def process_messages_for_memory(session_id, messages, affection_delta=0):
     if not messages:
         return
 
-    # Add idempotency guard — skip if same batch already processed
     msg_hash = _compute_message_hash(messages)
     if msg_hash:
         try:
@@ -369,7 +363,6 @@ def process_messages_for_memory(session_id, messages, affection_delta=0):
         except Exception:
             pass
 
-    # 1. Extract semantic facts
     from app.memory.index_store import get_index_store
     index_store = get_index_store(session_id)
 
@@ -390,7 +383,6 @@ def process_messages_for_memory(session_id, messages, affection_delta=0):
         except Exception as e:
             print(f"[WARNING] Semantic memory extraction failed: {e}")
 
-    # 2. Check if episodic memory should be created
     if should_create_episodic(messages, affection_delta):
         emotional_weight = calculate_emotional_weight(messages)
         summary = generate_episodic_summary(messages)

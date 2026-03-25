@@ -33,6 +33,27 @@ from app.memory.index_store import (
     close_index_store,
 )
 
+__all__ = [
+    "process_messages_for_memory",
+    "extract_semantic_facts",
+    "upsert_semantic_memory",
+    "create_episodic_memory",
+    "retrieve_memory",
+    "retrieve_semantic_memories",
+    "retrieve_episodic_memories",
+    "retrieve_segments",
+    "format_memory",
+    "run_decay",
+    "decay_semantic_memories",
+    "decay_episodic_memories",
+    "reinforce_memory",
+    "segment_session",
+    "get_index_store",
+    "close_index_store",
+    "extract_memories",
+    "retrieve_memories",
+    "get_memory_stats",
+]
 
 # ── Aliases for cleaner public API ──────────────────────────────────────────
 
@@ -45,7 +66,7 @@ retrieve_memories = retrieve_memory
 def get_memory_stats(session_id: int) -> dict:
     """
     Return a snapshot of memory system state for a session.
-    
+
     Returns:
         dict with keys:
             semantic_count     — rows in semantic_memories
@@ -58,10 +79,13 @@ def get_memory_stats(session_id: int) -> dict:
             last_decay          — ISO timestamp of last decay run, or None
             legacy_memory_keys  — number of keys in session memory_json
     """
-    from app.database import get_db_session, SemanticMemory, EpisodicMemory, ConversationSegment
+    from app.database import Database
+    from app.database import ConversationSegment
+    from app.database import EpisodicMemory
+    from app.database import SemanticMemory
+    from app.database import get_db_session
     from app.memory.index_store import get_index_store
     from app.memory.review import _get_last_decay_time
-    from app.database import Database
 
     try:
         with get_db_session() as session:

@@ -230,7 +230,7 @@ class IndexStore:
         if len(vec) == _EMBED_DIM:
             return vec
         if len(vec) == 0:
-            print(f"[WARNING] Empty embedding vector encountered, using zeros")
+            print("[WARNING] Empty embedding vector encountered, using zeros")
             return [0.0] * _EMBED_DIM
         if len(vec) < _EMBED_DIM:
             print(f"[WARNING] Embedding dim {len(vec)} < {_EMBED_DIM}, padding with zeros")

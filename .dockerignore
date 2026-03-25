@@ -13,15 +13,25 @@ build
 venv
 .git
 .gitignore
-README.md
-LICENSE
-CHANGELOG.md
-Dockerfile
-docker-compose.yml
-.dockerignore
-static/
-templates/
-memory/
-docs/
-
+*.key
+*.log
+*.db
+*.sqlite
+*.sqlite3
+backup/
+database_backups/
+debug_logs/
 *_checkpoint.json
+nn_indexes/
+.agignore
+.aider*
+copilot/
+.tofu/
+
+# Keep these docs in container
+!README.md
+!INSTALL.md
+!MEMORY_SYSTEM_ROADMAP.md
+
+# Exclude all other markdown
+*.md
