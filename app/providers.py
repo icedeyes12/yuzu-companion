@@ -1,6 +1,6 @@
 # ==========================================================
 # [FILE]        : providers.py
-# # [VERSION: 1.0.70]
+# [VERSION: 1.0.70]
 # [DATE: 2026-03-24]
 # [PROJECT]     : HKKM - Yuzu Companion
 # [DESCRIPTION] : AI provider management

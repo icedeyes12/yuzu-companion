@@ -1,6 +1,6 @@
 # ==========================================================
 # [FILE]        : main.py  
-# # [VERSION: 1.0.70] - Complete Working Version
+# [VERSION: 1.0.70] - Complete Working Version
 # [DATE: 2026-03-24]
 # [PROJECT]     : HKKM - Yuzu Companion
 # [DESCRIPTION] : Complete CLI with all menu methods implemented
