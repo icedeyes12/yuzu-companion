@@ -63,3 +63,7 @@ MEMORY.md
 *.conversation
 
 nn_indexes/
+
+# Roadmap files
+*_ROADMAP.md
+*_roadmap.md
