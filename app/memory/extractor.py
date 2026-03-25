@@ -2,11 +2,14 @@
 # [DESCRIPTION: Memory extraction layer - semantic + episodic writers with embeddings]
 
 import re
+import numpy as np
 from datetime import datetime
 from app.database import (
     get_db_session, SemanticMemory, EpisodicMemory
 )
 from app.memory.embedder import embed_text, vec_to_blob
+import hashlib
+import json as _json
 
 
 def _get_ai_manager():
@@ -33,6 +36,15 @@ _EMOTIONAL_KEYWORDS = [
     'marah', 'kesal', 'sedih', 'senang', 'sayang', 'benci',
     'takut', 'khawatir', 'kecewa',
 ]
+
+
+def _compute_message_hash(messages: list) -> str:
+    """Stable hash of message IDs (or content if no IDs) for dedupe."""
+    try:
+        ids = [str(m.get('id', m.get('content', ''))[:50]) for m in messages]
+        return hashlib.sha256('|'.join(sorted(ids)).encode()).hexdigest()[:16]
+    except Exception:
+        return ''
 
 
 def _llm_extract_facts(messages) -> list[dict]:
@@ -209,7 +221,13 @@ def _build_semantic_text(entity, relation, target):
 
 
 def upsert_semantic_memory(session_id, entity, relation, target):
-    """Insert or update a semantic memory triple with embedding."""
+    """Insert or update a semantic memory triple with embedding.
+    
+    Returns:
+        tuple (db_id, embedding) — the memory id and its embedding vector,
+        or (None, None) on failure. Callers use this to incrementally update
+        the ANN index via IndexStore.add_semantic().
+    """
     text = _build_semantic_text(entity, relation, target)
     vector = embed_text(text)  # Returns None gracefully if embedding fails
 
@@ -227,6 +245,8 @@ def upsert_semantic_memory(session_id, entity, relation, target):
             existing.last_accessed = datetime.now()
             if vector is not None:
                 existing.embedding_vector = vec_to_blob(vector)
+            session.commit()
+            return existing.id, vector
         else:
             new_mem = SemanticMemory(
                 session_id=session_id,
@@ -240,11 +260,24 @@ def upsert_semantic_memory(session_id, entity, relation, target):
                 access_count=1,
             )
             session.add(new_mem)
-        session.commit()
+            session.commit()
+            db_id = session.query(SemanticMemory.id).filter(
+                SemanticMemory.session_id == session_id,
+                SemanticMemory.entity == entity,
+                SemanticMemory.relation == relation,
+                SemanticMemory.target == target,
+            ).scalar()
+            return db_id, vector
 
 
 def create_episodic_memory(session_id, summary, emotional_weight=0.0, importance=0.5):
-    """Create a new episodic memory record with embedding."""
+    """Create a new episodic memory record with embedding.
+    
+    Returns:
+        tuple (db_id, embedding) — the memory id and its embedding vector,
+        or (None, None) on failure. Callers use this to incrementally update
+        the ANN index via IndexStore.add_episodic().
+    """
     vector = embed_text(summary)  # Returns None gracefully if embedding fails
 
     with get_db_session() as session:
@@ -259,6 +292,8 @@ def create_episodic_memory(session_id, summary, emotional_weight=0.0, importance
         )
         session.add(mem)
         session.commit()
+        db_id = mem.id
+        return db_id, vector
 
 
 def process_messages_for_memory(session_id, messages, affection_delta=0):
@@ -266,16 +301,38 @@ def process_messages_for_memory(session_id, messages, affection_delta=0):
     if not messages:
         return
 
+    # Add idempotency guard — skip if same batch already processed
+    msg_hash = _compute_message_hash(messages)
+    if msg_hash:
+        try:
+            from app.database import Database
+            session_mem = Database.get_session_memory(session_id)
+            if session_mem.get('_last_extractor_hash') == msg_hash:
+                return  # already processed this exact batch
+            update_payload = dict(session_mem)
+            update_payload['_last_extractor_hash'] = msg_hash
+            Database.update_session_memory(session_id, update_payload)
+        except Exception:
+            pass
+
     # 1. Extract semantic facts
+    from app.memory.index_store import get_index_store
+    index_store = get_index_store(session_id)
+
     facts = extract_semantic_facts(messages)
     for fact in facts:
         try:
-            upsert_semantic_memory(
+            mem_id, vector = upsert_semantic_memory(
                 session_id,
                 fact['entity'],
                 fact['relation'],
                 fact['target'],
             )
+            if mem_id is not None and vector is not None:
+                try:
+                    index_store.add_semantic(mem_id, np.array(vector, dtype=np.float32))
+                except Exception as idx_err:
+                    print(f"[WARNING] ANN index update failed (semantic): {idx_err}")
         except Exception as e:
             print(f"[WARNING] Semantic memory extraction failed: {e}")
 
@@ -286,8 +343,13 @@ def process_messages_for_memory(session_id, messages, affection_delta=0):
         if summary:
             try:
                 importance = 0.5 + emotional_weight * 0.3
-                create_episodic_memory(
+                mem_id, vector = create_episodic_memory(
                     session_id, summary, emotional_weight, importance
                 )
+                if mem_id is not None and vector is not None:
+                    try:
+                        index_store.add_episodic(mem_id, np.array(vector, dtype=np.float32))
+                    except Exception as idx_err:
+                        print(f"[WARNING] ANN index update failed (episodic): {idx_err}")
             except Exception as e:
                 print(f"[WARNING] Episodic memory creation failed: {e}")

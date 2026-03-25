@@ -221,6 +221,56 @@ class IndexStore:
         self._segments = None
         self._segments_loaded = False
 
+    # ── Incremental add (preferred over full rebuild) ─────────────────────────
+
+    def add_semantic(self, mem_id: int, vec: np.ndarray):
+        """Incrementally add a new semantic memory to the live index."""
+        self._ensure_semantic()
+        if self._semantic is None:
+            self._invalidate_semantic()
+            self._ensure_semantic()
+            if self._semantic is None:
+                return
+        ids = self._semantic._ids[:]
+        vecs = self._semantic._normed[:]
+        new_norm = (vec / (np.linalg.norm(vec) + 1e-8)).astype(np.float32)
+        ids.append(mem_id)
+        vecs = np.vstack([vecs, new_norm])
+        self._semantic = NNIndex.build(ids, vecs)
+        self._semantic.save(_index_path(self.session_id, "semantic"))
+
+    def add_episodic(self, mem_id: int, vec: np.ndarray):
+        """Incrementally add a new episodic memory to the live index."""
+        self._ensure_episodic()
+        if self._episodic is None:
+            self._invalidate_episodic()
+            self._ensure_episodic()
+            if self._episodic is None:
+                return
+        ids = self._episodic._ids[:]
+        vecs = self._episodic._normed[:]
+        new_norm = (vec / (np.linalg.norm(vec) + 1e-8)).astype(np.float32)
+        ids.append(mem_id)
+        vecs = np.vstack([vecs, new_norm])
+        self._episodic = NNIndex.build(ids, vecs)
+        self._episodic.save(_index_path(self.session_id, "episodic"))
+
+    def add_segment(self, seg_id: int, vec: np.ndarray):
+        """Incrementally add a new segment to the live index."""
+        self._ensure_segments()
+        if self._segments is None:
+            self._invalidate_segments()
+            self._ensure_segments()
+            if self._segments is None:
+                return
+        ids = self._segments._ids[:]
+        vecs = self._segments._normed[:]
+        new_norm = (vec / (np.linalg.norm(vec) + 1e-8)).astype(np.float32)
+        ids.append(seg_id)
+        vecs = np.vstack([vecs, new_norm])
+        self._segments = NNIndex.build(ids, vecs)
+        self._segments.save(_index_path(self.session_id, "segments"))
+
     # ── Public search API ───────────────────────────────────────────────────────
 
     def search_semantic(self, query_vec: np.ndarray, k: int = 15) -> list[tuple[int, float]]:

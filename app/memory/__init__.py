@@ -1,1 +1,112 @@
-# Memory system package for Yuzu Companion
+# Memory system public API for Yuzu Companion
+#
+# Single import point for all memory operations.
+# External code (app.py, tools, etc.) should import from here, not from internals.
+#
+# Legacy note: the extraction/retrieval pipeline is fully independent from the
+# legacy global_knowledge_json system. Both can run in parallel.
+
+from app.memory.extractor import (
+    process_messages_for_memory,
+    extract_semantic_facts,
+    upsert_semantic_memory,
+    create_episodic_memory,
+    extract_memories,           # alias: process_messages_for_memory
+)
+from app.memory.retrieval import (
+    retrieve_memory,
+    retrieve_semantic_memories,
+    retrieve_episodic_memories,
+    retrieve_segments,
+    retrieve_memories,          # alias: retrieve_memory
+    format_memory,
+)
+from app.memory.review import (
+    run_decay,
+    decay_semantic_memories,
+    decay_episodic_memories,
+    reinforce_memory,
+    get_memory_stats,          # defined below in this file
+)
+from app.memory.segmenter import (
+    segment_session,
+)
+from app.memory.index_store import (
+    get_index_store,
+    close_index_store,
+)
+
+
+# ── Aliases for cleaner public API ──────────────────────────────────────────
+
+extract_memories = process_messages_for_memory
+retrieve_memories = retrieve_memory
+
+
+# ── Stats helper ─────────────────────────────────────────────────────────────
+
+def get_memory_stats(session_id: int) -> dict:
+    """
+    Return a snapshot of memory system state for a session.
+    
+    Returns:
+        dict with keys:
+            semantic_count     — rows in semantic_memories
+            episodic_count      — rows in episodic_memories
+            segment_count       — rows in conversation_segments
+            index_semantic_size — vectors in ANN semantic index (0 if not loaded)
+            index_episodic_size  — vectors in ANN episodic index
+            index_segments_size  — vectors in ANN segments index
+            ann_errors          — index load/rebuild errors seen this session (from index_store)
+            last_decay          — ISO timestamp of last decay run, or None
+            legacy_memory_keys  — number of keys in session memory_json
+    """
+    from app.database import get_db_session, SemanticMemory, EpisodicMemory, ConversationSegment
+    from app.memory.index_store import get_index_store
+    from app.memory.review import _get_last_decay_time
+    from app.database import Database
+
+    try:
+        with get_db_session() as session:
+            semantic_count = session.query(SemanticMemory).filter(
+                SemanticMemory.session_id == session_id
+            ).count()
+            episodic_count = session.query(EpisodicMemory).filter(
+                EpisodicMemory.session_id == session_id
+            ).count()
+            segment_count = session.query(ConversationSegment).filter(
+                ConversationSegment.session_id == session_id
+            ).count()
+    except Exception:
+        semantic_count = episodic_count = segment_count = -1
+
+    try:
+        store = get_index_store(session_id)
+        store._ensure_semantic()
+        store._ensure_episodic()
+        store._ensure_segments()
+        index_semantic_size = store._semantic.size if store._semantic else 0
+        index_episodic_size = store._episodic.size if store._episodic else 0
+        index_segments_size = store._segments.size if store._segments else 0
+    except Exception:
+        index_semantic_size = index_episodic_size = index_segments_size = -1
+
+    last_decay = _get_last_decay_time()
+
+    try:
+        session_mem = Database.get_session_memory(session_id)
+        legacy_memory_keys = len(session_mem) if session_mem else 0
+    except Exception:
+        legacy_memory_keys = -1
+
+    return {
+        "semantic_count": semantic_count,
+        "episodic_count": episodic_count,
+        "segment_count": segment_count,
+        "index_semantic_size": index_semantic_size,
+        "index_episodic_size": index_episodic_size,
+        "index_segments_size": index_segments_size,
+        "ann_errors": 0,       # per-session error count would need request-level tracking
+        "last_decay": last_decay,
+        "legacy_memory_keys": legacy_memory_keys,
+    }

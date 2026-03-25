@@ -1,7 +1,9 @@
 from datetime import datetime
 from app.database import Database, get_db_session, SemanticMemory
-from app.memory.embedder import embed_texts
+from app.memory.embedder import embed_texts, cosine_similarity, blob_to_vec, vec_to_blob
 from app.tools.registry import build_markdown_contract
+import numpy as np
+from app.memory.index_store import get_index_store
 
 
 def _infer_category(fact):
@@ -58,11 +60,12 @@ def execute(arguments, **kwargs):
     category = arguments.get("category", _infer_category(fact))
     full_command = f"/memory_store fact=\"{fact[:60]}\" category={category}"
 
-    # Embed the fact text
-    embed_text = f"[{category}] {fact}"
+    # Embed the fact text — store as BLOB for ANN index compatibility
+    embed_label = f"[{category}] {fact}"
     try:
-        vecs = embed_texts([embed_text])
-        vector = vecs[0]
+        vecs = embed_texts([embed_label])
+        vec = vecs[0]
+        vector_blob = vec_to_blob(vec)
     except Exception as e:
         print(f"[memory_store] Embed failed: {e}")
         return build_markdown_contract(
@@ -71,9 +74,6 @@ def execute(arguments, **kwargs):
             ["Error: Embedding service unavailable"],
             partner_name,
         )
-
-    # Check for duplicate using text similarity
-    from app.memory.embedder import cosine_similarity, blob_to_vec
 
     with get_db_session() as session:
         existing = session.query(SemanticMemory).filter(
@@ -85,12 +85,14 @@ def execute(arguments, **kwargs):
             if rec.embedding_vector:
                 try:
                     rec_vec = blob_to_vec(rec.embedding_vector)
-                    sim = cosine_similarity(vector, rec_vec)
+                    sim = cosine_similarity(vec, rec_vec)
                     if sim > 0.95:
                         duplicate_id = rec.id
                         break
                 except Exception:
                     pass
+
+        index_store = get_index_store(session_id)
 
         if duplicate_id:
             rec = session.query(SemanticMemory).filter_by(id=duplicate_id).first()
@@ -98,7 +100,12 @@ def execute(arguments, **kwargs):
                 rec.confidence = min((rec.confidence or 0.5) + 0.1, 1.0)
                 rec.access_count = (rec.access_count or 0) + 1
                 rec.last_accessed = datetime.now()
+                rec.embedding_vector = vector_blob
                 session.commit()
+                try:
+                    index_store.add_semantic(duplicate_id, np.array(vec, dtype=np.float32))
+                except Exception:
+                    pass
             return build_markdown_contract(
                 "memory_store_tools",
                 full_command,
@@ -114,12 +121,23 @@ def execute(arguments, **kwargs):
             target=fact,
             confidence=0.7,
             importance=0.6,
-            embedding_vector=vector,
+            embedding_vector=vector_blob,
             last_accessed=datetime.now(),
             access_count=1,
         )
         session.add(new_mem)
         session.commit()
+        try:
+            db_id = session.query(SemanticMemory.id).filter(
+                SemanticMemory.session_id == session_id,
+                SemanticMemory.entity == "User",
+                SemanticMemory.relation == category,
+                SemanticMemory.target == fact,
+            ).scalar()
+            if db_id:
+                index_store.add_semantic(db_id, np.array(vec, dtype=np.float32))
+        except Exception:
+            pass
 
     return build_markdown_contract(
         "memory_store_tools",

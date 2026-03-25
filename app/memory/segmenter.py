@@ -88,17 +88,23 @@ def _detect_boundaries(messages):
 
 
 def _create_segment(session_id, group):
-    """Create a conversation segment from a message group."""
+    """Create a conversation segment from a message group.
+    
+    Returns:
+        tuple (db_id, vector) — the segment id and its embedding vector,
+        or (None, None) if skipped or on failure. Callers use this to
+        incrementally update the ANN segments index.
+    """
     if not group:
-        return
+        return None, None
 
     start_id = group[0]['id']
     end_id = group[-1]['id']
 
     summary = generate_episodic_summary(group)
 
-    # Generate and store embedding for the summary
     embedding_blob = None
+    vec = None
     try:
         from app.memory.embedder import embed_text, vec_to_blob
         vec = embed_text(summary)
@@ -107,7 +113,6 @@ def _create_segment(session_id, group):
     except Exception as e:
         print(f"[segmenter] Embedding skipped: {e}")
 
-    # Own session — no nesting
     with get_db_session() as session:
         segment = ConversationSegment(
             session_id=session_id,
@@ -119,6 +124,8 @@ def _create_segment(session_id, group):
         )
         session.add(segment)
         session.commit()
+        db_id = segment.id
+    return db_id, vec
 
 
 def segment_session(session_id):
@@ -126,15 +133,24 @@ def segment_session(session_id):
 
     Returns the number of segments created.
     """
+    import numpy as np
+    from app.memory.index_store import get_index_store
+
     messages = _get_unsegmented_messages(session_id)
     if not messages:
         return 0
 
     groups = _detect_boundaries(messages)
+    index_store = get_index_store(session_id)
     count = 0
     for group in groups:
         try:
-            _create_segment(session_id, group)
+            seg_id, vec = _create_segment(session_id, group)
+            if seg_id is not None and vec is not None:
+                try:
+                    index_store.add_segment(seg_id, np.array(vec, dtype=np.float32))
+                except Exception as idx_err:
+                    print(f"[WARNING] ANN index update failed (segment): {idx_err}")
             count += 1
         except Exception as e:
             print(f"[WARNING] Segmentation failed for group: {e}")
