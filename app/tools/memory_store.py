@@ -8,6 +8,12 @@ from app.tools.registry import build_markdown_contract
 from app.memory.index_store import get_index_store
 
 
+def _get_ai_manager():
+    """Lazy-import ai_manager to avoid circular imports."""
+    from app import get_ai_manager
+    return get_ai_manager()
+
+
 def _classify_fact(fact: str) -> tuple[str, float]:
     """Classify a fact category and rate its importance (0.0–1.0) using LLM.
 
