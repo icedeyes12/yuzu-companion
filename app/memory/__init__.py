@@ -101,15 +101,18 @@ def get_memory_stats(session_id: int) -> dict:
     except Exception:
         semantic_count = episodic_count = segment_count = -1
 
+    # Index sizes — read from disk files without loading into memory (avoids
+    # expensive DB query + vector rebuild that _ensure_* would trigger)
     try:
-        store = get_index_store(session_id)
-        store._ensure_semantic()
-        store._ensure_episodic()
-        store._ensure_segments()
-        index_semantic_size = store._semantic.size if store._semantic else 0
-        index_episodic_size = store._episodic.size if store._episodic else 0
-        index_segments_size = store._segments.size if store._segments else 0
-        ann_errors = store.get_ann_errors()
+        from app.memory.index_store import _index_path
+        import os
+        sp = _index_path(session_id, "semantic")
+        ep = _index_path(session_id, "episodic")
+        tp = _index_path(session_id, "segments")
+        index_semantic_size = os.path.getsize(sp) // (4 * 4096 + 8) if os.path.exists(sp) else 0
+        index_episodic_size = os.path.getsize(ep) // (4 * 4096 + 8) if os.path.exists(ep) else 0
+        index_segments_size = os.path.getsize(tp) // (4 * 4096 + 8) if os.path.exists(tp) else 0
+        ann_errors: list[str] = []
     except Exception:
         index_semantic_size = index_episodic_size = index_segments_size = -1
         ann_errors = []

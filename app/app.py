@@ -432,6 +432,7 @@ def _trigger_memory_pipeline(session_id):
     _enforce_dict_limit(_last_decay_run, session_id)
     try:
         from app.memory.extractor import process_messages_for_memory
+        from app.memory.segmenter import segment_session
         from app.memory.review import run_decay
 
         recent = Database.get_chat_history(session_id=session_id, limit=20, recent=True)
@@ -440,6 +441,7 @@ def _trigger_memory_pipeline(session_id):
 
         run_decay(session_id)
         process_messages_for_memory(session_id, recent)
+        segment_session(session_id)
 
     except Exception as e:
         print(f"[WARNING] Memory extraction failed: {e}")
@@ -1604,8 +1606,8 @@ def start_session(interface="terminal"):
         # --- Memory system initialization ---
         try:
             from app.memory.segmenter import segment_session
-            from app.memory.review import run_decay
             from app.memory.extractor import process_messages_for_memory
+            from app.memory.review import run_decay
 
             # Apply FSRS decay to existing memories
             run_decay(session_id)
@@ -1621,14 +1623,8 @@ def start_session(interface="terminal"):
                     process_messages_for_memory(session_id, recent)
                 _MEMORY_INIT_DONE[session_id] = True
 
-            # Rebuild ANN index from DB (A5)
-            try:
-                from app.memory.index_store import get_index_store
-                store = get_index_store(session_id)
-                store.rebuild()
-                print(f"[Memory] ANN index rebuilt for session {session_id}")
-            except Exception as idx_err:
-                print(f"[WARNING] ANN index rebuild failed: {idx_err}")
+            # ANN index is maintained incrementally by segment_session + process_messages_for_memory
+            # via add_semantic / add_episodic / add_segment calls — no separate rebuild needed
         except Exception as e:
             print(f"[WARNING] Memory system init failed: {e}")
 
