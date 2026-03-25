@@ -45,3 +45,7 @@ copilot/
 .aider*
 *.tar
 *.gz
+
+# Migration checkpoints
+*_checkpoint.json
+
