@@ -84,7 +84,6 @@ def get_memory_stats(session_id: int) -> dict:
     from app.database import EpisodicMemory
     from app.database import SemanticMemory
     from app.database import get_db_session
-    from app.memory.index_store import get_index_store
     from app.memory.review import _get_last_decay_time
 
     try:

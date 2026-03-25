@@ -137,6 +137,7 @@ def calculate_emotional_weight(messages) -> float:
                 return float(match.group())
     except Exception as e:
         logger.warning(f"LLM emotional weight failed: {e}")
+        global _extraction_errors
         _extraction_errors += 1
     return 0.0
 
@@ -191,6 +192,7 @@ def generate_episodic_summary(messages) -> str:
             return response.strip()
     except Exception as e:
         logger.warning(f"LLM summarization failed: {e}")
+        global _extraction_errors
         _extraction_errors += 1
     return ""
 
