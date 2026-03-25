@@ -1,8 +1,5 @@
-FILE: app/memory/extractor.py
-DESCRIPTION: Memory extraction layer — semantic + episodic writers with embeddings
-
-# [FILE: memory/extractor.py]
-# [DESCRIPTION: Memory extraction layer - semantic + episodic writers with embeddings]
+# FILE: app/memory/extractor.py
+# DESCRIPTION: Memory extraction layer — semantic + episodic writers with embeddings
 
 import logging
 

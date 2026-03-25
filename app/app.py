@@ -1,17 +1,5 @@
-FILE: app/app.py
-DESCRIPTION: Flask app with WebSocket support, AI provider routing, memory context injection, and tool execution
-
-# ==========================================================
-# [FILE]        : app.py
-# [VERSION: 1.0.70]
-# [DATE: 2026-03-25]
-# [PROJECT]     : HKKM - Yuzu Companion
-# [DESCRIPTION] : Core application logic with prompt and performance optimizations
-# [AUTHOR]      : Project Lead: Bani Baskara
-# [TEAM]        : Deepseek, GPT, Qwen, Gemini
-# [REPOSITORY]  : https://guthib.com/icedeyes12
-# [LICENSE]     : MIT
-# ==========================================================
+# FILE: app/app.py
+# DESCRIPTION: Flask app with WebSocket support, AI provider routing, memory context injection, and tool execution
 
 import requests
 import os

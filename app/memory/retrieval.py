@@ -1,8 +1,5 @@
-FILE: app/memory/retrieval.py
-DESCRIPTION: Memory retrieval with keyword + ANN hybrid search
-
-# [FILE: memory/retrieval.py]
-# [DESCRIPTION: Memory retrieval pipeline - cosine similarity + hybrid scoring]
+# FILE: app/memory/retrieval.py
+# DESCRIPTION: Memory retrieval with keyword + ANN hybrid search
 
 import math
 import functools

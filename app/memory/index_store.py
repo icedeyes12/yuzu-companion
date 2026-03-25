@@ -1,9 +1,5 @@
-FILE: app/memory/index_store.py
-DESCRIPTION: ANN index per session using scipy cKDTree (cosine metric), persisted via joblib
-
-# [FILE: memory/index_store.py]
-# [DESCRIPTION: ANN index per session using scipy cKDTree (cosine metric),
-#               persisted to disk via joblib pickle]
+# FILE: app/memory/index_store.py
+# DESCRIPTION: ANN index per session using scipy cKDTree (cosine metric), persisted via joblib
 
 import atexit
 import os

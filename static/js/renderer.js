@@ -1,12 +1,5 @@
-FILE: static/js/renderer.js
-DESCRIPTION: Renderer JavaScript
-
-// [FILE: renderer.js]
-// [VERSION: 1.0.70]
-// [DATE: 2026-03-24]
-// [PROJECT: HKKM - Yuzu Companion]
-// [DESCRIPTION: Markdown renderer using marked.js with syntax highlighting]
-// [AUTHOR: Project Lead: Bani Baskara]
+// FILE: static/js/renderer.js
+// DESCRIPTION: Renderer JavaScript
 
 class MessageRenderer {
     constructor() {

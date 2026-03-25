@@ -1,15 +1,5 @@
-FILE: static/js/about.js
-DESCRIPTION: About page JavaScript
-
-// [FILE: about.js]
-// [VERSION: 1.0.70]
-// [DATE: 2026-03-24]
-// [PROJECT: HKKM - Yuzu Companion]
-// [DESCRIPTION: About page interactions]
-// [AUTHOR: Project Lead: Bani Baskara]
-// [TEAM: Deepseek, GPT, Qwen, Aihara]
-// [REPOSITORY: https://github.com/icedeyes12]
-// [LICENSE: MIT]
+// FILE: static/js/about.js
+// DESCRIPTION: About page JavaScript
 
 // About page interactions
 document.addEventListener('DOMContentLoaded', function() {

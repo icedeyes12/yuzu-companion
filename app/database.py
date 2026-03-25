@@ -1,15 +1,5 @@
-FILE: app/database.py
-DESCRIPTION: SQLAlchemy database models for SemanticMemory, EpisodicMemory, ConversationSegment with session management
-
-# [FILE: database.py]
-# [VERSION: 1.0.70]
-# [DATE: 2026-03-24]
-# [PROJECT: HKKM - Yuzu Companion]
-# [DESCRIPTION: SQLAlchemy database]
-# [AUTHOR: Project Lead: Bani Baskara]
-# [TEAM: Deepseek, GPT, Qwen, Aihara]
-# [REPOSITORY: https://guthib.com/icedeyes12]
-# [LICENSE: MIT]
+# FILE: app/database.py
+# DESCRIPTION: SQLAlchemy database models for SemanticMemory, EpisodicMemory, ConversationSegment with session management
 
 import json
 import os

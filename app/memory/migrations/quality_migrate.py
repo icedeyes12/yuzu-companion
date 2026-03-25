@@ -1,18 +1,5 @@
-FILE: app/memory/migrations/quality_migrate.py
-DESCRIPTION: Memory quality scoring migration
-
-# [FILE: memory/quality_migrate.py]
-# [DESCRIPTION: High-quality semantic memory extraction via LLM from existing episodic records]
-# [USAGE: python -c "from app.memory.quality_migrate import run_migration; run_migration()"]
-#
-# Phases:
-#   1. Embed unvectored episodic memories (Chutes embedding API)
-#   2. Delete ALL existing low-quality semantic records (regex-extracted garbage)
-#   3. LLM extract high-value facts from episodic summaries (Chutes chat API, batched)
-#   4. Embed new semantic facts
-#   5. Store new facts
-#
-# Resumable + rate-limit safe. Checkpoint saved after every batch.
+# FILE: app/memory/migrations/quality_migrate.py
+# DESCRIPTION: Memory quality scoring migration
 
 import os
 import json

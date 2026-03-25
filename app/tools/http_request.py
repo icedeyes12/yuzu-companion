@@ -1,7 +1,5 @@
-FILE: app/tools/http_request.py
-DESCRIPTION: HTTP request tool for external API calls
-
-# tools/http_request.py
+# FILE: app/tools/http_request.py
+# DESCRIPTION: HTTP request tool for external API calls
 
 import os
 import requests

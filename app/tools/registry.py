@@ -1,5 +1,5 @@
-FILE: app/tools/registry.py
-DESCRIPTION: Tool registry with metadata and capability tracking
+# FILE: app/tools/registry.py
+# DESCRIPTION: Tool registry with metadata and capability tracking
 
 import json
 
