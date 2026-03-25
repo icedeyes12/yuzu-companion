@@ -125,7 +125,7 @@ def execute(arguments, **kwargs):
             return build_markdown_contract(
                 "memory_store_tools",
                 full_command,
-                [f"Already remembered"],
+                ["Already remembered"],
                 partner_name,
             )
         # New insert — add to ANN index.
