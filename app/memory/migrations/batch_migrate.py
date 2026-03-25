@@ -1,7 +1,9 @@
 FILE: app/memory/migrations/batch_migrate.py
 DESCRIPTION: Batch migration for semantic memory embedding storage
 
-
+# [FILE: memory/batch_migrate.py]
+# [DESCRIPTION: Batch migration script for backfilling embeddings on existing memory records]
+# [USAGE: python -c "from app.memory.batch_migrate import run_migration; run_migration()"]
 
 import os
 import json

@@ -1,8 +1,15 @@
 FILE: app/memory/migrations/episodic_migrate.py
 DESCRIPTION: Episodic memory vector migration
 
-
-
+# [FILE: memory/episodic_migrate.py]
+# [DESCRIPTION: Regenerate episodic summaries with LLM - raw snippets → proper narrative + title]
+# [USAGE: python -c "from app.memory.episodic_migrate import run; run()"]
+#
+# Converts raw message snippets in episodic.summary into:
+#   - metadata["title"]: 5-15 word narrative title
+#   - summary: 2-3 sentence third-person narrative summary
+#
+# Then re-embeds with new summary text.
 import os
 import json
 import time
@@ -76,12 +83,14 @@ For each episode below, generate:
 1. A "title" (5-15 words): Third-person narrative title describing what happened
 2. A "summary" (2-3 sentences): Third-person narrative summary of the event
 
+## Rules:
 - Use THIRD PERSON (e.g., "The user asked about...", "Yuzu helped with...")
 - Focus on: what topic was discussed, what happened, any decisions/emotions
 - Skip: greetings, small talk, generic acknowledgments
 - The title should be informative and specific (e.g., "User Requested Help with Supabase Password Recovery")
 - The summary should capture the essence in 2-3 sentences
 
+## RESPOND WITH JSON ONLY:
 {
   "episodes": [
     {"id": 1, "title": "...", "summary": "..."},
@@ -191,6 +200,7 @@ def _update_episodic_batch(results):
     if not results:
         return 0
 
+    # First: update summaries
     with get_db_session() as session:
         for r in results:
             rec = session.query(EpisodicMemory).filter_by(id=r["id"]).first()
@@ -198,6 +208,7 @@ def _update_episodic_batch(results):
                 rec.summary = r["summary"]
         session.commit()
 
+    # Second: re-embed new summaries
     texts = [r["summary"] for r in results]
     ids = [r["id"] for r in results]
     vecs = _re_embed_batch(texts)
@@ -226,10 +237,12 @@ def run():
 
     t0 = time.time()
 
+    # Load all episodic records — extract fields INSIDE session to avoid DetachedInstanceError
     _log_phase("Loading episodic memories")
     with get_db_session() as session:
         total = session.query(EpisodicMemory).count()
         raw_records = session.query(EpisodicMemory).order_by(EpisodicMemory.id.asc()).all()
+        # Convert ORM objects → plain dicts while still attached to session
         all_epi = [{"id": r.id, "summary": r.summary} for r in raw_records]
 
     _log(f"Total episodic records: {total}")

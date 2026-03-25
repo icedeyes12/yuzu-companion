@@ -1,7 +1,7 @@
 FILE: app/tools/http_request.py
 DESCRIPTION: HTTP request tool for external API calls
 
-
+# tools/http_request.py
 
 import os
 import requests
@@ -15,6 +15,7 @@ from app.database import Database
 MAX_BYTES = 2 * 1024 * 1024
 TIMEOUT = 90
 
+# validate public https url
 def is_safe_public_url(url: str) -> bool:
     parsed = urlparse(url)
 
@@ -53,15 +54,18 @@ def _extract_url(args_str: str) -> tuple:
     """
     args_str = args_str.strip()
     
+    # Check for explicit HTTP method
     method_match = re.match(r'^(GET|POST|PUT|DELETE|PATCH)\s+(.+)$', args_str, re.IGNORECASE)
     if method_match:
         method = method_match.group(1).upper()
         url = method_match.group(2).strip()
         return method, url
     
+    # No method specified, default to GET
     return "GET", args_str
 
 
+# resolve absolute media directory
 def get_media_dir():
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     media_dir = os.path.join(project_root, "static", "media")
@@ -69,6 +73,7 @@ def get_media_dir():
     return media_dir
 
 
+# execute request tool
 def execute(arguments, session_id=None):
     from tools.registry import build_markdown_contract
 
@@ -80,6 +85,7 @@ def execute(arguments, session_id=None):
     else:
         args_str = str(arguments).strip()
 
+    # Extract HTTP method and URL from arguments
     method, url = _extract_url(args_str)
 
     if not url:
@@ -99,6 +105,7 @@ def execute(arguments, session_id=None):
         )
 
     try:
+        # Use the extracted method (currently only GET is fully supported)
         if method == "POST":
             resp = requests.post(url, timeout=TIMEOUT, stream=True)
         elif method == "PUT":
@@ -106,6 +113,7 @@ def execute(arguments, session_id=None):
         elif method == "DELETE":
             resp = requests.delete(url, timeout=TIMEOUT, stream=True)
         else:
+            # Default to GET
             resp = requests.get(url, timeout=TIMEOUT, stream=True)
 
         content = b""

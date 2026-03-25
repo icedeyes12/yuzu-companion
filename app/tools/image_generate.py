@@ -1,8 +1,6 @@
 FILE: app/tools/image_generate.py
 DESCRIPTION: Image generation tool
 
-
-
 import os
 import requests
 from datetime import datetime
@@ -33,6 +31,7 @@ def execute(arguments, **kwargs):
                 partner_name,
             )
 
+        # Resolve image model from profile — no silent fallback
         profile = Database.get_profile() or {}
         partner_name = profile.get("partner_name", "Yuzu")
         image_model = profile.get("image_model", "hunyuan")

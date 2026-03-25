@@ -1,7 +1,8 @@
 FILE: app/memory/retrieval.py
 DESCRIPTION: Memory retrieval with keyword + ANN hybrid search
 
-
+# [FILE: memory/retrieval.py]
+# [DESCRIPTION: Memory retrieval pipeline - cosine similarity + hybrid scoring]
 
 import math
 import functools
@@ -13,6 +14,7 @@ from app.memory.embedder import blob_to_vec
 from app.memory.index_store import get_index_store
 
 
+# ── Temporal cue helpers (inlined from deleted tools/memory_search.py) ─────────
 
 _TEMPORAL_CUES = [
     "kemarin", "minggu lalu", "waktu itu", "terakhir", "pas aku",
@@ -101,6 +103,7 @@ def _search_temporal_messages(session_id, start, end, limit=200):
     return results
 
 
+# ── Original retrieval functions ─────────────────────────────────────────────
 
 def _recency_factor(last_accessed) -> float:
     """Recency score 0.0–1.0, half-life of 24 hours."""
@@ -136,6 +139,7 @@ def retrieve_semantic_memories(session_id, query=None, limit=15):
     If query is None or embedding fails: fall back to importance × confidence
       with a targeted DB query (avoids full table scan).
     """
+    # ── Fast path: ANN search via cKDTree index ───────────────────────────────
     query_vec = _embed_query(query) if query else None
     ann_results: list[tuple[int, float]] = []
     ann_used = False
@@ -152,6 +156,7 @@ def retrieve_semantic_memories(session_id, query=None, limit=15):
 
     with get_db_session() as session:
         if ann_results:
+            # Fetch full records for ANN candidates, then re-rank with hybrid score
             ann_ids = [rid for rid, _ in ann_results]
             memories = session.query(SemanticMemory).filter(
                 SemanticMemory.id.in_(ann_ids)
@@ -200,6 +205,7 @@ def retrieve_semantic_memories(session_id, query=None, limit=15):
                 session.commit()
             return scored[:limit]
 
+        # ── Fallback: no query or embedding failed — importance × confidence ─
         memories = session.query(SemanticMemory).filter(
             SemanticMemory.session_id == session_id
         ).order_by(
@@ -279,6 +285,7 @@ def retrieve_episodic_memories(session_id, query=None, limit=5):
                 session.commit()
             return scored[:limit]
 
+        # ── Fallback: importance + recency sort ──────────────────────────────
         memories = session.query(EpisodicMemory).filter(
             EpisodicMemory.session_id == session_id
         ).all()
@@ -340,6 +347,7 @@ def retrieve_segments(session_id, query=None, limit=5):
             scored.sort(key=lambda x: x['score'], reverse=True)
             return scored[:limit]
 
+        # ── Fallback: recency sort ───────────────────────────────────────────
         segments = session.query(ConversationSegment).filter(
             ConversationSegment.session_id == session_id
         ).order_by(ConversationSegment.created_at.desc()).limit(limit).all()
@@ -380,6 +388,7 @@ def retrieve_memory(session_id, query=None):
         print(f"[WARNING] Segment retrieval failed: {e}")
         segments = []
 
+    # Supplement: if query contains temporal cues, also scan messages directly
     temporal_messages = []
     if query:
         try:

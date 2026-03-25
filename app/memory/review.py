@@ -1,7 +1,9 @@
 FILE: app/memory/review.py
 DESCRIPTION: FSRS-based spaced repetition scheduling for memory review
 
-
+# [FILE: memory/review.py]
+# [DESCRIPTION: FSRS-style review and decay system for memory]
+# Unused schema columns removed: stability, difficulty, retrieval_count (computed dynamically)
 
 import math
 import os

@@ -1,7 +1,8 @@
 FILE: app/memory/segmenter.py
 DESCRIPTION: Conversation segmentation into semantic chunks
 
-
+# [FILE: memory/segmenter.py]
+# [DESCRIPTION: Conversation segmentation engine]
 
 from datetime import datetime
 from app.database import (
@@ -10,6 +11,7 @@ from app.database import (
 from app.memory.extractor import generate_episodic_summary
 
 
+# Segmentation limits
 MAX_MESSAGES_PER_SEGMENT = 20
 TIME_GAP_MINUTES = 15
 
@@ -25,6 +27,7 @@ def _parse_timestamp(ts):
 def _get_unsegmented_messages(session_id):
     """Get messages that have not yet been assigned to a segment."""
     with get_db_session() as session:
+        # Find the last segmented message id
         last_segment = session.query(ConversationSegment).filter(
             ConversationSegment.session_id == session_id
         ).order_by(ConversationSegment.end_message_id.desc()).first()
@@ -63,6 +66,7 @@ def _detect_boundaries(messages):
 
     for msg in messages:
         if current_group:
+            # Check time gap
             prev_ts = _parse_timestamp(current_group[-1].get('timestamp'))
             curr_ts = _parse_timestamp(msg.get('timestamp'))
             if prev_ts and curr_ts:
@@ -71,12 +75,15 @@ def _detect_boundaries(messages):
                     segments.append(current_group)
                     current_group = []
 
+            # Check max size
             if len(current_group) >= MAX_MESSAGES_PER_SEGMENT:
                 segments.append(current_group)
                 current_group = []
 
         current_group.append(msg)
 
+    # Don't create segments from groups that are too small (less than 5)
+    # unless there are no other segments
     if current_group and len(current_group) >= 5:
         segments.append(current_group)
 

@@ -1,7 +1,8 @@
 FILE: app/memory/migrations/migrate_history.py
 DESCRIPTION: Conversation history migration to episodic memory
 
-
+# [FILE: memory/migrate_history.py]
+# [DESCRIPTION: Migration script to extract memories from old message history]
 
 from app.database import get_db_session, Message, ChatSession
 from app.memory.extractor import (
@@ -27,6 +28,7 @@ def migrate_session(session_id, batch_size=20):
     semantic_count = 0
     segment_count = 0
 
+    # Get all user/assistant messages
     with get_db_session() as session:
         messages = session.query(Message).filter(
             Message.session_id == session_id,
@@ -38,6 +40,7 @@ def migrate_session(session_id, batch_size=20):
             for m in messages
         ]
 
+    # Process in batches for semantic extraction
     for i in range(0, len(msg_list), batch_size):
         batch = msg_list[i:i + batch_size]
         facts = extract_semantic_facts(batch)
@@ -53,6 +56,7 @@ def migrate_session(session_id, batch_size=20):
             except Exception as e:
                 print(f"[WARNING] Semantic upsert failed during migration: {e}")
 
+    # Create segments
     try:
         segment_count = segment_session(session_id)
     except Exception as e:

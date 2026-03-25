@@ -1,7 +1,17 @@
 FILE: app/providers.py
 DESCRIPTION: AI provider manager — orchestrates multiple AI providers with fallback routing
 
-
+# ==========================================================
+# [FILE]        : providers.py
+# [VERSION: 1.0.70]
+# [DATE: 2026-03-24]
+# [PROJECT]     : HKKM - Yuzu Companion
+# [DESCRIPTION] : AI provider management
+# [AUTHOR]      : Project Lead: Bani Baskara
+# [TEAM]        : Deepseek, GPT, Qwen, Gemini
+# [REPOSITORY]  : https://guthib.com/icedeyes12
+# [LICENSE]     : MIT
+# ==========================================================
 
 import requests
 import json
@@ -200,6 +210,7 @@ class CerebrasProvider(AIProvider):
         for msg in messages:
             role = msg.get('role', '')
             if role not in standard_roles:
+                # Custom tool role - convert to assistant
                 content = msg.get('content', '')
                 normalized_content = f"[{role}]\n{content}"
                 normalized.append({
@@ -219,6 +230,7 @@ class CerebrasProvider(AIProvider):
             return None
 
         try:
+            # Normalize messages (convert custom tool roles to assistant)
             messages = self._normalize_messages(messages)
 
             temperature = kwargs.get('temperature', 0.69)
@@ -243,6 +255,8 @@ class CerebrasProvider(AIProvider):
                 "stream": False
             }
 
+            # Debug: Log summary (not full payload)
+            # Count only new messages (not historical context from DB)
             sum(1 for m in messages if m.get('role') == 'user' and m == messages[-1])
             print(f"[Cerebras] {model} | new_msg=1 | max_tokens={max_tokens}")
 
@@ -253,6 +267,7 @@ class CerebrasProvider(AIProvider):
                 timeout=kwargs.get('timeout', 120)
             )
 
+            # Debug: Log response
             if response.status_code != 200:
                 print(f"[Cerebras] Error {response.status_code}: {response.text[:200]}")
             else:
@@ -273,6 +288,7 @@ class CerebrasProvider(AIProvider):
             return
 
         try:
+            # Normalize messages (convert custom tool roles to assistant)
             messages = self._normalize_messages(messages)
 
             temperature = kwargs.get('temperature', 0.69)
@@ -384,6 +400,7 @@ class OpenRouterProvider(AIProvider):
         for msg in messages:
             role = msg.get('role', '')
             if role not in standard_roles:
+                # Custom tool role - convert to assistant
                 content = msg.get('content', '')
                 normalized_content = f"[{role}]\n{content}"
                 normalized.append({
@@ -403,6 +420,7 @@ class OpenRouterProvider(AIProvider):
             return None
 
         try:
+            # Normalize messages (convert custom tool roles to assistant)
             messages = self._normalize_messages(messages)
 
             if self.supports_vision(model) and messages:
@@ -417,6 +435,7 @@ class OpenRouterProvider(AIProvider):
             top_k = kwargs.get('top_k', 40)
             typical_p = kwargs.get('typical_p', 0.8)
             
+            # Free tier rate limiting
             if model.endswith(':free'):
                 max_tokens = min(max_tokens, 2048)
                 temperature = min(temperature, 0.8)
@@ -439,6 +458,7 @@ class OpenRouterProvider(AIProvider):
                 "stream": False
             }
 
+            # Debug: Log summary (not full payload)
             print(f"[OpenRouter] {model} | max_tokens={max_tokens}")
 
             response = requests.post(
@@ -448,6 +468,7 @@ class OpenRouterProvider(AIProvider):
                 timeout=kwargs.get('timeout', 180)
             )
 
+            # Debug: Log response
             if response.status_code != 200:
                 print(f"[OpenRouter] Error {response.status_code}: {response.text[:200]}")
             else:
@@ -487,6 +508,7 @@ class OpenRouterProvider(AIProvider):
             top_k = kwargs.get('top_k', 40)
             typical_p = kwargs.get('typical_p', 0.8)
             
+            # Free tier rate limiting
             if model.endswith(':free'):
                 max_tokens = min(max_tokens, 2048)
                 temperature = min(temperature, 0.8)
@@ -569,8 +591,10 @@ class ChutesProvider(AIProvider):
         if not messages:
             return messages
 
+        # Standard OpenAI-compatible roles
         standard_roles = {'system', 'user', 'assistant', 'tool'}
 
+        # Collect all system messages and normalize other messages
         system_contents = []
         normalized_messages = []
 
@@ -580,6 +604,7 @@ class ChutesProvider(AIProvider):
             if role == 'system':
                 system_contents.append(msg.get('content', ''))
             elif role not in standard_roles:
+                # Custom tool role (e.g., image_tools, request_tools) - convert to assistant
                 content = msg.get('content', '')
                 normalized_content = f"[{role}]\n{content}"
                 normalized_messages.append({
@@ -587,8 +612,10 @@ class ChutesProvider(AIProvider):
                     'content': normalized_content
                 })
             else:
+                # Standard role - keep as-is
                 normalized_messages.append(msg)
 
+        # Merge all system messages into one
         if system_contents:
             merged_system = '\n\n'.join(system_contents)
             return [{'role': 'system', 'content': merged_system}] + normalized_messages
@@ -610,6 +637,7 @@ class ChutesProvider(AIProvider):
             return None
         
         try:
+            # Normalize messages for Chutes API (system message must be first)
             messages = self._normalize_messages_for_chutes(messages)
             
             if self.supports_vision(model) and messages:
@@ -640,6 +668,7 @@ class ChutesProvider(AIProvider):
                 "stream": stream
             }
 
+            # Debug: Log summary (not full payload)
             print(f"[Chutes] {model} | max_tokens={max_tokens}")
 
             response = requests.post(
@@ -649,6 +678,7 @@ class ChutesProvider(AIProvider):
                 timeout=kwargs.get('timeout', 120)
             )
 
+            # Debug: Log response
             if response.status_code != 200:
                 print(f"[Chutes] Error {response.status_code}: {response.text[:200]}")
             else:
@@ -671,6 +701,7 @@ class ChutesProvider(AIProvider):
             return
         
         try:
+            # Normalize messages for Chutes API (system message must be first)
             messages = self._normalize_messages_for_chutes(messages)
             
             if self.supports_vision(model) and messages:
@@ -796,6 +827,7 @@ class AIProviderManager:
                 yield chunk
             
             time.time() - start_time
+            # REMOVED: No print statement to avoid timing duplication
             
         except Exception as e:
             yield f"Streaming error: {str(e)}"

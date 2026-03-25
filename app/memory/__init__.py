@@ -1,7 +1,13 @@
 FILE: app/memory/__init__.py
 DESCRIPTION: Memory system public API — single import point for all memory operations
 
-
+# Memory system public API for Yuzu Companion
+#
+# Single import point for all memory operations.
+# External code (app.py, tools, etc.) should import from here, not from internals.
+#
+# Legacy note: the extraction/retrieval pipeline is fully independent from the
+# legacy global_knowledge_json system. Both can run in parallel.
 
 from app.memory.extractor import (
     process_messages_for_memory,
@@ -52,11 +58,13 @@ __all__ = [
     "get_memory_stats",
 ]
 
+# ── Aliases for cleaner public API ──────────────────────────────────────────
 
 extract_memories = process_messages_for_memory
 retrieve_memories = retrieve_memory
 
 
+# ── Stats helper ─────────────────────────────────────────────────────────────
 
 def get_memory_stats(session_id: int) -> dict:
     """
@@ -95,6 +103,8 @@ def get_memory_stats(session_id: int) -> dict:
     except Exception:
         semantic_count = episodic_count = segment_count = -1
 
+    # Index sizes — read from disk files without loading into memory (avoids
+    # expensive DB query + vector rebuild that _ensure_* would trigger)
     try:
         from app.memory.index_store import _index_path
         import os

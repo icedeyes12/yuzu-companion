@@ -1,7 +1,18 @@
 FILE: app/memory/migrations/quality_migrate.py
 DESCRIPTION: Memory quality scoring migration
 
-
+# [FILE: memory/quality_migrate.py]
+# [DESCRIPTION: High-quality semantic memory extraction via LLM from existing episodic records]
+# [USAGE: python -c "from app.memory.quality_migrate import run_migration; run_migration()"]
+#
+# Phases:
+#   1. Embed unvectored episodic memories (Chutes embedding API)
+#   2. Delete ALL existing low-quality semantic records (regex-extracted garbage)
+#   3. LLM extract high-value facts from episodic summaries (Chutes chat API, batched)
+#   4. Embed new semantic facts
+#   5. Store new facts
+#
+# Resumable + rate-limit safe. Checkpoint saved after every batch.
 
 import os
 import json
@@ -13,10 +24,14 @@ from app.database import Database, get_db_session, SemanticMemory, EpisodicMemor
 from sqlalchemy import text
 
 
+# ─────────────────────────────────────────────────────────────
+# Config
+# ─────────────────────────────────────────────────────────────
 
 CHUTES_EMBED_ENDPOINT = "https://chutes-qwen-qwen3-embedding-8b.chutes.ai/v1/embeddings"
 CHUTES_CHAT_ENDPOINT = "https://llm.chutes.ai/v1/chat/completions"
 
+# Cost control: smaller model = cheaper + faster for extraction
 EXTRACTION_MODEL = "Qwen/Qwen3-235B-A22B-Instruct-2507-TEE"  # 262k context window
 BATCH_SIZE = 200            # episodes per LLM call (fits ~262k context)
 EMBED_BATCH_SIZE = 32      # embed calls
@@ -27,6 +42,9 @@ CHECKPOINT_FILE = os.path.join(os.path.dirname(__file__), 'quality_migrate_check
 
 _start_time = None
 
+# ─────────────────────────────────────────────────────────────
+# Timestamped logging
+# ─────────────────────────────────────────────────────────────
 
 def _ts():
     return datetime.now().strftime('%H:%M:%S')
@@ -38,6 +56,9 @@ def _log(msg):
 def _log_phase(phase_num, title):
     print(f"\n[{_ts()}] === Phase {phase_num}: {title} ===")
 
+# ─────────────────────────────────────────────────────────────
+# Checkpoint
+# ─────────────────────────────────────────────────────────────
 
 def _load_cp():
     if os.path.exists(CHECKPOINT_FILE):
@@ -57,6 +78,9 @@ def _save_cp(cp):
     with open(CHECKPOINT_FILE, "w") as f:
         json.dump(cp, f, indent=2)
 
+# ─────────────────────────────────────────────────────────────
+# Chutes API helpers
+# ─────────────────────────────────────────────────────────────
 
 def _get_llm_key():
     """Get Chutes key for LLM extraction calls."""
@@ -101,6 +125,9 @@ def _embed_batch(texts, retries=MAX_RETRIES):
 def _vec_to_blob(vec):
     return struct.pack(f'{len(vec)}f', *vec)
 
+# ─────────────────────────────────────────────────────────────
+# OpenRouter LLM (used for extraction — bypasses Chutes rate limit)
+# ─────────────────────────────────────────────────────────────
 
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 OR_KEY = None  # lazy-loaded
@@ -111,6 +138,7 @@ def _extract_facts_via_llm(episodes, retries=MAX_RETRIES):
     episodes: list of dicts with 'id' and 'summary' only
     Returns: list of dicts with 'fact', 'category'
     """
+    # Build the prompt — only use 'summary' (no 'title' field exists)
     episodes_text = "\n\n".join([
         f"Episode {i+1}:\n{e['summary']}"
         for i, e in enumerate(episodes)
@@ -120,12 +148,14 @@ def _extract_facts_via_llm(episodes, retries=MAX_RETRIES):
 
 Extract ONLY persistent, high-value facts from the conversation episodes below.
 
+## CRITICAL: Extract ONLY facts that pass ALL FOUR tests:
 
 1. **Persistence Test**: Will this still be true in 6 months? (not a temporary reaction)
 2. **Specificity Test**: Does it contain concrete, searchable information? (not vague)
 3. **Utility Test**: Can this help predict future user needs or preferences?
 4. **Independence Test**: Can this be understood WITHOUT the conversation context?
 
+## EXTRACT THESE CATEGORIES:
 - identity: name, profession, location, company, education
 - preference: likes, dislikes, favorites, stylistic choices
 - interest: topics, hobbies, domains they engage with
@@ -135,11 +165,13 @@ Extract ONLY persistent, high-value facts from the conversation episodes below.
 - goal: plans, aspirations, things they're working toward
 - guideline: how you (assistant) should behave around them
 
+## SKIP THESE:
 - single-emotion reactions (happy, sad, frustrated in one moment)
 - acknowledgments or greetings
 - vague statements without specifics
 - context-dependent information
 
+## RESPOND WITH JSON ONLY:
 {
   "facts": [
     {"fact": "the exact fact statement in present tense", "category": "preference"},
@@ -194,9 +226,12 @@ Respond with JSON only."""
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
 
+            # Extract JSON from response
             try:
+                # Try direct JSON parse first
                 parsed = json.loads(content)
             except json.JSONDecodeError:
+                # Try extracting from markdown code blocks
                 import re
                 m = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
                 if m:
@@ -206,6 +241,7 @@ Respond with JSON only."""
                     return []
 
             facts = parsed.get("facts", [])
+            # Validate
             validated = []
             for f in facts:
                 if isinstance(f, dict) and f.get("fact") and f.get("category"):
@@ -224,6 +260,9 @@ Respond with JSON only."""
                 time.sleep(wait)
     return []
 
+# ─────────────────────────────────────────────────────────────
+# Phase 1: Embed unvectored episodic memories
+# ─────────────────────────────────────────────────────────────
 
 def phase1_embed_episodic(cp):
     _log_phase(1, "Embedding unvectored episodic memories")
@@ -242,6 +281,7 @@ def phase1_embed_episodic(cp):
 
     _log(f"Embedding {len(unembedded)} records (batch_size={EMBED_BATCH_SIZE})...")
 
+    # Load IDs + texts inside session
     items = []
     for rec in unembedded:
         items.append({"id": rec.id, "text": rec.summary or ""})
@@ -273,6 +313,9 @@ def phase1_embed_episodic(cp):
     _log(f"Done: {migrated} episodic memories embedded")
     return migrated
 
+# ─────────────────────────────────────────────────────────────
+# Phase 2: Delete all existing semantic records
+# ─────────────────────────────────────────────────────────────
 
 def phase2_delete_old_semantic(cp):
     _log_phase(2, "Deleting low-quality semantic memories")
@@ -287,6 +330,9 @@ def phase2_delete_old_semantic(cp):
     _save_cp(cp)
     return count
 
+# ─────────────────────────────────────────────────────────────
+# Phase 3: LLM extract facts from episodic summaries (batched)
+# ─────────────────────────────────────────────────────────────
 
 def phase3_extract_facts(cp):
     _log_phase(3, "LLM extraction of high-value facts from episodic memories")
@@ -295,6 +341,7 @@ def phase3_extract_facts(cp):
         episodic_records = session.query(EpisodicMemory).order_by(
             EpisodicMemory.id.asc()
         ).all()
+        # Load inside session to avoid detach
         episodic_data = [
             {"id": r.id, "summary": r.summary or ""}
             for r in episodic_records
@@ -312,6 +359,7 @@ def phase3_extract_facts(cp):
     episodic_data = episodic_data[batch_offset:]
     extracted_facts = []  # list of {"fact": ..., "category": ...}
 
+    # Load previously extracted facts (resume-safe)
     extracted_facts = cp.get("extracted_facts", [])
     _log(f"Resuming with {len(extracted_facts)} already-extracted facts")
 
@@ -324,6 +372,7 @@ def phase3_extract_facts(cp):
             f["source_episode_id"] = batch[0]["id"]
 
         extracted_facts.extend(facts)
+        # checkpoint: absolute episode count, not batch number
         episodes_done = batch_offset + batch_start + len(batch)
         cp["episodic_batch"] = episodes_done
         cp["extracted_facts"] = extracted_facts
@@ -337,6 +386,9 @@ def phase3_extract_facts(cp):
     _log(f"Done: {len(extracted_facts)} facts extracted from episodic memories")
     return len(extracted_facts)
 
+# ─────────────────────────────────────────────────────────────
+# Phase 4: Embed new semantic facts
+# ─────────────────────────────────────────────────────────────
 
 def phase4_embed_and_store_facts(cp):
     _log_phase(4, "Embedding and storing new semantic facts")
@@ -350,6 +402,7 @@ def phase4_embed_and_store_facts(cp):
 
     _log(f"Embedding {len(facts)} facts...")
 
+    # Build search text for each fact (category prefix helps embedding)
     texts_to_embed = [f"{f['category']}: {f['fact']}" for f in facts]
     vecs = _embed_batch(texts_to_embed)
 
@@ -380,12 +433,16 @@ def phase4_embed_and_store_facts(cp):
 
         session.commit()
 
+    # Clear extracted_facts from checkpoint (done)
     cp["extracted_facts"] = []
     cp["phase"] = 4
     _save_cp(cp)
     _log(f"Done: {stored} high-quality semantic facts stored")
     return stored
 
+# ─────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────
 
 def run_migration():
     global _start_time
@@ -401,21 +458,25 @@ def run_migration():
         cp["started_at"] = datetime.now().isoformat()
         _save_cp(cp)
 
+    # Phase 1: Embed unvectored episodic records
     if cp.get("phase", 0) < 1:
         phase1_embed_episodic(cp)
     else:
         _log_phase(1, "Embedding unvectored episodic memories — SKIPPED (already done)")
 
+    # Phase 2: Delete old bad semantic records
     if cp.get("phase", 0) < 2:
         phase2_delete_old_semantic(cp)
     else:
         _log_phase(2, "Deleting low-quality semantic records — SKIPPED (already done)")
 
+    # Phase 3: LLM extract facts
     if cp.get("phase", 0) < 3:
         phase3_extract_facts(cp)
     else:
         _log_phase(3, "LLM fact extraction — SKIPPED (already done)")
 
+    # Phase 4: Embed + store new facts
     if cp.get("phase", 0) < 4:
         phase4_embed_and_store_facts(cp)
     else:

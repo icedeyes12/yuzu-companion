@@ -1,7 +1,15 @@
 FILE: web.py
 DESCRIPTION: Web server and routing
 
-
+# [FILE: web.py]
+# [VERSION: 1.0.70]
+# [DATE: 2026-03-24]
+# [PROJECT: HKKM - Yuzu Companion]
+# [DESCRIPTION: Web interface for AI companion system]
+# [AUTHOR: Project Lead: Bani Baskara]
+# [TEAM: Deepseek, GPT, Qwen, Aihara]
+# [REPOSITORY: https://guthib.com/icedeyes12]
+# [LICENSE: MIT]
 
 from flask import Flask, render_template, request, jsonify, send_from_directory, session, Response
 import json
@@ -50,11 +58,14 @@ def dashboard():
 
 @app.route('/chat')
 def chat():
+    # Gunakan Flask session instead of global variable
     if 'web_session_started' not in session:
         print("Flask session not found, starting new web session...")
         
+        # Panggil fungsi start_session dari app.py - semua logika connection_msg sudah diurus di sana
         start_session(interface="web") 
         
+        # Tandai session user ini sudah dimulai
         session['web_session_started'] = True
         print("Web session started and flagged in Flask session.")
     
@@ -174,6 +185,7 @@ def api_send_message_stream():
         
         print(f"Streaming message: {user_message[:200]}...")
         
+        # Get streaming response generator from app.py
         response_generator = handle_user_message_streaming(
             user_message, 
             interface="web",
@@ -268,6 +280,7 @@ def api_generate_image():
         if not prompt:
             return jsonify({'error': 'Prompt required'}), 400
         
+        # Route through the unified send_message pipeline
         ai_reply = handle_user_message(f"/imagine {prompt}", interface="web")
         return jsonify({'reply': ai_reply, 'status': 'success'})
     except Exception as e:
@@ -313,11 +326,13 @@ def api_clear_chat():
     
     Database.clear_chat_history(session_id)
     
+    # Reset session flag instead of global variable
     session.pop('web_session_started', None)
     return jsonify({'status': 'success'})
 
 @app.route('/api/end_session', methods=['POST'])
 def api_end_session():
+    # Reset session flag instead of global variable
     session.pop('web_session_started', None)
     
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -452,14 +467,17 @@ def api_rebuild_structured_memory():
         from app.memory.extractor import process_messages_for_memory
         from app.memory.segmenter import segment_session
 
+        # Extract semantic + episodic memories from recent messages
         recent = Database.get_chat_history(session_id=session_id, limit=50, recent=True)
         if len(recent) < 3:
             return jsonify({'status': 'error', 'message': 'Need at least 3 conversation messages to extract memory. Continue chatting and try again.'})
 
         process_messages_for_memory(session_id, recent)
 
+        # Create conversation segments
         segment_session(session_id)
 
+        # Get current memory stats
         from database import get_db_session, SemanticMemory, EpisodicMemory, ConversationSegment
         with get_db_session() as db_session:
             semantic_count = db_session.query(SemanticMemory).filter_by(session_id=session_id).count()
@@ -510,6 +528,7 @@ def api_memory_stats():
             episodic_count = db_session.query(EpisodicMemory).filter_by(session_id=session_id).count()
             segment_count = db_session.query(ConversationSegment).filter_by(session_id=session_id).count()
 
+            # Get top semantic facts for display
             top_facts = db_session.query(SemanticMemory).filter_by(
                 session_id=session_id
             ).order_by(SemanticMemory.confidence.desc()).limit(10).all()
@@ -604,6 +623,7 @@ def api_test_provider_connection():
 
 @app.route('/api/browser_unload', methods=['POST'])
 def api_browser_unload():
+    # Reset session flag instead of global variable
     session.pop('web_session_started', None)
     print("Web page closed or refreshed - Flask session cleared")
     
@@ -650,6 +670,7 @@ def api_create_session():
         session_id = Database.create_session(name)
         Database.switch_session(session_id)
         
+        # Reset session flag instead of global variable
         session.pop('web_session_started', None)
         
         return jsonify({'status': 'success', 'session_id': session_id})
@@ -668,6 +689,7 @@ def api_switch_session():
         
         Database.switch_session(session_id)
         
+        # Reset session flag instead of global variable
         session.pop('web_session_started', None)
         
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -683,6 +705,7 @@ def api_switch_session():
         
         Database.add_message('system', connection_msg, session_id=session_id)
         
+        # Set session flag for the new session
         session['web_session_started'] = True
         
         chat_history = Database.get_chat_history(session_id)

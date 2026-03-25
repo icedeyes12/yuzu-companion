@@ -1,7 +1,8 @@
 FILE: app/memory/extractor.py
 DESCRIPTION: Memory extraction layer — semantic + episodic writers with embeddings
 
-
+# [FILE: memory/extractor.py]
+# [DESCRIPTION: Memory extraction layer - semantic + episodic writers with embeddings]
 
 import logging
 
@@ -18,6 +19,7 @@ from app.memory.embedder import embed_text, vec_to_blob, blob_to_vec
 
 logger = logging.getLogger(__name__)
 
+# Session-scoped extraction error counter — reset per process
 _extraction_errors: int = 0
 
 
