@@ -1,7 +1,6 @@
 # [FILE: memory/extractor.py]
 # [DESCRIPTION: Memory extraction layer - semantic + episodic writers with embeddings]
 
-import re
 import math
 import hashlib
 from datetime import datetime
@@ -20,44 +19,6 @@ def _get_ai_manager():
     return get_ai_manager()
 
 
-# Keywords that indicate semantic facts — maps to memory_store taxonomy:
-# Preference | Identity | Interest | Guideline | Goal | Relationship | Experience | Personality
-_SEMANTIC_PATTERNS = [
-    # Preference — positive
-    (r'\b(?:i prefer|i like|i love|i enjoy|i want|i need|i usually go for)\b(.+)', 'Preference'),
-    # Preference — negative (Dislikes stored as same category, confidence handles sign)
-    (r'\b(?:i hate|i dislike|i don\'t like|i can\'t stand|i avoid|i never want)\b(.+)', 'Preference'),
-    # Identity — who the user is
-    (r'\b(?:i am|i\'m|my name is|i live in|i work at|i work as|i\'m a|i\'m an)\b(.+)', 'Identity'),
-    # Experience — skills, tools, past work
-    (r'\b(?:i use|i work with|i code in|i develop in|i\'ve built|i\'ve made|i built|i made)\b(.+)', 'Experience'),
-    # Personality — behavioral patterns
-    (r'\b(?:i always|i usually|i often|i tend to|i sometimes|i rarely|i never)\b(.+)', 'Personality'),
-    # Interest — topics the user cares about learning/pursuing
-    (r'\b(?:i\'m interested in|i want to learn|i\'m learning|i\'ve been studying|i\'m into)\b(.+)', 'Interest'),
-    # Goal — aspirations and plans
-    (r'\b(?:i want to|i\'m trying to|i\'m planning to|i\'m working on|i\'ll|i\'m going to)\b(.+)', 'Goal'),
-    # Guideline — how the user wants to be treated/addressed
-    (r'\b(?:call me|don\'t call me|don\'t|never|always|please|i prefer you)\b(.+)', 'Guideline'),
-    # Relationship — people in user's life
-    (r'\b(?:my girlfriend|my boyfriend|my partner|my wife|my husband|my friend|my mom|my dad|my sister|my brother)\b(.+)', 'Relationship'),
-    # Indonesian patterns
-    (r'\b(?:aku suka|aku lebih suka|gue suka|gua suka)\b(.+)', 'Preference'),
-    (r'\b(?:aku benci|aku nggak suka|gue nggak suka|gua nggak suka|aku ogah)\b(.+)', 'Preference'),
-    (r'\b(?:aku ini|gue ini|gua ini|aku namanya|gue namanya)\b(.+)', 'Identity'),
-    (r'\b(?:aku pake|aku pakai|gue pake|gue pakai)\b(.+)', 'Experience'),
-    (r'\b(?:aku selalu|gue selalu|aku biasanya|gue biasanya)\b(.+)', 'Personality'),
-    (r'\b(?:aku mau|gue mau|aku pengen|gue pengen|aku lagi belajar)\b(.+)', 'Goal'),
-]
-
-_EMOTIONAL_KEYWORDS = [
-    'angry', 'frustrated', 'sad', 'happy', 'excited', 'love',
-    'hate', 'cry', 'laugh', 'upset', 'worried', 'scared',
-    'marah', 'kesal', 'sedih', 'senang', 'sayang', 'benci',
-    'takut', 'khawatir', 'kecewa',
-]
-
-
 def _compute_message_hash(messages: list) -> str:
     """Stable hash of message IDs (or content if no IDs) for dedupe."""
     try:
@@ -67,11 +28,11 @@ def _compute_message_hash(messages: list) -> str:
         return ''
 
 
-def _llm_extract_facts(messages) -> list[dict]:
-    """Use the LLM to extract semantic facts from user messages.
+def extract_semantic_facts(messages) -> list[dict]:
+    """Extract semantic triples from user messages using LLM only.
 
-    Called as fallback when regex finds nothing.
     Returns a list of dicts: {entity, relation, target}
+    Taxonomy: Preference | Identity | Interest | Guideline | Goal | Relationship | Experience | Personality
     """
     try:
         ai_manager = _get_ai_manager()
@@ -80,29 +41,35 @@ def _llm_extract_facts(messages) -> list[dict]:
             for m in messages if m.get('role') in ('user', 'assistant')
         )
         prompt = (
-            "Extract factual knowledge about the user from their messages above. "
+            "You extract factual knowledge about the user from their messages above.\n"
             "Classify each fact using exactly one of these relation types:\n"
             "  - Preference: likes, dislikes, habits (e.g. 'Prefers dark mode')\n"
-            "  - Identity: name, location, job, demographics (e.g. 'Is a developer')\n"
-            "  - Interest: topics they want to learn or explore (e.g. 'Interested in AI')\n"
+            "  - Identity: name, location, job, demographics (e.g. 'Is a developer' or 'Lives in Jakarta')\n"
+            "  - Interest: topics they want to learn or explore (e.g. 'Interested in AI' or 'Wants to learn Python')\n"
             "  - Guideline: how they want to be treated or addressed (e.g. 'Guideline: call me Bani')\n"
-            "  - Goal: things they want to achieve or do (e.g. 'Goal: build an app')\n"
+            "  - Goal: things they want to achieve or do (e.g. 'Goal: build an app' or 'Planning to start a business')\n"
             "  - Relationship: people in their life (e.g. 'Relationship: girlfriend named Sari')\n"
-            "  - Experience: skills, tools, past projects (e.g. 'Experience: uses Python')\n"
+            "  - Experience: skills, tools, past projects (e.g. 'Experience: uses Python' or 'Built a React app')\n"
             "  - Personality: behavioral patterns and tendencies (e.g. 'Personality: works late nights')\n\n"
-            "Return a JSON list of facts with entity (always 'User'), relation, and target (max 200 chars). "
-            "Return an empty list if nothing meaningful can be extracted. "
-            "Example: [{\"entity\": \"User\", \"relation\": \"Preference\", \"target\": \"Prefers dark mode\"}]"
+            "Return a JSON list of facts with entity (always 'User'), relation, and target (max 200 chars).\n"
+            "Return an empty list [] if nothing meaningful can be extracted.\n"
+            "Only extract facts explicitly stated or strongly implied — do not guess or generalize.\n\n"
+            "Example input: \"I love coding in Python late at night, I'm Bani from Jakarta\"\n"
+            "Example output: [\n"
+            "  {\"entity\": \"User\", \"relation\": \"Preference\", \"target\": \"Loves coding in Python\"},\n"
+            "  {\"entity\": \"User\", \"relation\": \"Identity\", \"target\": \"Name is Bani, from Jakarta\"},\n"
+            "  {\"entity\": \"User\", \"relation\": \"Personality\", \"target\": \"Works late at night\"}\n"
+            "]"
         )
         response = ai_manager.send_message(
             provider=None,
             model=None,
             messages=[
-                {"role": "system", "content": "You extract structured user facts from conversation using the taxonomy: Preference, Identity, Interest, Guideline, Goal, Relationship, Experience, Personality."},
+                {"role": "system", "content": "You extract structured user facts from conversation. Use the taxonomy: Preference, Identity, Interest, Guideline, Goal, Relationship, Experience, Personality."},
                 {"role": "user", "content": conversation + "\n\n" + prompt},
             ],
             timeout=30,
-            max_tokens=300,
+            max_tokens=500,
         )
         if not response:
             return []
@@ -115,56 +82,47 @@ def _llm_extract_facts(messages) -> list[dict]:
     return []
 
 
-def extract_semantic_facts(messages):
-    """Extract semantic triples from a list of messages.
-
-    Tries regex first, then falls back to LLM extraction if no facts found.
-    """
-    facts = []
-    for msg in messages:
-        if msg.get('role') != 'user':
-            continue
-        content = msg.get('content', '')
-        for pattern, relation in _SEMANTIC_PATTERNS:
-            match = re.search(pattern, content, re.IGNORECASE)
-            if match:
-                target = match.group(1).strip()
-                target = re.sub(r'[.,!?;:]+$', '', target).strip()
-                if target and len(target) < 200:
-                    facts.append({
-                        'entity': 'User',
-                        'relation': relation,
-                        'target': target,
-                    })
-
-    # LLM fallback: if regex found nothing, try LLM extraction
-    if not facts:
-        llm_facts = _llm_extract_facts(messages)
-        if llm_facts:
-            facts.extend(llm_facts)
-
-    return facts
-
-
-def calculate_emotional_weight(messages):
-    """Calculate emotional intensity from a list of messages. Returns 0.0–1.0."""
+def calculate_emotional_weight(messages) -> float:
+    """Calculate emotional intensity using LLM. Returns 0.0–1.0."""
     if not messages:
         return 0.0
-    total_hits = 0
-    for msg in messages:
-        content = msg.get('content', '').lower()
-        for keyword in _EMOTIONAL_KEYWORDS:
-            if keyword in content:
-                total_hits += 1
-    return min(total_hits / max(len(messages), 1) * 0.3, 1.0)
+    try:
+        ai_manager = _get_ai_manager()
+        conversation = '\n'.join(
+            f"{'User' if m.get('role') == 'user' else 'AI'}: {m.get('content', '')}"
+            for m in messages if m.get('role') in ('user', 'assistant')
+        )
+        prompt = (
+            "Rate the emotional intensity of this conversation on a scale of 0.0 to 1.0.\n"
+            "0.0 = completely neutral, 1.0 = highly emotional (angry, upset, frustrated, excited, crying, etc.)\n"
+            "Only return a single float number, nothing else. Example: 0.7"
+        )
+        response = ai_manager.send_message(
+            provider=None,
+            model=None,
+            messages=[
+                {"role": "system", "content": "You rate emotional intensity of conversations. Output only a single float 0.0–1.0."},
+                {"role": "user", "content": conversation + "\n\n" + prompt},
+            ],
+            timeout=15,
+            max_tokens=10,
+        )
+        if response:
+            import re as _re
+            match = _re.search(r'0?\.\d+', response.strip())
+            if match:
+                return float(match.group())
+    except Exception as e:
+        print(f"[WARNING] LLM emotional weight failed: {e}")
+    return 0.0
 
 
-def should_create_episodic(messages, affection_delta=0):
+def should_create_episodic(messages, affection_delta=0) -> bool:
     """Determine if an episodic memory should be created."""
     if not messages:
         return False
     emotional_weight = calculate_emotional_weight(messages)
-    if emotional_weight >= 0.3:
+    if emotional_weight >= 0.4:
         return True
     if len(messages) >= 10:
         return True
@@ -173,25 +131,10 @@ def should_create_episodic(messages, affection_delta=0):
     return False
 
 
-def generate_episodic_summary(messages):
-    """Generate a concise summary from a list of messages using LLM.
-
-    Tries LLM summarization first; falls back to naive truncation on failure.
-    """
+def generate_episodic_summary(messages) -> str:
+    """Generate a concise summary from a list of messages using LLM."""
     if not messages:
         return ""
-    summary = _llm_summarize(messages)
-    if summary:
-        return summary
-    return _truncate_summary(messages)
-
-
-def _llm_summarize(messages) -> str | None:
-    """Use the LLM to generate a concise summary of a message list.
-
-    Sends the conversation to the AI and asks for a 1-3 sentence summary.
-    Returns None on failure (falls back to truncation).
-    """
     try:
         ai_manager = _get_ai_manager()
         prompt_messages = [
@@ -224,23 +167,7 @@ def _llm_summarize(messages) -> str | None:
             return response.strip()
     except Exception as e:
         print(f"[WARNING] LLM summarization failed: {e}")
-    return None
-
-
-def _truncate_summary(messages):
-    """Fallback: produce a naive text truncation when LLM is unavailable."""
-    parts = []
-    for msg in messages:
-        role = msg.get('role', 'unknown')
-        content = msg.get('content', '')
-        if len(content) > 150:
-            content = content[:150] + '...'
-        if role in ('user', 'assistant'):
-            label = 'User' if role == 'user' else 'AI'
-            parts.append(f"{label}: {content}")
-    if len(parts) > 6:
-        return '\n'.join(parts[:3] + ['...'] + parts[-3:])
-    return '\n'.join(parts)
+    return ""
 
 
 def _build_semantic_text(entity, relation, target):
@@ -249,11 +176,7 @@ def _build_semantic_text(entity, relation, target):
 
 
 def _find_similar_semantic(session_id, entity, relation, target, vector, threshold=0.95) -> int | None:
-    """
-    Check if a semantically similar fact already exists for (entity, relation).
-    Uses dot product on stored embedding vectors.
-    Returns existing db id if similarity > threshold, else None.
-    """
+    """Check if a semantically similar fact already exists for (entity, relation)."""
     if vector is None:
         return None
     try:
@@ -283,15 +206,9 @@ def _find_similar_semantic(session_id, entity, relation, target, vector, thresho
 
 
 def upsert_semantic_memory(session_id, entity, relation, target):
-    """Insert or update a semantic memory triple with embedding.
-
-    Returns:
-        tuple (db_id, embedding) — the memory id and its embedding vector,
-        or (None, None) on failure. Callers use this to incrementally update
-        the ANN index via IndexStore.add_semantic().
-    """
+    """Insert or update a semantic memory triple with embedding."""
     text = _build_semantic_text(entity, relation, target)
-    vector = embed_text(text)  # Returns None gracefully if embedding fails
+    vector = embed_text(text)
 
     with get_db_session() as session:
         existing = session.query(SemanticMemory).filter(
@@ -310,49 +227,43 @@ def upsert_semantic_memory(session_id, entity, relation, target):
             session.commit()
             session.expunge(existing)
             return existing.id, vector
-        else:
-            dup_id = _find_similar_semantic(session_id, entity, relation, target, vector)
-            if dup_id is not None:
-                existing_dup = session.query(SemanticMemory).filter(
-                    SemanticMemory.id == dup_id
-                ).first()
-                if existing_dup:
-                    existing_dup.confidence = min(existing_dup.confidence + 0.15, 1.0)
-                    existing_dup.access_count += 1
-                    existing_dup.last_accessed = datetime.now()
-                    session.commit()
-                    session.expunge(existing_dup)
-                    print(f"[MEMORY] Dedup: boosted similar fact id={dup_id} "
-                          f"({entity} {relation} {target[:40]})")
-                    return dup_id, None
 
-            new_mem = SemanticMemory(
-                session_id=session_id,
-                entity=entity,
-                relation=relation,
-                target=target,
-                confidence=0.5,
-                importance=0.5,
-                embedding_vector=vec_to_blob(vector) if vector is not None else None,
-                last_accessed=datetime.now(),
-                access_count=1,
-            )
-            session.add(new_mem)
-            session.commit()
-            db_id = new_mem.id
-            session.expunge(new_mem)
-            return db_id, vector
+        dup_id = _find_similar_semantic(session_id, entity, relation, target, vector)
+        if dup_id is not None:
+            existing_dup = session.query(SemanticMemory).filter(
+                SemanticMemory.id == dup_id
+            ).first()
+            if existing_dup:
+                existing_dup.confidence = min(existing_dup.confidence + 0.15, 1.0)
+                existing_dup.access_count += 1
+                existing_dup.last_accessed = datetime.now()
+                session.commit()
+                session.expunge(existing_dup)
+                print(f"[MEMORY] Dedup: boosted similar fact id={dup_id} "
+                      f"({entity} {relation} {target[:40]})")
+                return dup_id, None
+
+        new_mem = SemanticMemory(
+            session_id=session_id,
+            entity=entity,
+            relation=relation,
+            target=target,
+            confidence=0.5,
+            importance=0.5,
+            embedding_vector=vec_to_blob(vector) if vector is not None else None,
+            last_accessed=datetime.now(),
+            access_count=1,
+        )
+        session.add(new_mem)
+        session.commit()
+        db_id = new_mem.id
+        session.expunge(new_mem)
+        return db_id, vector
 
 
 def create_episodic_memory(session_id, summary, emotional_weight=0.0, importance=0.5):
-    """Create a new episodic memory record with embedding.
-
-    Returns:
-        tuple (db_id, embedding) — the memory id and its embedding vector,
-        or (None, None) on failure. Callers use this to incrementally update
-        the ANN index via IndexStore.add_episodic().
-    """
-    vector = embed_text(summary)  # Returns None gracefully if embedding fails
+    """Create a new episodic memory record with embedding."""
+    vector = embed_text(summary)
 
     with get_db_session() as session:
         mem = EpisodicMemory(
@@ -382,7 +293,7 @@ def process_messages_for_memory(session_id, messages, affection_delta=0):
             from app.database import Database
             session_mem = Database.get_session_memory(session_id)
             if session_mem.get('_last_extractor_hash') == msg_hash:
-                return  # already processed this exact batch
+                return
             update_payload = dict(session_mem)
             update_payload['_last_extractor_hash'] = msg_hash
             Database.update_session_memory(session_id, update_payload)
