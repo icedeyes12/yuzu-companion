@@ -1,14 +1,5 @@
-# ==========================================================
-# [FILE]        : main.py  
-# [VERSION: 1.0.70] - Complete Working Version
-# [DATE: 2026-03-24]
-# [PROJECT]     : HKKM - Yuzu Companion
-# [DESCRIPTION] : Complete CLI with all menu methods implemented
-# [AUTHOR]      : Project Lead: Bani Baskara
-# [TEAM]        : Deepseek, GPT, Qwen, Aihara
-# [REPOSITORY]  : https://guthib.com/icedeyes12
-# [LICENSE]     : MIT
-# ==========================================================
+# FILE: main.py
+# DESCRIPTION: 
 
 from app.app import handle_user_message, handle_user_message_streaming, start_session, end_session_cleanup, summarize_memory, summarize_global_player_profile
 from app.app import get_available_providers, get_all_models, set_preferred_provider, get_vision_capabilities

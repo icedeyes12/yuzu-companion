@@ -1,5 +1,5 @@
-# [FILE: memory/retrieval.py]
-# [DESCRIPTION: Memory retrieval pipeline - cosine similarity + hybrid scoring]
+# FILE: retrieval.py
+# DESCRIPTION: Memory retrieval pipeline - cosine similarity + hybrid scoring
 
 import math
 import functools

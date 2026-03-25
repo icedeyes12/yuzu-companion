@@ -1,5 +1,5 @@
-# [FILE: memory/segmenter.py]
-# [DESCRIPTION: Conversation segmentation engine]
+# FILE: segmenter.py
+# DESCRIPTION: Conversation segmentation engine
 
 from datetime import datetime
 from app.database import (

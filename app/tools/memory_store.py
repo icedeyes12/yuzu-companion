@@ -1,5 +1,5 @@
-# [FILE: app/tools/memory_store.py]
-# [DESCRIPTION: Tool for storing explicit user facts as semantic memories]
+# FILE: memory_store.py
+# DESCRIPTION: Tool for storing explicit user facts as semantic memories
 
 from datetime import datetime
 from app.database import Database, get_db_session, SemanticMemory

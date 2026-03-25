@@ -1,3 +1,6 @@
+# FILE: registry.py
+# DESCRIPTION: 
+
 import json
 
 # Tool name → tool role used for DB storage

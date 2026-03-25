@@ -1,11 +1,5 @@
-# [FILE: encryption.py]
-# [VERSION: 1.0.70]
-# [DATE: 2026-03-24]
-# [PROJECT: HKKM - Yuzu Companion]
-# [DESCRIPTION: High Perf & Quantum Resistant Key Size]
-# [AUTHOR: Project Lead: Bani Baskara]
-# [MODIFIED BY: Gemini]
-# [LICENSE: MIT]
+# FILE: encryption.py
+# DESCRIPTION: High Perf & Quantum Resistant Key Size
 
 from Crypto.Cipher import ChaCha20_Poly1305
 from Crypto.Random import get_random_bytes
