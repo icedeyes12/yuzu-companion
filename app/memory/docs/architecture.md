@@ -1,7 +1,7 @@
 # Memory Architecture
 
-This document defines the structure, database schema, and implementation
-phases of the long-term memory system used by the Yuzu companion.
+This document defines the structure, database schema, and processing
+pipeline of the long-term memory system used by the Yuzu companion.
 
 The memory subsystem transforms raw chat logs into structured, retrievable,
 and scalable memory layers.
@@ -12,100 +12,84 @@ and scalable memory layers.
 
 The system is divided into three main layers:
 
-1. Raw message log (`messages` table)
-2. Episodic memory (`episodic_memory` table) — summarized conversation segments
-3. Semantic memory (`semantic_memory` table) — abstracted user/relationship facts
+```mermaid
+flowchart LR
+    A["messages\n(raw log)"] --> B["conversation_segments\n(structured windows)"]
+    B --> C["episodic_memory\n(LLM summaries)"]
+    B --> D["semantic_memory\n(fact triples)"]
+```
 
-Each layer has a dedicated table and processing logic.
+1. **Raw message log** (`messages` table) — source-of-truth conversation
+2. **Episodic memory** (`episodic_memory` table) — LLM-generated summaries of conversation windows
+3. **Semantic memory** (`semantic_memory` table) — extracted user/relationship facts as RDF-like triples
 
 ---
 
 ## Database Schema
 
-### 1. messages (existing)
+### `messages`
 
-Source-of-truth conversation log.
+Source-of-truth conversation log. No memory-specific changes required.
 
-Columns:
-- `id` (INTEGER, PK)
-- `session_id` (INTEGER)
-- `role` (TEXT)
-- `content` (TEXT)
-- `timestamp` (TEXT)
-- `image_paths` (TEXT, nullable)
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `session_id` | INTEGER | |
+| `role` | TEXT | user, assistant, system, tool role |
+| `content` | TEXT | message content |
+| `content_encrypted` | BOOLEAN | legacy encryption flag |
+| `timestamp` | TEXT | |
+| `image_paths` | TEXT | JSON list of cached image paths |
 
-No changes required.
+### `episodic_memory`
 
-### 2. episodic_memory (new)
+LLM-generated summaries of conversation windows. One episodic ≈ one meaningful conversation event.
 
-Represents summarized conversation segments.
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `session_id` | INTEGER | |
+| `summary` | TEXT | LLM-generated 1–3 sentence summary |
+| `embedding` | BLOB | vector of the summary (cosine similarity search) |
+| `importance` | REAL | 0.0–1.0, decays over time |
+| `emotional_weight` | REAL | 0.0–1.0, emotional intensity at time of creation |
+| `access_count` | INTEGER | increments each retrieval |
+| `last_accessed` | DATETIME | |
+| `created_at` | DATETIME | |
 
-Table: `episodic_memory`
+### `semantic_memory`
 
-Columns:
-- `id` (INTEGER, PK)
-- `session_id` (INTEGER, indexed)
-- `summary` (TEXT) — LLM-generated 1-3 sentence summary
-- `importance` (REAL) — 0.0–1.0, decays over time
-- `emotional_weight` (REAL) — 0.0–1.0, triggers episodic creation
-- `embedding` (BLOB) — vector of the summary for cosine similarity
+RDF-like triples extracted from user messages. Stable long-term facts.
 
-Retention fields:
-- `stability` (REAL)
-- `difficulty` (REAL)
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `session_id` | INTEGER | |
+| `entity` | TEXT | always "User" |
+| `relation` | TEXT | Preference, Identity, Interest, Guideline, Goal, Relationship, Experience, Personality |
+| `target` | TEXT | max 200 chars |
+| `confidence` | REAL | 0.0–1.0, increases on duplicate facts |
+| `importance` | REAL | 0.0–1.0, decays over time |
+| `source_episodic_ids` | TEXT | JSON array of episodic memory IDs this was derived from |
+| `embedding_vector` | BLOB | vector of "entity relation target" text |
+| `access_count` | INTEGER | |
+| `last_accessed` | DATETIME | |
+| `created_at` | DATETIME | |
 
-Usage fields:
-- `retrieval_count` (INTEGER, default 0)
-- `access_count` (INTEGER, default 0)
-- `last_accessed` (DATETIME)
+### `conversation_segments`
 
-Metadata:
-- `created_at` (DATETIME)
+Structured message windows from the segmentation engine. Raw material before LLM summarization.
 
-### 3. semantic_memory (new)
-
-Stores abstracted user or relationship knowledge as RDF-like triples.
-
-Table: `semantic_memory`
-
-Columns:
-- `id` (INTEGER, PK)
-
-Triple:
-- `entity` (TEXT)
-- `relation` (TEXT)
-- `target` (TEXT)
-
-Confidence:
-- `confidence` (REAL) — increases on duplicate facts
-- `importance` (REAL) — decays over time
-
-Source:
-- `source_episodic_ids` (TEXT, JSON array)
-
-Usage:
-- `access_count` (INTEGER, default 0)
-- `last_accessed` (DATETIME)
-- `embedding_vector` (BLOB) — vector of "entity relation target" text
-
-Metadata:
-- `created_at` (DATETIME)
-
-### 4. conversation_segments (new)
-
-Structured message windows from raw segmentation.
-
-Table: `conversation_segments`
-
-Columns:
-- `id` (INTEGER, PK)
-- `session_id` (INTEGER, indexed)
-- `start_message_id` (INTEGER)
-- `end_message_id` (INTEGER)
-- `summary` (TEXT)
-- `importance` (REAL)
-- `embedding` (BLOB)
-- `created_at` (DATETIME)
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `session_id` | INTEGER | |
+| `start_message_id` | INTEGER | |
+| `end_message_id` | INTEGER | |
+| `summary` | TEXT | LLM-generated summary |
+| `embedding` | BLOB | vector of the summary |
+| `importance` | REAL | 0.0–1.0 |
+| `created_at` | DATETIME | |
 
 ---
 
@@ -114,136 +98,136 @@ Columns:
 ```
 memory/
 ├── __init__.py
-├── embedder.py       # Chutes API client, vec↔blob, cosine similarity
-├── extractor.py      # Semantic fact extraction, episodic summary (LLM)
-├── segmenter.py     # Message window segmentation → conversation_segments
-├── retrieval.py      # Cosine-similarity + hybrid scoring retrieval
-├── review.py         # FSRS-style decay & reinforcement
-├── models.py         # Re-export from database.py
+├── embedder.py        # Chutes API client, vec↔blob, cosine similarity
+├── index_store.py     # ANN index (cKDTree) per session
+├── extractor.py       # LLM-powered fact extraction + episodic creation
+├── segmenter.py       # Message window segmentation → conversation_segments
+├── retrieval.py        # ANN + hybrid scoring retrieval, temporal cue search
+├── review.py          # FSRS-style decay & reinforcement
 └── docs/
     ├── architecture.md
     ├── retrieval.md
     ├── segmentation.md
-    └── fsrs.md
+    ├── fsrs.md
+    └── semantic_memory.md
 ```
 
 ---
 
 ## Core Modules
 
-### embedder.py
+### `embedder.py`
 Chutes API embedding client. Handles:
-- `embed_text(text)` → single embedding
+- `embed_text(text)` → single embedding (None on failure)
 - `embed_texts(texts)` → batch embeddings
+- `get_embed_dim()` → lazily probes Chutes API on first call, defaults to 4096
 - `cosine_similarity(a, b)`
-- `vec_to_blob(v)` / `blob_to_vec(b)` — SQLite BLOB serialization
+- `vec_to_blob(v)` / `blob_to_vec(b)` — SQLite BLOB serialization (struct.pack float32)
 
-### extractor.py
-Memory extraction layer. Handles:
-- `extract_semantic_facts(messages)` — regex-based triple extraction
-- `calculate_emotional_weight(messages)` — keyword intensity scoring
-- `should_create_episodic(messages)` — triggers episodic creation
-- `generate_episodic_summary(messages)` — LLM summarization (fallback: truncation)
-- `upsert_semantic_memory(...)` — insert or reinforce semantic triples
+### `index_store.py`
+ANN index per session using cKDTree. Provides:
+- `add_semantic(id, vector)`, `search_semantic(query_vec, k)` — semantic memory ANN
+- `add_episodic(id, vector)`, `search_episodic(query_vec, k)` — episodic ANN
+- `add_segment(id, vector)`, `search_segments(query_vec, k)` — segment ANN
+- Falls back to DB query if index is unavailable or corrupted
+
+### `extractor.py`
+LLM-powered extraction layer. Handles:
+- `extract_semantic_facts(messages)` — **LLM-only**, no regex. Returns list of `{entity, relation, target, importance}`
+- `calculate_emotional_weight(messages)` — **LLM-only**, returns 0.0–1.0
+- `should_create_episodic(messages, affection_delta)` — emotional_weight ≥ 0.4 OR len ≥ 10 OR |affection_delta| ≥ 20
+- `generate_episodic_summary(messages)` — LLM summarization into 1–3 sentences
+- `upsert_semantic_memory(...)` — insert or reinforce semantic triples with dedup (cosine sim > 0.95 threshold)
 - `create_episodic_memory(...)` — store episodic with embedding
-- `process_messages_for_memory(...)` — main pipeline entry point
+- `process_messages_for_memory(...)` — main pipeline entry; deduplicates by message hash
 
-### segmenter.py
+### `segmenter.py`
 Conversation segmentation engine. Handles:
-- `_get_unsegmented_messages(session_id)` — fetch unsegmented messages
-- `_detect_boundaries(messages)` — split by time gap (15 min) or size (20 msgs)
-- `_create_segment(session_id, group)` — store `ConversationSegment`
+- `_get_unsegmented_messages(session_id)` — fetch messages not yet in any segment
+- `_detect_boundaries(messages)` — split by time gap (15 min) or size (20 msgs), discard groups < 5
+- `_create_segment(session_id, group)` — store `ConversationSegment`, embed summary
 - `segment_session(session_id)` — main entry, returns count created
 
-### retrieval.py
-Memory retrieval with cosine similarity + hybrid scoring. Handles:
+### `retrieval.py`
+ANN + hybrid scoring retrieval with temporal cue search. Handles:
 - `_recency_factor(last_accessed)` — half-life 24h exponential decay
-- `retrieve_semantic_memories(session_id, query, limit)` — score = sim×0.6 + importance×0.2 + confidence×0.2
-- `retrieve_episodic_memories(session_id, query, limit)` — score = sim×0.5 + importance×0.25 + recency×0.25
+- `_detect_time_window(query)` — parses temporal cues (kemarin, last week, bulan lalu, etc.)
+- `_search_temporal_messages(session_id, start, end)` — direct DB scan for time-gated queries
+- `_embed_query(text)` — cached query embedding via Chutes
+- `retrieve_semantic_memories(session_id, query, limit)` — ANN first, DB fallback
+- `retrieve_episodic_memories(session_id, query, limit)` — ANN first, DB fallback
 - `retrieve_segments(session_id, query, limit)`
-- `retrieve_memory(session_id, query)` — main entry, returns bundle
+- `retrieve_memory(session_id, query)` — main entry; returns `{semantic, episodic, segments, temporal_messages}`
 - `format_memory(memory_bundle)` — formats for system message injection
 
-### review.py
+### `review.py`
 FSRS-inspired retention model. Handles:
-- `_hours_since(dt)` — time delta calculation
-- `decay_semantic_memories(session_id)` — importance × exp(−hours/stability)
-- `decay_episodic_memories(session_id)`
-- `reinforce_memory(memory_id, memory_type)` — bump importance on retrieval
-- `run_decay(session_id)` — full decay cycle
+- `_hours_since(dt)` — time delta calculation, defaults to 720h if never accessed
+- `decay_semantic_memories(session_id)` — importance × exp(−hours/stability), stability = max(24 × (1 + access_count × 0.5), 24)
+- `decay_episodic_memories(session_id)` — importance × exp(−hours/stability), stability = max(48 × (1 + access_count × 0.3), 48)
+- `reinforce_memory(memory_id, memory_type)` — importance += 0.05, capped at 1.0
+- `run_decay(session_id, force)` — full decay cycle, skips if run within last 6 hours unless force=True
 
 ---
 
 ## High-Level Flow
 
-```
-User message
-  ↓
-messages table
-  ↓
-segmenter.segment_session()      → conversation_segments
-  ↓
-extractor.process_messages_for_memory()
-  ├── extract_semantic_facts()   → semantic_memory
-  └── should_create_episodic() → generate_episodic_summary() (LLM)
-                               → episodic_memory
-  ↓
-review.run_decay()               → decay importance over time
-  ↓
-retrieval.retrieve_memory()      → context_builder builds prompt
-  ↓
-LLM (with memory-augmented context)
+```mermaid
+flowchart TD
+    A["User message\nmessages table"] --> B["segmenter.segment_session()"]
+    B --> C["conversation_segments"]
+    C --> D["extractor.process_messages_for_memory()"]
+    D --> E["extract_semantic_facts()"]
+    D --> F["should_create_episodic()\n≥0.4 emotion OR ≥10 msgs OR |Δaffection|≥20"]
+    E --> G["semantic_memory\nupsert with dedup"]
+    F --> H["generate_episodic_summary()\nLLM 1-3 sentences"]
+    H --> I["episodic_memory"]
+    I --> G
+    G --> J["index_store\nadd to ANN index"]
+    I --> J
+    J --> K["review.run_decay()\non session start"]
+    K --> L["importance decay\nstability from access_count"]
+    L --> M["retrieval.retrieve_memory()\nANN + hybrid scoring"]
+    M --> N["format_memory()\ncontext bundle"]
+    N --> O["LLM context"]
+    M -.-> P["Temporal cue?\n_search_temporal_messages()"]
+    P --> N
 ```
 
 ---
 
 ## Integration Points
 
-### app.py / web.py
+### `app.py` / `web.py`
 
 On session start:
 ```python
-from memory.segmenter import segment_session
-from memory.review import run_decay
-from memory.extractor import process_messages_for_memory
+from app.memory.segmenter import segment_session
+from app.memory.review import run_decay
+from app.memory.extractor import process_messages_for_memory
 
 segment_session(session_id)
 run_decay(session_id)
 process_messages_for_memory(session_id, recent_messages)
 ```
 
-On retrieval (context building via `retrieval.retrieve_memory` + `format_memory`).
+On context building:
+```python
+from app.memory.retrieval import retrieve_memory, format_memory
+
+bundle = retrieve_memory(session_id, query=user_message)
+context = format_memory(bundle)
+```
 
 ---
 
 ## Implementation Phases
 
-### ✅ Phase 1 — Database & Episodic Layer
-- `episodic_memory` table created
-- Fixed-window segmentation via `segmenter.py`
-- LLM-powered episodic summaries via `extractor.py`
-
-### ✅ Phase 2 — Semantic Layer
-- `semantic_memory` table created
-- Regex-based fact extraction from user messages
-- Duplicate merging via upsert logic
-
-### ✅ Phase 3 — Retrieval Integration
-- Hybrid scoring (cosine + importance + recency)
-- Context formatting for LLM injection
-- All wiring in app.py / web.py
-
-### ✅ Phase 4 — Retention Model
-- FSRS-inspired decay in `review.py`
-- Stability derived from access_count
-- Reinforcement on retrieval
-
-### ✅ Phase 5 — Background Processing
-- Segmentation on session start
-- Decay on session start
-- Semantic extraction on new messages
-
-### Future — Phase 6 (optional PostgreSQL migration)
-- Replace SQLite engine
-- Add proper JSONB indexing for source_episodic_ids
-- No logic changes required
+| Phase | Status | Description |
+|---|---|---|
+| 1 | ✅ | Database & episodic layer — segmentation + LLM summaries |
+| 2 | ✅ | Semantic layer — LLM fact extraction, upsert with dedup |
+| 3 | ✅ | Retrieval integration — ANN + hybrid scoring, temporal cue search |
+| 4 | ✅ | Retention model — FSRS decay, reinforcement on retrieval |
+| 5 | ✅ | Background processing — segment + decay + extract on session start |
+| 6 | 📋 | Optional PostgreSQL migration — JSONB indexing for `source_episodic_ids` |

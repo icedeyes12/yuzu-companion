@@ -4,165 +4,160 @@ Semantic memory stores long-term, generalized knowledge about the user,
 the assistant, and their relationship.
 
 Unlike episodic memory, which stores specific events, semantic memory
-represents stable facts extracted from repeated interactions.
+represents stable facts extracted from user messages.
 
 Example:
-
-{ entity: "User", relation: "Prefers", target: "concise answers" }
-{ entity: "User", relation: "Uses", target: "dark mode" }
+```
+(entity: "User", relation: "Preference", target: "concise answers")
+(entity: "User", relation: "Identity", target: "Name is Bani, from Jakarta")
+```
 
 ---
 
 ## Purpose
 
-Semantic memory exists to:
-
-1. Reduce prompt size by replacing raw history with facts.
-2. Preserve stable user preferences.
-3. Represent relationship traits.
-4. Provide consistent long-term behavior.
+```mermaid
+mindmap
+  root((Semantic Memory))
+    Reduce prompt size by replacing raw history with facts
+    Preserve stable user preferences
+    Represent relationship traits
+    Provide consistent long-term behavior
+```
 
 ---
 
 ## Data Model
 
-Table: `semantic_memory`
+**Table:** `semantic_memory`
 
-Columns:
-
-- id (INTEGER, PK)
-
-Triple:
-- entity (TEXT)
-- relation (TEXT)
-- target (TEXT)
-
-Confidence:
-- confidence (REAL)
-
-Source tracking:
-- source_episodic_ids (TEXT, JSON array)
-
-Usage:
-- access_count (INTEGER, default 0)
-- last_accessed_at (TEXT)
-
-Metadata:
-- created_at (TEXT)
-
-Indexes:
-- entity
-- relation
-- confidence
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `session_id` | INTEGER | |
+| `entity` | TEXT | Always "User" |
+| `relation` | TEXT | See taxonomy below |
+| `target` | TEXT | Max 200 chars |
+| `confidence` | REAL | 0.0–1.0, increases on duplicate facts |
+| `importance` | REAL | 0.0–1.0, decays over time |
+| `source_episodic_ids` | TEXT | JSON array of episodic memory IDs this fact was derived from |
+| `embedding_vector` | BLOB | Vector of "entity relation target" text |
+| `access_count` | INTEGER | |
+| `last_accessed` | DATETIME | |
+| `created_at` | DATETIME | |
 
 ---
 
-## Semantic Triples
+## Relation Taxonomy
 
-Each semantic memory is stored as a triple:
+Each fact is classified with exactly one relation type:
 
-(entity, relation, target)
-
-Example categories:
-
-### User preferences
-User — Prefers — concise answers  
-User — Prefers — dark theme  
-User — Uses — Python  
-
-### Relationship traits
-User — Treats — assistant as partner  
-Assistant — Role — companion  
-
-### Behavioral patterns
-User — Often works — at night  
-User — Asks — technical questions  
+| Relation | Definition | Example |
+|---|---|---|
+| `Preference` | Likes, dislikes, habits | "User Prefers dark mode" |
+| `Identity` | Name, location, job, demographics | "User Identity Lives in Jakarta" |
+| `Interest` | Topics they want to learn or explore | "User Interest wants to learn AI" |
+| `Guideline` | How they want to be treated | "User Guideline call me Bani" |
+| `Goal` | Things they want to achieve | "User Goal ship yuzu-v2" |
+| `Relationship` | People in their life | "User Relationship girlfriend named Sari" |
+| `Experience` | Skills, tools, past projects | "User Experience uses Python" |
+| `Personality` | Behavioral patterns and tendencies | "User Personality works late nights" |
 
 ---
 
 ## Confidence Model
 
-Each fact has a confidence score:
+| Range | Interpretation |
+|---|---|
+| 0.0–0.3 | Weak signal — minor preference or casual mention |
+| 0.3–0.6 | Probable pattern — regular knowledge |
+| 0.6–0.85 | Strong preference — clearly stated |
+| 0.85–1.0 | Core identity / goal — emotionally significant |
 
-Range:
-
-0.0 – 1.0
-
-Interpretation:
-
-| Confidence | Meaning |
-|-----------|--------|
-| 0.0–0.3 | Weak signal |
-| 0.3–0.6 | Probable pattern |
-| 0.6–0.85 | Strong preference |
-| 0.85–1.0 | Stable long-term fact |
+> These zones are interpretive guidance. The system does not enforce hard
+> boundaries. Confidence increments by **+0.1** on exact-match duplicates
+> and **+0.15** on cosine-similar duplicates (threshold > 0.95).
 
 ---
 
-## Fact Creation
+## Importance Model
 
-Facts are extracted from:
+| Range | Meaning |
+|---|---|
+| 0.0–0.3 | Minor, easily overridden |
+| 0.4–0.6 | Regular knowledge |
+| 0.7–1.0 | Core identity, goals, emotionally significant |
 
-- High-importance episodic memories
-- Repeated patterns across multiple episodes
-
-Conditions for fact creation:
-
-1. Episode importance_score above threshold
-2. Clear preference or behavioral pattern
-3. Not a one-off or emotional spike
+Importance is set by the LLM during extraction and decays over time via
+the FSRS model in `review.py`.
 
 ---
 
-## Fact Merging
+## Extraction Process
 
-If a new fact matches an existing triple:
+```mermaid
+flowchart TD
+    A["User messages\n(extracted from session)"] --> B["extract_semantic_facts()\nLLM-only extraction"]
+    B --> C["Upsert per fact:\nupsert_semantic_memory()"]
+    C --> D{"Exact triple\nalready exists?"}
+    D -->|yes| E["Boost confidence\n+0.1, access_count++"]
+    D -->|no| F{"Cosine similar > 0.95?\n_same entity, relation_"}
+    F -->|yes| G["Boost confidence\n+0.15, access_count++"]
+    F -->|no| H["Insert new\nsemantic_memory row"]
+    H --> I["index_store.add_semantic()\nANN index"]
+    E --> I
+    G --> I
+```
 
-Instead of creating a new row:
-
-- Increase confidence
-- Update source_episodic_ids
-- Update last_accessed_at
+**LLM extraction prompt assigns importance during extraction:**
+- 0.0–0.3: minor preference
+- 0.4–0.6: regular knowledge
+- 0.7–1.0: core identity or emotionally significant
 
 ---
 
-## Decay and Stability
+## Fact Deduplication
 
-Semantic memory is not permanent.
+Two-layer dedup:
 
-Confidence may:
+1. **Exact match** — same `(entity, relation, target)` → boost confidence +0.1
+2. **Semantic similarity** — same `(entity, relation)`, cosine sim > 0.95 on embeddings → boost confidence +0.15
 
-Decrease when:
-- Not referenced for long periods
-- Contradicted by new facts
+This prevents the same fact from being stored multiple times while
+reinforcing genuinely repeated knowledge.
 
-Increase when:
-- Reinforced by new episodes
-- Frequently retrieved
+---
+
+## Decay
+
+Semantic memory decays via `review.decay_semantic_memories()`:
+```
+importance = importance × exp(-hours_since_last_access / stability)
+stability = max(24 × (1 + access_count × 0.5), 24h)
+```
+
+Frequently accessed memories (high `access_count`) decay much more slowly.
 
 ---
 
 ## Retrieval Role
 
-Semantic memory is always retrieved before episodic memory.
+Semantic memory is always retrieved **before** episodic memory.
 
-Typical usage:
-
-- Top 10–20 highest-confidence facts
-- Sorted by:
-  - confidence
-  - access_count
-  - recency
+- Top 15 facts by hybrid score
+- Sorted by: cosine_sim × 0.6 + importance × 0.2 + confidence × 0.2
+- On retrieval: `access_count` increments, importance bumps +0.05 (capped at 1.0)
 
 ---
 
 ## Module Responsibilities
 
-File: `memory/extractor.py`
+**File:** `app/memory/extractor.py`
 
-Responsibilities:
-
-1. Extract facts from user messages via regex + LLM fallback
-2. Merge or update existing facts (upsert)
-3. Manage confidence
-4. Provide semantic retrieval API
+| Function | Description |
+|---|---|
+| `extract_semantic_facts(messages)` | LLM-only extraction; returns `{entity, relation, target, importance}` |
+| `_build_semantic_text(e, r, t)` | Builds "entity relation target" string for embedding |
+| `_find_similar_semantic(...)` | Cosine similarity check for dedup |
+| `upsert_semantic_memory(...)` | Insert or reinforce semantic triple |
+| `process_messages_for_memory(...))` | Main entry; deduplicates by message hash, calls extraction pipeline |
