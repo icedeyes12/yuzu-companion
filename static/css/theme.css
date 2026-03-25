@@ -1,15 +1,7 @@
 FILE: static/css/theme.css
 DESCRIPTION: Theme styles
 
-/* [FILE: theme.css] */
-/* [VERSION: 1.0.70] */
-/* [DATE: 2026-03-24] */
-/* [PROJECT: HKKM - Yuzu Companion] */
-/* [DESCRIPTION: Theme system with multiple color schemes] */
-/* [AUTHOR: Project Lead: Bani Baskara] */
-/* [TEAM: Deepseek, GPT, Qwen, Aihara] */
-/* [REPOSITORY: https://github.com/icedeyes12] */
-/* [LICENSE: MIT] */
+
 
 /* Default Dark Theme */
 [data-theme="dark"] {

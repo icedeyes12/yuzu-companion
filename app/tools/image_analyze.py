@@ -1,6 +1,8 @@
 FILE: app/tools/image_analyze.py
 DESCRIPTION: Image analysis tool using AI vision
 
+
+
 import json
 import re
 import os
@@ -84,27 +86,22 @@ def _resolve_source(source):
     All input types follow the same pipeline:
       source → extract URL/path → download if remote → cache → return local path
     """
-    # Extract URL from markdown syntax
     md_match = re.match(r'!\[[^\]]*\]\(([^)]+)\)', source)
     if md_match:
         source = md_match.group(1)
 
-    # Strip whitespace
     source = source.strip()
 
-    # Remote URL — always download to cache for uniform processing
     if source.startswith(('http://', 'https://')):
         _ensure_cache_dir()
         cached = _download_to_cache(source)
         return cached
 
-    # Local file references
     if source.startswith('static/') or source.startswith('uploads/') or source.startswith('generated_images/'):
         local_path = source if source.startswith('static/') else f"static/{source}"
         if os.path.isfile(local_path):
             return local_path
 
-    # Try as direct path
     if os.path.isfile(source):
         return source
 

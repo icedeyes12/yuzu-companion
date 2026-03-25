@@ -1,9 +1,10 @@
 FILE: app/tools/registry.py
 DESCRIPTION: Tool registry with metadata and capability tracking
 
+
+
 import json
 
-# Tool name → tool role used for DB storage
 TOOL_ROLE_MAP = {
     "image_generate": "image_tools",
     "imagine": "image_tools",
@@ -44,7 +45,6 @@ def execute_tool(tool_name, arguments, session_id=None):
     This is the SINGLE source of truth for tool dispatch.
     All tool execution MUST go through this function.
     """
-    # Lazy import to avoid circular dependency
     if tool_name == "image_generate":
         from tools import image_generate
         module = image_generate

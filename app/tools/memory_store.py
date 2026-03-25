@@ -1,8 +1,7 @@
 FILE: app/tools/memory_store.py
 DESCRIPTION: Memory store tool for persisting and retrieving memories
 
-# [FILE: app/tools/memory_store.py]
-# [DESCRIPTION: Tool for storing explicit user facts as semantic memories]
+
 
 from datetime import datetime
 from app.database import Database, get_db_session, SemanticMemory
@@ -95,7 +94,6 @@ def execute(arguments, **kwargs):
             partner_name,
         )
 
-    # Use LLM for category + importance unless user explicitly provided category
     if arguments.get("category"):
         category = arguments["category"]
         importance = 0.5
@@ -104,7 +102,6 @@ def execute(arguments, **kwargs):
 
     full_command = f'/memory_store fact="{fact[:60]}" category={category}'
 
-    # Embed the fact text — store as BLOB for ANN index compatibility
     embed_label = f"[{category}] {fact}"
     try:
         vecs = embed_texts([embed_label])
@@ -158,7 +155,6 @@ def execute(arguments, **kwargs):
                 partner_name,
             )
 
-        # Insert new fact — importance set by LLM
         new_mem = SemanticMemory(
             session_id=session_id,
             entity="User",

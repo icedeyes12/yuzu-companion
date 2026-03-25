@@ -1,9 +1,7 @@
 FILE: app/memory/index_store.py
 DESCRIPTION: ANN index per session using scipy cKDTree (cosine metric), persisted via joblib
 
-# [FILE: memory/index_store.py]
-# [DESCRIPTION: ANN index per session using scipy cKDTree (cosine metric),
-#               persisted to disk via joblib pickle]
+
 
 import atexit
 import os
@@ -17,13 +15,11 @@ from app.memory.embedder import blob_to_vec, get_embed_dim
 _INDEX_DIR = os.path.join(os.path.dirname(__file__), 'nn_indexes')
 _INDEX_VERSION = 4  # schema version — bump to force rebuild on breaking changes
 
-# ── Directory setup ────────────────────────────────────────────────────────────
 
 def _index_path(session_id: int, label: str) -> str:
     os.makedirs(_INDEX_DIR, exist_ok=True)
     return os.path.join(_INDEX_DIR, f"session_{session_id}_{label}.pkl")
 
-# ── Index wrapper ───────────────────────────────────────────────────────────────
 
 class NNIndex:
     """
@@ -35,7 +31,6 @@ class NNIndex:
     """
 
     def __init__(self, ids: list[int], vecs: np.ndarray):
-        # vecs shape: (N, 4096), float32
         norms = np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-8
         self._normed = (vecs / norms).astype(np.float32)
         self._ids = list(ids)
@@ -67,7 +62,6 @@ class NNIndex:
     @classmethod
     def load(cls, path: str) -> "NNIndex":
         data = joblib.load(path)
-        # New format v2+: (version, embed_dim, ids, normed)
         if isinstance(data, tuple) and len(data) >= 3:
             version = data[0]
             if version == _INDEX_VERSION and len(data) == 4:
@@ -76,7 +70,6 @@ class NNIndex:
                 idx._embed_dim = embed_dim
                 return idx
             elif version == 1 and len(data) == 3:
-                # Old format (version, ids, normed): assume 4096, force rebuild via ValueError
                 pass
         raise ValueError(f"Stale or corrupted index format at {path}")
 
@@ -88,7 +81,6 @@ class NNIndex:
         return idx
 
 
-# ── Per-session store ──────────────────────────────────────────────────────────
 
 class IndexStore:
     """
@@ -126,7 +118,6 @@ class IndexStore:
         """Clear the ANN error log (e.g., after successful recovery)."""
         self._ann_errors.clear()
 
-    # ── Atomic save ────────────────────────────────────────────────────────────
 
     @staticmethod
     def _atomic_save(data, path: str):
@@ -135,7 +126,6 @@ class IndexStore:
         joblib.dump(data, tmp, compress=3)
         os.replace(tmp, path)
 
-    # ── Lazy load / build ──────────────────────────────────────────────────────
 
     def _ensure_semantic(self):
         if self._semantic_loaded:
@@ -182,7 +172,6 @@ class IndexStore:
         self._segments = self._rebuild_segments()
         self._segments_loaded = True
 
-    # ── Rebuild from DB ────────────────────────────────────────────────────────
 
     def _rebuild_semantic(self) -> NNIndex | None:
         with get_db_session() as session:
@@ -268,7 +257,6 @@ class IndexStore:
         print(f"[WARNING] Embedding dim {len(vec)} > {embed_dim}, truncating")
         return vec[:embed_dim]
 
-    # ── Invalidate (mark dirty) ─────────────────────────────────────────────────
 
     def _invalidate_semantic(self):
         self._semantic = None
@@ -282,7 +270,6 @@ class IndexStore:
         self._segments = None
         self._segments_loaded = False
 
-    # ── Incremental add (preferred over full rebuild) ─────────────────────────
 
     def add_semantic(self, mem_id: int, vec: np.ndarray):
         """Incrementally add a new semantic memory to the live index."""
@@ -335,7 +322,6 @@ class IndexStore:
             self._segments = NNIndex.build(ids, vecs)
             self._segments.save(_index_path(self.session_id, "segments"))
 
-    # ── Public search API ───────────────────────────────────────────────────────
 
     def search_semantic(self, query_vec: np.ndarray, k: int = 15) -> list[tuple[int, float]]:
         self._ensure_semantic()
@@ -355,7 +341,6 @@ class IndexStore:
             return []
         return self._segments.search(query_vec, k)
 
-    # ── Rebuild ─────────────────────────────────────────────────────────────────
 
     def rebuild(self):
         self._semantic = self._rebuild_semantic()
@@ -365,7 +350,6 @@ class IndexStore:
         self._episodic_loaded = True
         self._segments_loaded = True
 
-    # ── Close ───────────────────────────────────────────────────────────────────
 
     def close(self):
         self._semantic = None
@@ -376,7 +360,6 @@ class IndexStore:
         self._segments_loaded = False
 
 
-# ── Process-global cache ────────────────────────────────────────────────────────
 
 _index_cache: dict[int, IndexStore] = {}
 
@@ -396,5 +379,4 @@ def close_all_index_stores():
         store.close()
     _index_cache.clear()
 
-# Ensure all index stores are closed on interpreter shutdown
 atexit.register(close_all_index_stores)

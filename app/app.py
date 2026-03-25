@@ -1,17 +1,7 @@
 FILE: app/app.py
 DESCRIPTION: Flask app with WebSocket support, AI provider routing, memory context injection, and tool execution
 
-# ==========================================================
-# [FILE]        : app.py
-# [VERSION: 1.0.70]
-# [DATE: 2026-03-25]
-# [PROJECT]     : HKKM - Yuzu Companion
-# [DESCRIPTION] : Core application logic with prompt and performance optimizations
-# [AUTHOR]      : Project Lead: Bani Baskara
-# [TEAM]        : Deepseek, GPT, Qwen, Gemini
-# [REPOSITORY]  : https://guthib.com/icedeyes12
-# [LICENSE]     : MIT
-# ==========================================================
+
 
 import requests
 import os
@@ -24,11 +14,6 @@ from app.database import Database
 from app.providers import get_ai_manager, reload_ai_manager
 from app.tools import multimodal_tools
 from app.tools.registry import execute_tool, get_tool_role, TOOL_ROLE_MAP
-# ---------------------------------------------------------------------------
-# Persistent visual context buffer (per-session, runtime-only)
-# Stores the last processed image as base64 for N follow-up turns so the
-# model can compare or reference it without a new tool call.
-# ---------------------------------------------------------------------------
 import threading
 _visual_context_buffer = {}  # session_id -> {"base64": str, "mime": str, "turns_left": int}
 _visual_context_lock = threading.Lock()
@@ -86,7 +71,6 @@ def _parse_image_result_from_formatted(formatted_result):
         str: Image path if found, None otherwise
     """
     try:
-        # Extract image src from markdown contract
         import re
         m = re.search(r'src="(static/generated_images/[^"]+)"', formatted_result)
         if m:
@@ -106,20 +90,16 @@ def _detect_command(response_text):
     if not response_text or not response_text.strip():
         return None
     
-    # Split into lines
     lines = response_text.split('\n')
     first_line = lines[0].strip()
     
-    # Check if first line starts with /
     if not first_line.startswith('/'):
         return None
     
-    # Parse command
     parts = first_line.split(None, 1)  # Split on first whitespace
     command = parts[0]  # e.g., "/request"
     args = parts[1] if len(parts) > 1 else ""
     
-    # Extract tool name (remove /)
     tool_name = command[1:]  # Remove leading /
     
     return {
@@ -158,7 +138,6 @@ def _extract_command_from_markdown(content):
     """
     if not content:
         return content
-    # Match: ```bash\n<executor>$ /<command line>\n``` — single-line command
     m = re.search(r'```bash\n\S+\$\s*(/[^\n]+)\n```', content)
     if m:
         return m.group(1).strip()
@@ -180,9 +159,7 @@ def _execute_command_tool(command_info, session_id=None):
     
     print(f"[COMMAND] Detected command: /{tool_name} {args_str}")
     
-    # Prepare arguments based on tool type
     if tool_name == "imagine":
-        # Map to image_generate tool for execution
         exec_tool_name = "image_generate"
         args = {"prompt": args_str}
     elif tool_name == "request":
@@ -190,17 +167,14 @@ def _execute_command_tool(command_info, session_id=None):
         args = {"url": args_str}
     elif tool_name == "image_analyze":
         exec_tool_name = tool_name
-        # Parse arguments as JSON if possible, otherwise use as query
         try:
             args = json.loads(args_str) if args_str else {}
         except json.JSONDecodeError:
             args = {"query": args_str} if args_str else {}
     else:
-        # Generic argument handling
         exec_tool_name = tool_name
         args = {"query": args_str} if args_str else {}
     
-    # Execute the tool via registry — returns formatted markdown contract
     result = execute_tool(exec_tool_name, args, session_id=session_id)
     
     return exec_tool_name, result
@@ -223,10 +197,8 @@ def _load_and_attach_generated_image(img_path, messages, session_id):
         img_b64 = base64.b64encode(img_data).decode('utf-8')
         mime_type = 'image/png' if img_path.endswith('.png') else 'image/jpeg'
         
-        # Store visual context for potential follow-up questions
         _store_visual_context(session_id, img_b64, mime_type)
         
-        # Append image to messages for vision model
         messages.append({
             "role": "user",
             "content": [
@@ -254,7 +226,6 @@ def _cache_images_from_message(user_message):
     """Extract image URLs from a user message, download them to the local
     cache, and return the list of cached file paths."""
     cached_paths = []
-    # Check for uploaded images first
     if "UPLOADED_IMAGES:" in user_message and "IMAGE_UPLOAD:" in user_message:
         for line in user_message.split('\n'):
             if line.startswith("IMAGE_UPLOAD:"):
@@ -263,11 +234,9 @@ def _cache_images_from_message(user_message):
                     cached_paths.append(path)
         return cached_paths
 
-    # Markdown image URLs
     md_pattern = re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
     for match in md_pattern.finditer(user_message):
         source = match.group(1)
-        # Handle local file paths directly
         if source.startswith('static/') or source.startswith('uploads/') or source.startswith('generated_images/'):
             local_path = source if source.startswith('static/') else f"static/{source}"
             if os.path.isfile(local_path):
@@ -278,7 +247,6 @@ def _cache_images_from_message(user_message):
             if cached:
                 cached_paths.append(cached)
 
-    # Bare image URLs
     if not cached_paths:
         urls = multimodal_tools.extract_image_urls(user_message)
         for url in urls[:3]:
@@ -324,44 +292,31 @@ def handle_user_message(user_message, interface="terminal"):
         active_session = Database.get_active_session()
         session_id = active_session['id']
         
-        # Cache any images present in the user message (needed for vision)
         cached_image_paths = _cache_images_from_message(user_message)
         
-        # PHASE 1: Single LLM call — user message NOT yet in DB
-        # generate_ai_response appends it to context in-memory only
         try:
             raw_ai_response = generate_ai_response(profile, user_message, interface, session_id)
         except Exception:
-            # Persist user message even on LLM failure to avoid conversation loss
             Database.add_message('user', user_message, session_id=session_id,
                                  image_paths=cached_image_paths if cached_image_paths else None)
             raise
         
-        # Persist user message to DB after successful LLM response
         Database.add_message('user', user_message, session_id=session_id,
                              image_paths=cached_image_paths if cached_image_paths else None)
         
-        # Clean timestamp suffix from response
         raw_ai_response = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', raw_ai_response).strip()
         
-        # SAFEGUARD: Ensure response is never empty
         if not raw_ai_response:
             raw_ai_response = "I'm having trouble responding right now. Please try again."
         
-        # PHASE 2: Tool detection — ONLY in handle_user_message
         cmd_info = _detect_command(raw_ai_response)
         
         if cmd_info:
-            # TOOL DETECTED: Execute via registry
             exec_tool_name, tool_output = _execute_command_tool(cmd_info, session_id=session_id)
             tool_role = get_tool_role(exec_tool_name)
             
-            # Save tool output as tool message
             Database.add_message(tool_role, tool_output, session_id=session_id)
             
-            # PHASE 3: ALL tools trigger second pass (deterministic two-pass architecture)
-            # Section IV: If last tool role == image_tools, prepare base64 for second pass
-            # Section IV: If last tool role == image_tools, prepare base64 for second pass
             image_base64_for_context = None
             if tool_role == "image_tools":
                 image_path = _parse_image_result_from_formatted(tool_output)
@@ -379,7 +334,6 @@ def handle_user_message(user_message, interface="terminal"):
                 Database.add_message('assistant', second_clean, session_id=session_id)
                 final_response = tool_output + "\n\n" + second_clean
             else:
-                # Synthesis failed — return tool output alone
                 final_response = tool_output
             
             auto_name_session_if_needed(session_id, active_session)
@@ -389,7 +343,6 @@ def handle_user_message(user_message, interface="terminal"):
             return final_response
         
         else:
-            # NO TOOL: Save as assistant message and return
             Database.add_message('assistant', raw_ai_response, session_id=session_id)
             
             auto_name_session_if_needed(session_id, active_session)
@@ -421,7 +374,6 @@ def _cleanup_session_dicts(session_id: int):
 def _enforce_dict_limit(d: dict, session_id: int):
     """Evict oldest entry if dict exceeds _MAX_SESSION_DICT_SIZE."""
     if len(d) >= _MAX_SESSION_DICT_SIZE and session_id not in d:
-        # Remove an arbitrary old entry (first key)
         d.pop(next(iter(d)), None)
 
 
@@ -469,7 +421,6 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
         active_session = Database.get_active_session()
         session_id = active_session['id']
         
-        # PHASE 1: Single LLM call (streaming) — user message NOT yet in DB
         response_generator = generate_ai_response_streaming(
             profile, user_message, interface, session_id, provider, model
         )
@@ -481,37 +432,28 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
                 if chunk:
                     full_response += chunk
         except Exception:
-            # Persist user message even on streaming failure
             Database.add_message('user', user_message, session_id=session_id)
             raise
         
-        # Persist user message to DB after successful LLM response
         if user_message and user_message.strip():
             Database.add_message('user', user_message.strip(), session_id=session_id)
         
         if full_response and full_response.strip():
             full_response_clean = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', full_response).strip()
             
-            # SAFEGUARD: Ensure response is never empty
             if not full_response_clean:
                 full_response_clean = "I'm having trouble responding right now. Please try again."
             
-            # PHASE 2: Tool detection — ONLY in handle_user_message
             cmd_info = _detect_command(full_response_clean)
             
             if cmd_info:
-                # TOOL DETECTED: Execute via registry
                 exec_tool_name, tool_output = _execute_command_tool(cmd_info, session_id=session_id)
                 tool_role = get_tool_role(exec_tool_name)
                 
-                # Save tool output as tool message
                 Database.add_message(tool_role, tool_output, session_id=session_id)
                 
-                # Yield tool output
                 yield "\n\n" + tool_output
                 
-                # PHASE 3: Check if terminal tool (no synthesis pass)
-                # Section IV: If last tool role == image_tools, prepare base64 for second pass
                 image_base64_for_context = None
                 if tool_role == "image_tools":
                     image_path = _parse_image_result_from_formatted(tool_output)
@@ -523,10 +465,8 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
                         mime_type = 'image/png' if image_path.endswith('.png') else 'image/jpeg'
                         image_base64_for_context = f"image_tools: data:{mime_type};base64,{img_b64}"
                 
-                # ALL tools trigger second pass (deterministic two-pass architecture)
                 final_response = tool_output
 
-                # Trigger synthesis pass
                 second_reply = generate_ai_response(profile, "", interface, session_id, image_base64_for_context=image_base64_for_context)
                 if second_reply and second_reply.strip():
                     second_clean = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', second_reply).strip()
@@ -541,7 +481,6 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
                 return
             
             else:
-                # NO TOOL: Save as assistant message
                 Database.add_message('assistant', full_response_clean, session_id=session_id)
         
         auto_name_session_if_needed(session_id, active_session)
@@ -561,7 +500,6 @@ def extract_recent_images(session_id, limit=3):
     result_paths = []
     md_pattern = re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
     for msg in reversed(chat_history):  # Newest first to prioritize recent images
-        # 1. Use stored image_paths if available
         stored = msg.get('image_paths', [])
         if stored:
             print(f"[Vision] DB image_paths: {stored}")
@@ -575,7 +513,6 @@ def extract_recent_images(session_id, limit=3):
                 break
         if len(result_paths) >= limit:
             break
-        # 2. Fall back to markdown URLs in content
         for match in md_pattern.finditer(msg.get('content', '')):
             url = match.group(1)
             cached = multimodal_tools.download_image_to_cache(url)
@@ -626,12 +563,8 @@ def _build_generation_context(profile, session_id, interface="terminal", user_me
     else:
         closeness_mode = "deeply attuned and intimate"
 
-    # =========================
-    # Build memory context
-    # =========================
     memory_context = ""
 
-    # --- Structured memory retrieval (embedding-based, replaces legacy) ---
     try:
         from app.memory.retrieval import retrieve_memory, format_memory
         memory_bundle = retrieve_memory(session_id, query=user_message)
@@ -641,7 +574,6 @@ def _build_generation_context(profile, session_id, interface="terminal", user_me
     except Exception as e:
         print(f"[WARNING] Structured memory retrieval failed: {e}")
 
-    # --- Legacy memory sources (backward compatibility fallback) ---
     session_memory = Database.get_session_memory(session_id)
     if session_memory and session_memory.get('session_context'):
         memory_context += (
@@ -679,9 +611,6 @@ def _build_generation_context(profile, session_id, interface="terminal", user_me
             if key_facts.get('dislikes'):
                 memory_context += f"\nDislikes: {', '.join(key_facts['dislikes'])}"
 
-    # =========================
-    # Location context
-    # =========================
     location_context = ""
     try:
         profile_context = Database.get_context()
@@ -695,9 +624,6 @@ def _build_generation_context(profile, session_id, interface="terminal", user_me
     except Exception:
         pass
 
-    # =========================
-    # Interface context
-    # =========================
     interface_context = f"\n\nCURRENT INTERFACE: {interface.upper()}"
     if interface == "terminal":
         interface_context += "\n- Raw text interface, intimate feel"
@@ -706,9 +632,6 @@ def _build_generation_context(profile, session_id, interface="terminal", user_me
         interface_context += "\n- Web chat interface, visual elements"
         interface_context += "\n- Can use richer formatting"
 
-    # =========================
-    # Session events
-    # =========================
     recent_session_events = Database.get_recent_sessions_for_session(
         session_id, limit=3
     )
@@ -716,16 +639,10 @@ def _build_generation_context(profile, session_id, interface="terminal", user_me
     for event in recent_session_events:
         session_context += f"\n- {event['content']} at {event['timestamp']}"
 
-    # =========================
-    # Available tools list
-    # =========================
     available_tools = "\n".join(
         [f"- /{cmd} -> maps to role '{role}'" for cmd, role in TOOL_ROLE_MAP.items()]
     )
 
-    # =========================
-    # System message
-    # =========================
     system_message = f'''
 Identity & Being:
 
@@ -1155,17 +1072,6 @@ Your speaking style and personality are defined above.
 {location_context}
 '''.strip()
 
-    # =========================
-    # Assemble messages (hybrid context)
-    # =========================
-    # Context order:
-    #   1. System message (includes structured memory + legacy memory)
-    #   2. Recent message history (25 messages for conversational continuity)
-    #
-    # Structured memory provides long-term identity and facts.
-    # Recent history provides active conversational continuity.
-    # Both are required — do not remove either.
-    # =========================
     chat_history = Database.get_chat_history_for_ai(
         session_id=session_id, limit=50, recent=True
     )
@@ -1193,7 +1099,6 @@ def _handle_vision_processing(messages, user_message, current_provider, current_
             current_model = vision_model
             
             vision_messages = multimodal_tools.format_vision_message(user_message)
-            # Replace last user message with vision format
             if messages and messages[-1]['role'] == 'user':
                 messages = messages[:-1] + vision_messages
     
@@ -1246,15 +1151,12 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
         active_session = Database.get_active_session()
         session_id = active_session['id']
     
-    # Handle direct image generation
     if user_message.strip().startswith('/imagine'):
         yield _handle_image_generation(user_message, session_id)
         return
     
-    # Build context and messages
     messages = _build_generation_context(profile, session_id, interface, user_message)
     
-    # Append pending user message (not yet in DB) to context
     if user_message and user_message.strip():
         messages.append({"role": "user", "content": user_message})
     
@@ -1264,12 +1166,10 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
     preferred_provider = provider or providers_config.get('preferred_provider', 'ollama')
     preferred_model = model or providers_config.get('preferred_model', 'glm-4.6:cloud')
     
-    # Handle vision processing
     messages, preferred_provider, preferred_model = _handle_vision_processing(
         messages, user_message, preferred_provider, preferred_model
     )
     
-    # Inject persistent visual context if user references a previous image
     if _has_visual_reference(user_message) and session_id:
         prev_b64, prev_mime = _consume_visual_context(session_id)
         if prev_b64 and prev_mime:
@@ -1282,7 +1182,6 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
             })
             print("[Vision] Re-injected persistent visual context")
     
-    # Section IV: Inject image base64 for second pass after image_tools
     if image_base64_for_context:
         messages.append({
             "role": "user",
@@ -1293,7 +1192,6 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
     try:
         kwargs = {"timeout": 180, "max_tokens": 4096}
         
-        # --- Single LLM call (no agentic loop) ---
         ai_response = ai_manager.send_message(
             preferred_provider,
             preferred_model,
@@ -1301,14 +1199,12 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
             **kwargs
         )
         
-        # Handle None — retry once before giving up
         if ai_response is None:
             print("[WARNING] AI returned None, retrying...")
             ai_response = ai_manager.send_message(
                 preferred_provider, preferred_model, messages, **kwargs
             )
         
-        # Case: plain text response
         if isinstance(ai_response, str) and ai_response.strip():
             cmd_info = _detect_command(ai_response)
             if cmd_info:
@@ -1318,7 +1214,6 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
             yield ai_response
             return
         
-        # Empty response — retry once
         print("[WARNING] Empty response, retrying...")
         ai_response = ai_manager.send_message(
             preferred_provider, preferred_model, messages, **kwargs
@@ -1360,7 +1255,6 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
         active_session = Database.get_active_session()
         session_id = active_session['id']
     
-    # Handle direct image generation command from user
     if user_message.strip().startswith('/imagine'):
         return _handle_image_generation(user_message, session_id)
     
@@ -1372,16 +1266,13 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
     
     messages = _build_generation_context(profile, session_id, interface, user_message)
     
-    # Append pending user message (not yet in DB) to context
     if user_message and user_message.strip():
         messages.append({"role": "user", "content": user_message})
     
-    # Handle vision processing for image-containing messages
     messages, preferred_provider, preferred_model = _handle_vision_processing(
         messages, user_message, preferred_provider, preferred_model
     )
     
-    # Inject persistent visual context if user references a previous image
     if _has_visual_reference(user_message) and session_id:
         prev_b64, prev_mime = _consume_visual_context(session_id)
         if prev_b64 and prev_mime:
@@ -1394,7 +1285,6 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
             })
             print("[Vision] Re-injected persistent visual context")
     
-    # Section IV: Inject image base64 for second pass after image_tools
     if image_base64_for_context:
         messages.append({
             "role": "user",
@@ -1405,7 +1295,6 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
     try:
         kwargs = {"timeout": 180, "max_tokens": 4096}
         
-        # --- Single LLM call (no agentic loop) ---
         ai_response = ai_manager.send_message(
             preferred_provider,
             preferred_model,
@@ -1413,18 +1302,15 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
             **kwargs
         )
         
-        # Handle None — retry once before giving up
         if ai_response is None:
             print("[WARNING] AI returned None, retrying...")
             ai_response = ai_manager.send_message(
                 preferred_provider, preferred_model, messages, **kwargs
             )
         
-        # SAFEGUARD: Non-empty response guarantee
         if isinstance(ai_response, str) and ai_response.strip():
             return ai_response
         
-        # Empty response — retry once
         print("[WARNING] Empty response, retrying...")
         ai_response = ai_manager.send_message(
             preferred_provider, preferred_model, messages, **kwargs
@@ -1432,14 +1318,12 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
         if isinstance(ai_response, str) and ai_response.strip():
             return ai_response
         
-        # FINAL SAFEGUARD: Never return empty
         print("[WARNING] AI service returned empty response after retry")
         return "I'm having trouble responding right now. Please try again."
             
     except Exception as e:
         error_msg = f"AI service error: {str(e)}"
         print(f"[ERROR] AI response generation failed: {error_msg}")
-        # SAFEGUARD: Never raise, always return safe fallback
         return "Sorry, I couldn't process that. Please try again."
 
 def auto_name_session_if_needed(session_id, active_session):
@@ -1606,28 +1490,22 @@ def start_session(interface="terminal"):
         session_history['total_sessions'] = session_history.get('total_sessions', 0) + 1
         Database.update_profile({'session_history': session_history})
 
-        # --- Memory system initialization ---
         try:
             from app.memory.segmenter import segment_session
             from app.memory.extractor import process_messages_for_memory
             from app.memory.review import run_decay
 
-            # Apply FSRS decay to existing memories
             run_decay(session_id)
 
-            # Segment unsegmented messages from past sessions
             segment_count = segment_session(session_id)
             print(f"[Memory] {segment_count} session segments created/updated")
 
-            # Extract semantic facts + episodic memories — idemponent per session
             if not _MEMORY_INIT_DONE.get(session_id):
                 recent = Database.get_chat_history(session_id=session_id, limit=50, recent=True)
                 if recent:
                     process_messages_for_memory(session_id, recent)
                 _MEMORY_INIT_DONE[session_id] = True
 
-            # ANN index is maintained incrementally by segment_session + process_messages_for_memory
-            # via add_semantic / add_episodic / add_segment calls — no separate rebuild needed
         except Exception as e:
             print(f"[WARNING] Memory system init failed: {e}")
 
@@ -1642,14 +1520,12 @@ def should_summarize_memory(profile, user_message, session_id):
     conversation_messages = [msg for msg in chat_history if msg['role'] in ['user', 'assistant']]
     total_conversation_count = len(conversation_messages)
     
-    # Per-100 messages AND idle detection (≥1 hour since last message)
     IDLE_THRESHOLD_HOURS = 1
 
     if total_conversation_count >= 100 and total_conversation_count % 100 == 0:
         session_memory = Database.get_session_memory(session_id)
         last_summary_count = session_memory.get('last_summary_count', 0)
         if total_conversation_count > last_summary_count:
-            # Check idle time
             try:
                 from datetime import datetime
                 last_msg_time = session_memory.get('last_message_time')
@@ -1715,7 +1591,6 @@ just a natural paragraph.
         
         Database.update_session_memory(session_id, memory_update)
 
-        # Sync last-20 messages to structured DB via extractor (both systems stay aligned)
         try:
             from app.memory.extractor import process_messages_for_memory
             process_messages_for_memory(session_id, chat_history[-20:])
@@ -1774,7 +1649,6 @@ def summarize_global_player_profile():
     all_sessions = Database.get_all_sessions()
     Database.get_profile()
     
-    # CONFIGURABLE SETTINGS
     MAX_MSGS_PER_SESSION = 2000           # Messages per session limit
     MAX_CONTEXT_CHARS = 900000           # Max characters (≈175K tokens)
     RECENT_RATIO = 0.7                   # 70% recent messages, 30% random from older
@@ -1784,7 +1658,6 @@ def summarize_global_player_profile():
     print(f"[CONFIG] Max {MAX_MSGS_PER_SESSION} msgs/session, {MAX_CONTEXT_CHARS:,} max chars")
     print(f"[CONFIG] Sampling: {int(RECENT_RATIO*100)}% recent, {int((1-RECENT_RATIO)*100)}% random")
     
-    # Sort sessions by date (newest first for priority)
     sorted_sessions = sorted(
         all_sessions, 
         key=lambda x: x.get('created_at', ''), 
@@ -1799,7 +1672,6 @@ def summarize_global_player_profile():
         session_id = session['id']
         session_name = session.get('name', f'Session {session_id}')
         
-        # Get ALL messages for this session
         all_messages = Database.get_chat_history(session_id=session_id, limit=None)
         
         if not all_messages:
@@ -1807,7 +1679,6 @@ def summarize_global_player_profile():
             
         total_sessions_with_data += 1
         
-        # Filter only user/assistant messages
         filtered_messages = [
             msg for msg in all_messages 
             if msg['role'] in ['user', 'assistant'] 
@@ -1817,19 +1688,15 @@ def summarize_global_player_profile():
         if not filtered_messages:
             continue
             
-        # Select messages with 70/30 strategy
         if len(filtered_messages) <= MAX_MSGS_PER_SESSION:
             selected_messages = filtered_messages
             selection_method = "all"
         else:
-            # Calculate counts
             recent_count = int(MAX_MSGS_PER_SESSION * RECENT_RATIO)
             random_count = MAX_MSGS_PER_SESSION - recent_count
             
-            # Get recent messages (newest first)
             recent_messages = filtered_messages[-recent_count:]
             
-            # Get random sample from older messages
             older_messages = filtered_messages[:-recent_count]
             
             if len(older_messages) > 0 and random_count > 0:
@@ -1844,13 +1711,11 @@ def summarize_global_player_profile():
                 selected_messages = recent_messages
                 selection_method = f"recent only ({len(recent_messages)})"
         
-        # Process selected messages
         session_conversations = []
         for msg in selected_messages:
             role = "User" if msg["role"] == "user" else "AI"
             content = msg['content'].strip()
             
-            # Clean and truncate if too long
             if len(content) > 400:
                 content = content[:400] + "..."
             
@@ -1858,7 +1723,6 @@ def summarize_global_player_profile():
             total_messages_processed += 1
         
         if session_conversations:
-            # Format session header with stats
             session_header = f"\n\n=== SESSION: {session_name} ==="
             session_header += f"\n[Total: {len(filtered_messages)} msgs | Selected: {len(selected_messages)} | Method: {selection_method}]"
             
@@ -1869,15 +1733,11 @@ def summarize_global_player_profile():
         print("[INFO] No conversations found for analysis")
         return False
     
-    # Combine all text
     conversation_text = "".join(all_conversations)
     
-    # Apply character limit
     if len(conversation_text) > MAX_CONTEXT_CHARS:
         print(f"[WARNING] Conversation text too long ({len(conversation_text):,} chars), truncating to {MAX_CONTEXT_CHARS:,}")
-        # Try to keep complete sessions by removing oldest sessions first
         while len(conversation_text) > MAX_CONTEXT_CHARS and len(all_conversations) > 1:
-            # Remove oldest session (first in list after reverse sort)
             all_conversations.pop(0)
             conversation_text = "".join(all_conversations)
             print(f"[INFO] Removed oldest session, now {len(conversation_text):,} chars")
@@ -1888,24 +1748,19 @@ def summarize_global_player_profile():
     print(f"  - Data volume: {len(conversation_text):,} chars")
     print(f"  - Model utilization: ~{len(conversation_text)//4:,} tokens")
     
-    # Create analysis prompt (sama seperti sebelumnya)
     analysis_prompt = f"""# PLAYER PROFILE ANALYSIS TASK
 
-## CONVERSATION HISTORY:
 Below is the complete conversation history between the User and AI across multiple sessions.
 
 {conversation_text}
 
-## ANALYSIS INSTRUCTIONS:
 You are an expert psychologist and data analyst. Your task is to analyze the conversation history above and extract deep insights about the User.
 
-### FOCUS AREAS:
 1. **Personality Analysis**: Identify core personality traits, communication style, emotional patterns
 2. **Interests & Preferences**: What does the user like/dislike? Topics they frequently discuss
 3. **Behavioral Patterns**: How do they interact? Response patterns, engagement style
 4. **Relationship Dynamics**: How is their relationship with the AI? Emotional tone, trust level, interaction patterns, and development over time.
 
-### OUTPUT FORMAT REQUIREMENTS:
 You MUST use this exact format. Do not add any commentary, explanations, or additional text.
 
 Player Summary: [Provide a comprehensive summary of the user's personality, interests, and overall interaction patterns. Be specific and evidence-based.]
@@ -1920,7 +1775,6 @@ Important Memories: [List significant memories, experiences, or topics that were
 
 Relationship Dynamics: [Provide analysis of the relationship dynamics between User and AI. Include emotional tone, trust level, interaction patterns, and development over time.]
 
-### CRITICAL RULES:
 - Base EVERYTHING on evidence from the conversations
 - Be specific and concrete - avoid vague statements
 - No markdown formatting, no bullet points, no numbering
@@ -1940,7 +1794,6 @@ Relationship Dynamics: [Provide analysis of the relationship dynamics between Us
     if summary_text:
         print(f"[SUCCESS] Analysis received: {len(summary_text):,} chars")
         
-        # Save raw analysis for debugging
         import os
         os.makedirs("debug_logs", exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1957,14 +1810,12 @@ Relationship Dynamics: [Provide analysis of the relationship dynamics between Us
         
         print(f"[DEBUG] Raw analysis saved to: {debug_file}")
         
-        # Parse and update profile
         profile_update = parse_global_profile_summary(summary_text)
         profile_update['last_global_summary'] = datetime.now().isoformat()
         profile_update['sessions_analyzed'] = len(all_conversations)
         profile_update['total_messages'] = total_messages_processed
         profile_update['analysis_chars'] = len(conversation_text)
         
-        # Merge with existing profile
         current_profile = Database.get_profile()
         current_memory = current_profile.get('memory', {})
         current_memory = _merge_profile_data(current_memory, profile_update)
@@ -1972,7 +1823,6 @@ Relationship Dynamics: [Provide analysis of the relationship dynamics between Us
         try:
             Database.update_profile({'memory': current_memory})
             
-            # Success report
             print(f"\n{'='*50}")
             print("GLOBAL PROFILE UPDATE COMPLETE!")
             print(f"{'='*50}")
@@ -2040,7 +1890,6 @@ def merge_and_clean_memory(existing_list: List[str], new_items: List[str], max_s
     return result[:max_size]
 
 
-# Maximum list sizes for each key_facts category
 _MEMORY_LIST_LIMITS = {
     'likes': 30,
     'dislikes': 30,
@@ -2056,21 +1905,17 @@ def _merge_profile_data(existing_memory: Dict, new_data: Dict) -> Dict:
     
     result = existing_memory.copy()
     
-    # Merge player summary - keep newer if significantly different
     if 'player_summary' in new_data and new_data['player_summary']:
         existing_summary = result.get('player_summary', '')
         new_summary = new_data['player_summary']
         
-        # Keep the more detailed summary
         if len(new_summary) > len(existing_summary) * 1.5:  # New summary is 50% longer
             result['player_summary'] = new_summary
             print(f"[INFO] Updated player summary (new: {len(new_summary)} chars, old: {len(existing_summary)} chars)")
     
-    # Merge relationship dynamics
     if 'relationship_dynamics' in new_data and new_data['relationship_dynamics']:
         result['relationship_dynamics'] = new_data['relationship_dynamics']
     
-    # Merge key facts with normalization, deduplication, and size limits
     if 'key_facts' in new_data:
         if 'key_facts' not in result:
             result['key_facts'] = {
@@ -2094,7 +1939,6 @@ def _merge_profile_data(existing_memory: Dict, new_data: Dict) -> Dict:
             if added > 0:
                 print(f"[INFO] Added {added} new items to {category}")
     
-    # Update metadata
     result['last_global_summary'] = new_data.get('last_global_summary', '')
     result['sessions_analyzed'] = new_data.get('sessions_analyzed', 0)
     
@@ -2115,7 +1959,6 @@ def global_profile_analysis(prompt: str) -> Optional[str]:
         
         model = "Qwen/Qwen3-Next-80B-A3B-Instruct"
         
-        # Optimize for long context analysis
         data = {
             "model": model,
             "messages": [
@@ -2174,7 +2017,6 @@ def global_profile_analysis(prompt: str) -> Optional[str]:
                 
                 print(f"[ERROR] {error_msg}")
                 
-                # Handle specific errors
                 if "insufficient_quota" in error_detail.lower():
                     print("[ERROR] Insufficient API quota")
                     return _try_free_model(prompt, api_key)
@@ -2219,7 +2061,6 @@ def _try_alternative_models(prompt: str, api_key: str) -> Optional[str]:
         print(f"[INFO] Trying alternative model: {model}")
         
         try:
-            # Potong prompt secara signifikan untuk model free
             shortened_prompt = prompt[:20000] + "\n\n...[prompt truncated for lighter model]"
             actual_prompt = shortened_prompt
             
@@ -2281,7 +2122,6 @@ def _try_free_model(prompt: str, api_key: str) -> Optional[str]:
         print(f"[INFO] Trying free model: {model}")
         
         try:
-            # Potong prompt secara signifikan untuk model free
             shortened_prompt = prompt[:15000] + "\n\n...[analysis limited due to free tier constraints]"
             
             data = {
@@ -2337,10 +2177,8 @@ def parse_global_profile_summary(summary_text: str) -> Dict:
         "last_updated": datetime.now().isoformat()
     }
     
-    # Clean the text
     cleaned_text = summary_text.replace('\r\n', '\n').replace('\r', '\n')
     
-    # Normalize section headers
     section_patterns = {
         'Player Summary:': 'player_summary',
         'Player Summary': 'player_summary',
@@ -2384,7 +2222,6 @@ def parse_global_profile_summary(summary_text: str) -> Dict:
             elif current_section == 'relationship_dynamics':
                 profile_data["relationship_dynamics"] = content
             elif current_section in ['likes', 'dislikes', 'personality_traits', 'important_memories']:
-                # Parse comma-separated lists
                 items = [item.strip() for item in content.split(',') if item.strip()]
                 profile_data["key_facts"][current_section] = items
     
@@ -2393,18 +2230,14 @@ def parse_global_profile_summary(summary_text: str) -> Dict:
         if not line:
             continue
             
-        # Check if this line starts a new section
         section_found = False
         for pattern, section_key in section_patterns.items():
             if line.startswith(pattern):
-                # Save previous section
                 save_current_section()
                 
-                # Start new section
                 current_section = section_key
                 buffer = []
                 
-                # Remove the pattern from the line
                 remaining = line[len(pattern):].strip()
                 if remaining:
                     buffer.append(remaining)
@@ -2413,24 +2246,18 @@ def parse_global_profile_summary(summary_text: str) -> Dict:
                 break
         
         if not section_found and current_section:
-            # Continue current section
             buffer.append(line)
     
-    # Save the last section
     save_current_section()
     
-    # Clean up the data
     for section in ['player_summary', 'relationship_dynamics']:
         if profile_data[section]:
-            # Remove any trailing punctuation
             profile_data[section] = profile_data[section].strip()
             if profile_data[section].endswith('.'):
                 profile_data[section] = profile_data[section][:-1]
     
-    # Clean lists
     for key in ['likes', 'dislikes', 'personality_traits', 'important_memories']:
         if profile_data["key_facts"][key]:
-            # Remove duplicates and empty items
             unique_items = []
             seen = set()
             for item in profile_data["key_facts"][key]:
@@ -2484,7 +2311,6 @@ def set_preferred_provider(provider_name, model_name=None):
 
     Database.update_profile({'providers_config': providers_config})
 
-    # Reload AI manager to detect newly available providers (e.g., after adding API keys)
     reload_ai_manager()
 
     return f"Preferred provider set to: {provider_name}" + (f" with model: {model_name}" if model_name else "")

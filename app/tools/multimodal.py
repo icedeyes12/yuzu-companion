@@ -1,15 +1,7 @@
 FILE: app/tools/multimodal.py
 DESCRIPTION: Multimodal tool combining image generation and analysis
 
-# [FILE: tools.py]
-# [VERSION: 1.0.70]
-# [DATE: 2026-03-24]
-# [PROJECT: HKKM - Yuzu Companion]
-# [DESCRIPTION: Multimodal tools with image caching]
-# [AUTHOR: Project Lead: Bani Baskara]
-# [TEAM: Deepseek, GPT, Qwen, Gemini]
-# [REPOSITORY: https://guthib.com/icedeyes12]
-# [LICENSE: MIT]
+
 
 import requests
 import base64
@@ -27,7 +19,6 @@ class MultimodalTools:
     IMAGE_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static', 'image_cache')
 
     def __init__(self):
-        # ONLY moonshotai/kimi-k2.5 for vision (OpenRouter only)
         self.vision_models = {
             'openrouter': [
                 "moonshotai/kimi-k2.5"  # Only this model for vision
@@ -40,15 +31,11 @@ class MultimodalTools:
             'chutes_image': "https://image.chutes.ai/generate"
         }
         
-        # Image generation logic moved to tools/image_generate.py
-        # This module is now only for multimodal input processing.
         self.image_generation_models = {}
         
-        # Image cache for base64 encoded images
         self.image_cache = {}
         self.cache_ttl = 3600  # 1 hour TTL
         
-        # Ensure cache directory exists
         os.makedirs(self.IMAGE_CACHE_DIR, exist_ok=True)
         
     def get_available_vision_models(self, provider: str) -> List[str]:
@@ -82,19 +69,16 @@ class MultimodalTools:
         """Download an image from *url*, save it under ``IMAGE_CACHE_DIR`` and
         return the local file path.  The filename is derived from a SHA-1 hash
         of the URL so repeated downloads are avoided."""
-        # Validate URL scheme to prevent SSRF attacks
         from urllib.parse import urlparse
         parsed = urlparse(url)
         if parsed.scheme not in ('http', 'https'):
             return None
-        # Block requests to localhost / private IPs
         hostname = parsed.hostname or ''
         if hostname in ('localhost', '127.0.0.1', '0.0.0.0', '::1', ''):
             return None
 
         url_hash = hashlib.sha1(url.encode('utf-8')).hexdigest()  # nosec - not used for security
 
-        # Check if already cached with any common extension
         for ext in ('.png', '.jpg', '.jpeg', '.gif', '.webp'):
             candidate = os.path.join(self.IMAGE_CACHE_DIR, f"{url_hash}{ext}")
             if os.path.isfile(candidate):
@@ -252,10 +236,8 @@ class MultimodalTools:
     
     def download_and_encode_image(self, image_url: str) -> Optional[Dict]:
         """Download and encode image with caching support"""
-        # Clean expired cache entries
         self._clean_cache()
         
-        # Check cache first
         if image_url in self.image_cache:
             timestamp, cached_data = self.image_cache[image_url]
             if time.time() - timestamp < self.cache_ttl:
@@ -285,7 +267,6 @@ class MultimodalTools:
                 }
             }
             
-            # Cache the result
             self.image_cache[image_url] = (time.time(), result)
             return result
             
@@ -304,14 +285,12 @@ class MultimodalTools:
         
         for source in image_sources[:3]:  # Limit to 3 images
             if source.startswith(('http://', 'https://')):
-                # Remote URL — download to cache, then encode
                 cached_path = self.download_image_to_cache(source)
                 if cached_path:
                     image_content = self.encode_image_to_base64(cached_path)
                     if image_content:
                         content.append(image_content)
             else:
-                # Local file path — encode directly
                 image_content = self.encode_image_to_base64(source)
                 if image_content:
                     print(f"[Vision] Encoded local image → {source}")
@@ -333,7 +312,6 @@ class MultimodalTools:
                 continue
                 
             if url.startswith('static/uploads/') or url.startswith('static/generated_images/'):
-                # Local file — return path directly (don't convert to localhost URL)
                 image_sources.append(url)
             elif url.startswith('uploads/') or url.startswith('generated_images/'):
                 image_sources.append(f"static/{url}")
@@ -456,8 +434,6 @@ class MultimodalTools:
     
     def generate_image(self, prompt: str, provider: str = "chutes", 
                       model: str = None, size: str = "1024x1024") -> Tuple[Optional[str], Optional[str]]:
-        # Image generation logic moved to tools/image_generate.py
-        # This method delegates to the single source of truth.
         from tools.image_generate import execute as _img_execute
         import re as _re
         result_str = _img_execute({"prompt": prompt})
@@ -472,13 +448,11 @@ class MultimodalTools:
     def get_best_vision_provider(self) -> Tuple[Optional[str], Optional[str]]:
         api_keys = Database.get_api_keys()
         
-        # ONLY check for openrouter with kimi-k2.5
         if 'openrouter' in api_keys:
             openrouter_models = self.get_available_vision_models('openrouter')
             if openrouter_models:
                 return 'openrouter', openrouter_models[0]  # Will be "moonshotai/kimi-k2.5"
         
-        # No vision from chutes anymore - ONLY OpenRouter
         return None, None
     
     def should_use_vision(self, user_message: str, current_provider: str, current_model: str) -> bool:
@@ -492,11 +466,9 @@ class MultimodalTools:
         if self._looks_like_code(user_message):
             return False
         
-        # Check if current model is already the vision model
         if current_model == "moonshotai/kimi-k2.5" and current_provider == "openrouter":
             return True
         
-        # Check if we can switch to vision
         vision_provider, vision_model = self.get_best_vision_provider()
         return vision_provider is not None
 

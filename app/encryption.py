@@ -1,14 +1,7 @@
 FILE: app/encryption.py
 DESCRIPTION: High-performance encryption utilities with quantum-resistant key sizes
 
-# [FILE: encryption.py]
-# [VERSION: 1.0.70]
-# [DATE: 2026-03-24]
-# [PROJECT: HKKM - Yuzu Companion]
-# [DESCRIPTION: High Perf & Quantum Resistant Key Size]
-# [AUTHOR: Project Lead: Bani Baskara]
-# [MODIFIED BY: Gemini]
-# [LICENSE: MIT]
+
 
 from Crypto.Cipher import ChaCha20_Poly1305
 from Crypto.Random import get_random_bytes
@@ -22,7 +15,6 @@ class ModernEncryptor:
         self.key = self._load_or_generate_key()
     
     def _load_or_generate_key(self):
-        # ChaCha20-Poly1305 uses a 32-byte (256-bit) key
         if os.path.exists(self.key_path):
             print(f"Loading encryption key from {self.key_path}")
             with open(self.key_path, 'rb') as f:
@@ -44,16 +36,12 @@ class ModernEncryptor:
             return plaintext
             
         try:
-            # Generate a nonce (Number used ONCE). 
-            # ChaCha20-Poly1305 standard nonce is 12 bytes.
             nonce = get_random_bytes(12)
             
             cipher = ChaCha20_Poly1305.new(key=self.key, nonce=nonce)
             
-            # Encrypt and create MAC tag (Poly1305) in one go
             ciphertext, tag = cipher.encrypt_and_digest(plaintext.encode('utf-8'))
             
-            # Structure: [Nonce (12)] + [Tag (16)] + [Ciphertext (n)]
             combined = nonce + tag + ciphertext
             
             return base64.b64encode(combined).decode('utf-8')
@@ -66,10 +54,8 @@ class ModernEncryptor:
             return encrypted_text
             
         try:
-            # Decode Base64
             combined = base64.b64decode(encrypted_text)
             
-            # Validate length (12 nonce + 16 tag = 28 bytes min)
             if len(combined) < 28:
                 return encrypted_text
                 
@@ -79,18 +65,14 @@ class ModernEncryptor:
             
             cipher = ChaCha20_Poly1305.new(key=self.key, nonce=nonce)
             
-            # Verify and Decrypt
-            # If the data was tampered with, this will raise a ValueError
             decrypted_data = cipher.decrypt_and_verify(ciphertext, tag)
             
             return decrypted_data.decode('utf-8')
             
         except ValueError:
-            # This happens if the key is wrong or data is corrupted/tampered
             print("Integrity Check Failed: Data corrupted or wrong key.")
             return encrypted_text
         except Exception:
-            # print(f"Decryption error: {e}") # Debug only
             return encrypted_text
 
     def get_key_info(self):

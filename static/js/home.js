@@ -1,15 +1,8 @@
 FILE: static/js/home.js
 DESCRIPTION: Home page JavaScript
 
-// [FILE: home.js]
-// [VERSION: 1.0.70]
-// [DATE: 2026-03-24]
-// [PROJECT: HKKM - Yuzu Companion]
-// [DESCRIPTION: Home page functionality]
-// [AUTHOR: Project Lead: Bani Baskara]
-// [TEAM: Deepseek, GPT, Qwen, Aihara]
-// [REPOSITORY: https://github.com/icedeyes12]
-// [LICENSE: MIT]
+
+
 
 // Home page functionality
 document.addEventListener('DOMContentLoaded', function() {

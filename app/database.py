@@ -1,15 +1,7 @@
 FILE: app/database.py
 DESCRIPTION: SQLAlchemy database models for SemanticMemory, EpisodicMemory, ConversationSegment with session management
 
-# [FILE: database.py]
-# [VERSION: 1.0.70]
-# [DATE: 2026-03-24]
-# [PROJECT: HKKM - Yuzu Companion]
-# [DESCRIPTION: SQLAlchemy database]
-# [AUTHOR: Project Lead: Bani Baskara]
-# [TEAM: Deepseek, GPT, Qwen, Aihara]
-# [REPOSITORY: https://guthib.com/icedeyes12]
-# [LICENSE: MIT]
+
 
 import json
 import os
@@ -22,17 +14,14 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-# SQLAlchemy setup
 Base = declarative_base()
 
-# Tool-specific role mapping: each tool gets its own dedicated message role
 TOOL_ROLES = {
     'image_generate': 'image_tools',
     'imagine': 'image_tools',
     'request': 'request_tools',
 }
 
-# All tool roles for use in queries (unique values only)
 ALL_TOOL_ROLES = list(set(TOOL_ROLES.values()))
 
 class Profile(Base):
@@ -125,7 +114,6 @@ class ConversationSegment(Base):
     importance = Column(Float, default=0.5)
     created_at = Column(DateTime, default=datetime.now)
 
-# Indexes for performance
 Index('idx_messages_session_id', Message.session_id)
 Index('idx_messages_timestamp', Message.timestamp)
 Index('idx_messages_role', Message.role)
@@ -160,7 +148,6 @@ def migrate_api_keys_from_files(session):
                     api_key = f.read().strip()
                 
                 if api_key:
-                    # Check if key already exists in database
                     existing_key = session.query(APIKey).filter_by(key_name=key_name).first()
                     
                     if existing_key:
@@ -174,7 +161,6 @@ def migrate_api_keys_from_files(session):
                         )
                         session.add(new_api_key)
                         
-                        # Create backup of original file
                         backup_file = f"{key_file}.backup"
                         os.rename(key_file, backup_file)
                         
@@ -263,7 +249,6 @@ def init_db():
     print(f"[DB INIT] File existed before: {db_existed_before}")
     print(f"[DB INIT] File size before: {db_size_before} bytes")
     
-    # SAFETY CHECK: Abort if database file exists but is empty
     if db_existed_before and db_size_before == 0:
         print("[DB ERROR] Database file exists but is empty (0 bytes)")
         print("[DB ERROR] This indicates corruption. Aborting to prevent data loss.")
@@ -276,7 +261,6 @@ def init_db():
     
     engine = get_engine()
     
-    # Check table count before operations
     from sqlalchemy import inspect as sa_inspect
     inspector = sa_inspect(engine)
     tables_before = inspector.get_table_names()
@@ -287,47 +271,39 @@ def init_db():
         print("[DB CRITICAL] Database file existed but contains no tables")
         print("[DB CRITICAL] This may indicate data loss or corruption")
     
-    # SAFE OPERATION: Only creates tables that don't exist
     Base.metadata.create_all(engine)
     
-    # Migrate existing databases: add image_paths column if missing
     try:
         _migrate_add_image_paths_column(engine)
     except Exception as e:
         print(f"[WARNING] image_paths migration skipped: {e}")
     
-    # Migrate existing databases: add context column if missing
     try:
         _migrate_add_context_column(engine)
     except Exception as e:
         print(f"[WARNING] context migration skipped: {e}")
     
-    # Migrate existing databases: add image_model column if missing
     try:
         _migrate_add_image_model_column(engine)
     except Exception as e:
         print(f"[WARNING] image_model migration skipped: {e}")
     
-    # Migrate existing databases: add vision_model column if missing
     try:
         _migrate_add_vision_model_column(engine)
     except Exception as e:
         print(f"[WARNING] vision_model migration skipped: {e}")
     
-    # Migrate existing databases: add embedding_vector column if missing
     try:
         _migrate_add_semantic_embedding_vector(engine)
     except Exception as e:
         print(f"[WARNING] semantic_embedding_vector migration skipped: {e}")
 
-    # Migrate existing databases: add source_episodic_ids column if missing
     try:
         _migrate_add_source_episodic_ids(engine)
     except Exception as e:
         print(f"[WARNING] source_episodic_ids migration skipped: {e}")
 
     with get_db_session() as session:
-        # Create default profile and session if needed
         if session.query(Profile).count() == 0:
             profile = Profile(
                 display_name='user',
@@ -352,12 +328,10 @@ def init_db():
             )
             session.add(chat_session)
             
-            # Migrate API keys from files
             migrate_api_keys_from_files(session)
             
             session.commit()
     
-    # AUDIT LOG: Report final state
     with get_db_session() as session:
         profile_count = session.query(Profile).count()
         session_count = session.query(ChatSession).count()
@@ -373,7 +347,6 @@ def init_db():
         db_size_after = os.path.getsize(db_path)
         print(f"[DB AUDIT] File size after: {db_size_after} bytes")
 
-# Database engine and session management
 _engine = None
 _SessionLocal = None
 
@@ -523,7 +496,6 @@ class Database:
             decrypted_keys = {}
             
             for key in keys:
-                # Hanya decrypt jika ini API key (bukan pesan)
                 if key.key_encrypted:
                     decrypted_key = Database._decrypt_api_key(key.key_value, True)
                     if decrypted_key != "[DECRYPTION_ERROR]":
@@ -691,7 +663,6 @@ class Database:
         with get_db_session() as session:
             local_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
-            # TIDAK LAGI mengenkripsi pesan, simpan langsung
             message = Message(
                 session_id=session_id,
                 role=role,
@@ -702,12 +673,10 @@ class Database:
             )
             session.add(message)
             
-            # Update session message count
             chat_session = session.query(ChatSession).filter_by(id=session_id).first()
             if chat_session and role in ['user', 'assistant']:
                 chat_session.message_count += 1
                 chat_session.updated_at = datetime.now()
-                # Update last_message_time for idle detection
                 try:
                     mem = json.loads(chat_session.memory_json) if chat_session.memory_json else {}
                     mem['last_message_time'] = datetime.now().isoformat()
@@ -754,7 +723,6 @@ class Database:
             active_session = Database.get_active_session()
             session_id = active_session['id']
         
-        # Use tool-specific role from TOOL_ROLES mapping
         role = TOOL_ROLES.get(tool_name, f'{tool_name}_tools')
         
         with get_db_session() as session:
@@ -813,13 +781,10 @@ class Database:
             else:
                 messages = query.order_by(Message.timestamp.asc()).all()
             
-            # Tidak perlu dekripsi karena pesan tidak terenkripsi
             result_messages = []
             for msg in messages:
-                # Untuk pesan lama yang masih terenkripsi (backward compatibility)
                 content = msg.content
                 if msg.content_encrypted:
-                    # Coba dekripsi jika masih terenkripsi (legacy data)
                     try:
                         content = encryptor.decrypt(content)
                     except Exception as e:
@@ -874,7 +839,6 @@ class Database:
                         logging.error(f"Failed to decrypt message {msg.id}: {e}")
                         content = "[ENCRYPTED_LEGACY_DATA]"
 
-                # Skip event_log roles
                 if msg.role == 'event_log':
                     continue
 
@@ -900,10 +864,8 @@ class Database:
                         'content': content
                     })
                 elif msg.role in ALL_TOOL_ROLES:
-                    # Parse canonical markdown contract
                     command_line = Database._extract_command_from_markdown_contract(content)
                     raw_result = Database._extract_raw_result_from_markdown_contract(content)
-                    # Append TWO entries: assistant command + tool result
                     formatted_messages.append({
                         'role': 'assistant',
                         'content': command_line
@@ -934,24 +896,18 @@ class Database:
 
         result = content
 
-        # Remove <details> block wrapper entirely
         result = re.sub(r'<details>\s*<summary>.*?</summary>', '', result, flags=re.DOTALL)
         result = re.sub(r'</details>', '', result, flags=re.DOTALL)
 
-        # Remove bash code block (contains the command)
         result = re.sub(r'```bash\n.*?\n```', '', result, flags=re.DOTALL)
 
-        # Remove any other code fences
         result = re.sub(r'```[\w]*\n?', '', result)
         result = re.sub(r'```', '', result)
 
-        # Remove blockquote markers (> )
         result = re.sub(r'^>\s*', '', result, flags=re.MULTILINE)
 
-        # Remove HTML tags
         result = re.sub(r'<[^>]+>', '', result)
 
-        # Clean up whitespace
         result = re.sub(r'^\n+', '', result)
         result = re.sub(r'\n+$', '', result)
         result = result.strip()
@@ -1057,7 +1013,6 @@ class Database:
                 role_label = "User" if msg.role == 'user' else "AI"
                 content = msg.content
                 
-                # Handle legacy encrypted data
                 if msg.content_encrypted:
                     try:
                         content = encryptor.decrypt(content)
@@ -1066,7 +1021,6 @@ class Database:
                         logging.error(f"Failed to decrypt message {msg.id}: {e}")
                         content = "[ENCRYPTED_DATA]"
                 
-                # Truncate if too long
                 content = content[:100]
                 if len(msg.content) > 100:
                     content += "..."
@@ -1131,16 +1085,13 @@ class Database:
                 try:
                     msg = session.query(Message).filter(Message.id == msg_id).first()
                     if msg and msg.content_encrypted:
-                        # Decrypt the content
                         decrypted_content = encryptor.decrypt(msg.content)
                         
-                        # Update the message
                         msg.content = decrypted_content
                         msg.content_encrypted = False
                         
                         decrypted_count += 1
                         
-                        # Commit every 100 messages
                         if decrypted_count % 100 == 0:
                             session.commit()
                             
@@ -1149,7 +1100,6 @@ class Database:
                     print(f"Failed to decrypt message {msg_id}: {e}")
                     continue
             
-            # Final commit
             session.commit()
         
         return {
@@ -1158,5 +1108,4 @@ class Database:
             'total': len(message_ids)
         }
 
-# Initialize database
 init_db()
