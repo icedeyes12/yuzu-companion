@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 from app.database import (
     get_db_session, SemanticMemory, EpisodicMemory, ConversationSegment, Message
 )
-from app.memory.embedder import cosine_similarity, blob_to_vec
+from app.memory.embedder import blob_to_vec
+from app.memory.index_store import get_index_store
 
 
 # ── Temporal cue helpers (inlined from deleted tools/memory_search.py) ─────────
@@ -127,141 +128,205 @@ def _embed_query(text: str) -> list[float] | None:
 def retrieve_semantic_memories(session_id, query=None, limit=15):
     """
     Retrieve semantic memories by cosine similarity to query.
-    
-    If query is provided: embed query, rank by cosine similarity.
-    If query is None or embedding fails: fall back to importance × confidence.
+
+    If query is provided: embed query, run ANN search via cKDTree index,
+      then re-rank top candidates with hybrid scoring.
+    If query is None or embedding fails: fall back to importance × confidence
+      with a targeted DB query (avoids full table scan).
     """
+    # ── Fast path: ANN search via cKDTree index ───────────────────────────────
+    query_vec = _embed_query(query) if query else None
+    ann_results: list[tuple[int, float]] = []
+    if query_vec is not None:
+        try:
+            import numpy as np
+            store = get_index_store(session_id)
+            ann_results = store.search_semantic(np.array(query_vec, dtype=np.float32), k=limit * 3)
+        except Exception as e:
+            print(f"[WARNING] ANN semantic search failed, falling back to DB: {e}")
+
     with get_db_session() as session:
-        memories = session.query(SemanticMemory).filter(
-            SemanticMemory.session_id == session_id
-        ).all()
-
-        if not memories:
-            return []
-
-        query_vec = _embed_query(query) if query else None
-
-        scored = []
-        for mem in memories:
-            if query_vec and mem.embedding_vector:
+        if ann_results:
+            # Fetch full records for ANN candidates, then re-rank with hybrid score
+            ann_ids = [rid for rid, _ in ann_results]
+            memories = session.query(SemanticMemory).filter(
+                SemanticMemory.id.in_(ann_ids)
+            ).all()
+            id_to_mem = {m.id: m for m in memories}
+            scored = []
+            for rid, cosine_dist in ann_results:
+                mem = id_to_mem.get(rid)
+                if mem is None:
+                    continue
+                cosine_sim = 1.0 - cosine_dist  # cKDTree returns cosine distance
                 try:
                     mem_vec = blob_to_vec(mem.embedding_vector)
-                    sim = cosine_similarity(query_vec, mem_vec)
-                    score = sim * 0.6 + (mem.importance or 0.5) * 0.2 + (mem.confidence or 0.5) * 0.2
+                    if not query_vec:
+                        raise ValueError("no query_vec")
+                    dot = sum(a * b for a, b in zip(query_vec, mem_vec))
+                    norm_q = math.sqrt(sum(x * x for x in query_vec))
+                    norm_m = math.sqrt(sum(x * x for x in mem_vec))
+                    if norm_q and norm_m:
+                        true_sim = dot / (norm_q * norm_m)
+                    else:
+                        true_sim = cosine_sim
                 except Exception:
-                    score = (mem.importance or 0.5) * (mem.confidence or 0.5)
-            else:
-                # Fallback: importance × confidence
-                score = (mem.importance or 0.5) * (mem.confidence or 0.5)
+                    true_sim = cosine_sim
+                score = true_sim * 0.6 + (mem.importance or 0.5) * 0.2 + (mem.confidence or 0.5) * 0.2
+                scored.append({
+                    'id': mem.id,
+                    'entity': mem.entity,
+                    'relation': mem.relation,
+                    'target': mem.target,
+                    'confidence': mem.confidence,
+                    'importance': mem.importance,
+                    'score': score,
+                })
+            scored.sort(key=lambda x: x['score'], reverse=True)
+            top_ids = [m['id'] for m in scored[:limit]]
+            if top_ids:
+                for mem in session.query(SemanticMemory).filter(
+                    SemanticMemory.id.in_(top_ids)
+                ).all():
+                    mem.access_count = (mem.access_count or 0) + 1
+                    mem.last_accessed = datetime.now()
+                session.commit()
+            return scored[:limit]
 
-            scored.append({
-                'id': mem.id,
-                'entity': mem.entity,
-                'relation': mem.relation,
-                'target': mem.target,
-                'confidence': mem.confidence,
-                'importance': mem.importance,
-                'score': score,
-            })
-
-        scored.sort(key=lambda x: x['score'], reverse=True)
-
-        top_ids = [m['id'] for m in scored[:limit]]
-        if top_ids:
-            for mem in session.query(SemanticMemory).filter(
-                SemanticMemory.id.in_(top_ids)
-            ).all():
-                mem.access_count = (mem.access_count or 0) + 1
-                mem.last_accessed = datetime.now()
-            session.commit()
-
-        return scored[:limit]
+        # ── Fallback: no query or embedding failed — importance × confidence ─
+        memories = session.query(SemanticMemory).filter(
+            SemanticMemory.session_id == session_id
+        ).order_by(
+            (SemanticMemory.importance * SemanticMemory.confidence).desc()
+        ).limit(limit).all()
+        scored = [{
+            'id': m.id, 'entity': m.entity, 'relation': m.relation, 'target': m.target,
+            'confidence': m.confidence, 'importance': m.importance,
+            'score': (m.importance or 0.5) * (m.confidence or 0.5),
+        } for m in memories]
+        return scored
 
 
 def retrieve_episodic_memories(session_id, query=None, limit=5):
     """
     Retrieve episodic memories by cosine similarity + hybrid score.
-    
+
     Score = cosine_sim * 0.5 + importance * 0.25 + recency * 0.25
     """
+    import numpy as np
+    query_vec = _embed_query(query) if query else None
+    ann_results: list[tuple[int, float]] = []
+    if query_vec is not None:
+        try:
+            store = get_index_store(session_id)
+            ann_results = store.search_episodic(np.array(query_vec, dtype=np.float32), k=limit * 3)
+        except Exception as e:
+            print(f"[WARNING] ANN episodic search failed, falling back to DB: {e}")
+
     with get_db_session() as session:
+        if ann_results:
+            ann_ids = [rid for rid, _ in ann_results]
+            memories = session.query(EpisodicMemory).filter(
+                EpisodicMemory.id.in_(ann_ids)
+            ).all()
+            id_to_mem = {m.id: m for m in memories}
+            scored = []
+            for rid, cosine_dist in ann_results:
+                mem = id_to_mem.get(rid)
+                if mem is None:
+                    continue
+                cosine_sim = 1.0 - cosine_dist
+                recency = _recency_factor(mem.last_accessed)
+                try:
+                    mem_vec = blob_to_vec(mem.embedding)
+                    if query_vec:
+                        dot = sum(a * b for a, b in zip(query_vec, mem_vec))
+                        norm_q = math.sqrt(sum(x * x for x in query_vec))
+                        norm_m = math.sqrt(sum(x * x for x in mem_vec))
+                        true_sim = (dot / (norm_q * norm_m)) if (norm_q and norm_m) else cosine_sim
+                    else:
+                        true_sim = cosine_sim
+                except Exception:
+                    true_sim = cosine_sim
+                score = true_sim * 0.5 + (mem.importance or 0.5) * 0.25 + recency * 0.25
+                scored.append({
+                    'id': mem.id, 'summary': mem.summary,
+                    'importance': mem.importance, 'emotional_weight': mem.emotional_weight,
+                    'score': score,
+                })
+            scored.sort(key=lambda x: x['score'], reverse=True)
+            top_ids = [m['id'] for m in scored[:limit]]
+            if top_ids:
+                for mem in session.query(EpisodicMemory).filter(
+                    EpisodicMemory.id.in_(top_ids)
+                ).all():
+                    mem.access_count = (mem.access_count or 0) + 1
+                    mem.last_accessed = datetime.now()
+                session.commit()
+            return scored[:limit]
+
+        # ── Fallback: importance + recency sort ──────────────────────────────
         memories = session.query(EpisodicMemory).filter(
             EpisodicMemory.session_id == session_id
         ).all()
-
         if not memories:
             return []
-
-        query_vec = _embed_query(query) if query else None
-
         scored = []
         for mem in memories:
             recency = _recency_factor(mem.last_accessed)
-
-            if query_vec and mem.embedding:
-                try:
-                    mem_vec = blob_to_vec(mem.embedding)
-                    sim = cosine_similarity(query_vec, mem_vec)
-                    score = sim * 0.5 + (mem.importance or 0.5) * 0.25 + recency * 0.25
-                except Exception:
-                    score = ((mem.importance or 0.5) + (mem.emotional_weight or 0.0) * 0.5 + recency)
-            else:
-                score = ((mem.importance or 0.5) + (mem.emotional_weight or 0.0) * 0.5 + recency)
-
+            score = ((mem.importance or 0.5) + (mem.emotional_weight or 0.0) * 0.5 + recency)
             scored.append({
-                'id': mem.id,
-                'summary': mem.summary,
-                'importance': mem.importance,
-                'emotional_weight': mem.emotional_weight,
+                'id': mem.id, 'summary': mem.summary,
+                'importance': mem.importance, 'emotional_weight': mem.emotional_weight,
                 'score': score,
             })
-
         scored.sort(key=lambda x: x['score'], reverse=True)
-
-        top_ids = [m['id'] for m in scored[:limit]]
-        if top_ids:
-            for mem in session.query(EpisodicMemory).filter(
-                EpisodicMemory.id.in_(top_ids)
-            ).all():
-                mem.access_count = (mem.access_count or 0) + 1
-                mem.last_accessed = datetime.now()
-            session.commit()
-
         return scored[:limit]
 
 
 def retrieve_segments(session_id, query=None, limit=5):
-    """Retrieve conversation segments by importance or similarity."""
+    """Retrieve conversation segments by ANN similarity or recency."""
+    import numpy as np
+    query_vec = _embed_query(query) if query else None
+    ann_results: list[tuple[int, float]] = []
+    if query_vec is not None:
+        try:
+            store = get_index_store(session_id)
+            ann_results = store.search_segments(np.array(query_vec, dtype=np.float32), k=limit * 3)
+        except Exception as e:
+            print(f"[WARNING] ANN segment search failed, falling back to DB: {e}")
+
     with get_db_session() as session:
+        if ann_results:
+            ann_ids = [rid for rid, _ in ann_results]
+            segments = session.query(ConversationSegment).filter(
+                ConversationSegment.id.in_(ann_ids)
+            ).all()
+            id_to_seg = {s.id: s for s in segments}
+            scored = []
+            for rid, cosine_dist in ann_results:
+                seg = id_to_seg.get(rid)
+                if seg is None:
+                    continue
+                cosine_sim = 1.0 - cosine_dist
+                score = cosine_sim * 0.5 + (seg.importance or 0.5) * 0.5
+                scored.append({
+                    'id': seg.id, 'summary': seg.summary, 'importance': seg.importance,
+                    'start_message_id': seg.start_message_id, 'end_message_id': seg.end_message_id,
+                    'score': score,
+                })
+            scored.sort(key=lambda x: x['score'], reverse=True)
+            return scored[:limit]
+
+        # ── Fallback: recency sort ───────────────────────────────────────────
         segments = session.query(ConversationSegment).filter(
             ConversationSegment.session_id == session_id
-        ).order_by(ConversationSegment.created_at.desc()).all()
-
-        scored = []
-        query_vec = _embed_query(query) if query else None
-
-        for seg in segments:
-            if query_vec and seg.embedding:
-                try:
-                    mem_vec = blob_to_vec(seg.embedding)
-                    sim = cosine_similarity(query_vec, mem_vec)
-                    score = sim * 0.5 + (seg.importance or 0.5) * 0.5
-                except Exception:
-                    score = seg.importance or 0.5
-            else:
-                score = seg.importance or 0.5
-
-            scored.append({
-                'id': seg.id,
-                'summary': seg.summary,
-                'importance': seg.importance,
-                'start_message_id': seg.start_message_id,
-                'end_message_id': seg.end_message_id,
-                'score': score,
-            })
-
-        scored.sort(key=lambda x: x['score'], reverse=True)
-        return scored[:limit]
+        ).order_by(ConversationSegment.created_at.desc()).limit(limit).all()
+        return [{
+            'id': s.id, 'summary': s.summary, 'importance': s.importance,
+            'start_message_id': s.start_message_id, 'end_message_id': s.end_message_id,
+            'score': s.importance or 0.5,
+        } for s in segments]
 
 
 def retrieve_memory(session_id, query=None):

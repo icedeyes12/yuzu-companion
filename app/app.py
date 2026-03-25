@@ -1636,6 +1636,15 @@ def start_session(interface="terminal"):
                 if recent:
                     process_messages_for_memory(session_id, recent)
                 _MEMORY_INIT_DONE[session_id] = True
+
+            # Rebuild ANN index from DB (A5)
+            try:
+                from app.memory.index_store import get_index_store
+                store = get_index_store(session_id)
+                store.rebuild()
+                print(f"[Memory] ANN index rebuilt for session {session_id}")
+            except Exception as idx_err:
+                print(f"[WARNING] ANN index rebuild failed: {idx_err}")
         except Exception as e:
             print(f"[WARNING] Memory system init failed: {e}")
 
