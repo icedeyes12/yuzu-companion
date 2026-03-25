@@ -11,14 +11,12 @@ from app.memory.extractor import (
     extract_semantic_facts,
     upsert_semantic_memory,
     create_episodic_memory,
-    extract_memories,           # alias: process_messages_for_memory
 )
 from app.memory.retrieval import (
     retrieve_memory,
     retrieve_semantic_memories,
     retrieve_episodic_memories,
     retrieve_segments,
-    retrieve_memories,          # alias: retrieve_memory
     format_memory,
 )
 from app.memory.review import (
@@ -26,7 +24,6 @@ from app.memory.review import (
     decay_semantic_memories,
     decay_episodic_memories,
     reinforce_memory,
-    get_memory_stats,          # defined below in this file
 )
 from app.memory.segmenter import (
     segment_session,
@@ -88,8 +85,10 @@ def get_memory_stats(session_id: int) -> dict:
         index_semantic_size = store._semantic.size if store._semantic else 0
         index_episodic_size = store._episodic.size if store._episodic else 0
         index_segments_size = store._segments.size if store._segments else 0
+        ann_errors = store.get_ann_errors()
     except Exception:
         index_semantic_size = index_episodic_size = index_segments_size = -1
+        ann_errors = []
 
     last_decay = _get_last_decay_time()
 
@@ -106,7 +105,7 @@ def get_memory_stats(session_id: int) -> dict:
         "index_semantic_size": index_semantic_size,
         "index_episodic_size": index_episodic_size,
         "index_segments_size": index_segments_size,
-        "ann_errors": 0,       # per-session error count would need request-level tracking
+        "ann_errors": ann_errors,
         "last_decay": last_decay,
         "legacy_memory_keys": legacy_memory_keys,
     }

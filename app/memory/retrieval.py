@@ -87,14 +87,14 @@ def _search_temporal_messages(session_id, start, end, limit=200):
                     try:
                         from app.encryption import encryptor
                         content = encryptor.decrypt(content)
-                    except Exception:
+                    except (KeyError, ValueError, RuntimeError):
                         content = "[ENCRYPTED]"
                 results.append({
                     "timestamp": msg.timestamp,
                     "role": msg.role,
                     "content": content[:500],
                 })
-    except Exception as e:
+    except (KeyError, AttributeError, RuntimeError) as e:
         print(f"[retrieval] Temporal scan failed: {e}")
     return results
 
@@ -137,13 +137,17 @@ def retrieve_semantic_memories(session_id, query=None, limit=15):
     # ── Fast path: ANN search via cKDTree index ───────────────────────────────
     query_vec = _embed_query(query) if query else None
     ann_results: list[tuple[int, float]] = []
+    ann_used = False
     if query_vec is not None:
         try:
             import numpy as np
             store = get_index_store(session_id)
             ann_results = store.search_semantic(np.array(query_vec, dtype=np.float32), k=limit * 3)
+            ann_used = True
+        except (ImportError, OSError, ValueError, RuntimeError) as e:
+            print(f"[WARNING] ANN semantic search failed (index corrupt or missing), falling back to DB: {e}")
         except Exception as e:
-            print(f"[WARNING] ANN semantic search failed, falling back to DB: {e}")
+            print(f"[WARNING] ANN semantic search failed unexpectedly, falling back to DB: {type(e).__name__}: {e}")
 
     with get_db_session() as session:
         if ann_results:
@@ -158,7 +162,8 @@ def retrieve_semantic_memories(session_id, query=None, limit=15):
                 mem = id_to_mem.get(rid)
                 if mem is None:
                     continue
-                cosine_sim = 1.0 - cosine_dist  # cKDTree returns cosine distance
+                cosine_sim = 1.0 - cosine_dist
+                cosine_sim = max(0.0, min(1.0, cosine_sim))  # clamp to [0, 1]
                 try:
                     mem_vec = blob_to_vec(mem.embedding_vector)
                     if not query_vec:
@@ -167,12 +172,13 @@ def retrieve_semantic_memories(session_id, query=None, limit=15):
                     norm_q = math.sqrt(sum(x * x for x in query_vec))
                     norm_m = math.sqrt(sum(x * x for x in mem_vec))
                     if norm_q and norm_m:
-                        true_sim = dot / (norm_q * norm_m)
+                        true_sim = max(0.0, min(1.0, dot / (norm_q * norm_m)))
                     else:
                         true_sim = cosine_sim
-                except Exception:
+                except (ValueError, TypeError, RuntimeError):
                     true_sim = cosine_sim
                 score = true_sim * 0.6 + (mem.importance or 0.5) * 0.2 + (mem.confidence or 0.5) * 0.2
+                score = max(0.0, min(1.0, score))  # clamp final score
                 scored.append({
                     'id': mem.id,
                     'entity': mem.entity,
@@ -181,6 +187,7 @@ def retrieve_semantic_memories(session_id, query=None, limit=15):
                     'confidence': mem.confidence,
                     'importance': mem.importance,
                     'score': score,
+                    'ann': ann_used,
                 })
             scored.sort(key=lambda x: x['score'], reverse=True)
             top_ids = [m['id'] for m in scored[:limit]]
@@ -202,7 +209,8 @@ def retrieve_semantic_memories(session_id, query=None, limit=15):
         scored = [{
             'id': m.id, 'entity': m.entity, 'relation': m.relation, 'target': m.target,
             'confidence': m.confidence, 'importance': m.importance,
-            'score': (m.importance or 0.5) * (m.confidence or 0.5),
+            'score': max(0.0, min(1.0, (m.importance or 0.5) * (m.confidence or 0.5))),
+            'ann': False,
         } for m in memories]
         return scored
 
@@ -216,12 +224,16 @@ def retrieve_episodic_memories(session_id, query=None, limit=5):
     import numpy as np
     query_vec = _embed_query(query) if query else None
     ann_results: list[tuple[int, float]] = []
+    ann_used = False
     if query_vec is not None:
         try:
             store = get_index_store(session_id)
             ann_results = store.search_episodic(np.array(query_vec, dtype=np.float32), k=limit * 3)
+            ann_used = True
+        except (ImportError, OSError, ValueError, RuntimeError) as e:
+            print(f"[WARNING] ANN episodic search failed (index corrupt/missing), falling back: {e}")
         except Exception as e:
-            print(f"[WARNING] ANN episodic search failed, falling back to DB: {e}")
+            print(f"[WARNING] ANN episodic search failed unexpectedly, falling back: {type(e).__name__}: {e}")
 
     with get_db_session() as session:
         if ann_results:
@@ -236,6 +248,7 @@ def retrieve_episodic_memories(session_id, query=None, limit=5):
                 if mem is None:
                     continue
                 cosine_sim = 1.0 - cosine_dist
+                cosine_sim = max(0.0, min(1.0, cosine_sim))
                 recency = _recency_factor(mem.last_accessed)
                 try:
                     mem_vec = blob_to_vec(mem.embedding)
@@ -243,16 +256,18 @@ def retrieve_episodic_memories(session_id, query=None, limit=5):
                         dot = sum(a * b for a, b in zip(query_vec, mem_vec))
                         norm_q = math.sqrt(sum(x * x for x in query_vec))
                         norm_m = math.sqrt(sum(x * x for x in mem_vec))
-                        true_sim = (dot / (norm_q * norm_m)) if (norm_q and norm_m) else cosine_sim
+                        true_sim = max(0.0, min(1.0, dot / (norm_q * norm_m))) if (norm_q and norm_m) else cosine_sim
                     else:
                         true_sim = cosine_sim
                 except Exception:
                     true_sim = cosine_sim
                 score = true_sim * 0.5 + (mem.importance or 0.5) * 0.25 + recency * 0.25
+                score = max(0.0, min(1.0, score))
                 scored.append({
                     'id': mem.id, 'summary': mem.summary,
                     'importance': mem.importance, 'emotional_weight': mem.emotional_weight,
                     'score': score,
+                    'ann': ann_used,
                 })
             scored.sort(key=lambda x: x['score'], reverse=True)
             top_ids = [m['id'] for m in scored[:limit]]
@@ -275,10 +290,12 @@ def retrieve_episodic_memories(session_id, query=None, limit=5):
         for mem in memories:
             recency = _recency_factor(mem.last_accessed)
             score = ((mem.importance or 0.5) + (mem.emotional_weight or 0.0) * 0.5 + recency)
+            score = max(0.0, min(1.0, score))
             scored.append({
                 'id': mem.id, 'summary': mem.summary,
                 'importance': mem.importance, 'emotional_weight': mem.emotional_weight,
                 'score': score,
+                'ann': False,
             })
         scored.sort(key=lambda x: x['score'], reverse=True)
         return scored[:limit]
@@ -289,12 +306,16 @@ def retrieve_segments(session_id, query=None, limit=5):
     import numpy as np
     query_vec = _embed_query(query) if query else None
     ann_results: list[tuple[int, float]] = []
+    ann_used = False
     if query_vec is not None:
         try:
             store = get_index_store(session_id)
             ann_results = store.search_segments(np.array(query_vec, dtype=np.float32), k=limit * 3)
+            ann_used = True
+        except (ImportError, OSError, ValueError, RuntimeError) as e:
+            print(f"[WARNING] ANN segment search failed (index corrupt/missing), falling back: {e}")
         except Exception as e:
-            print(f"[WARNING] ANN segment search failed, falling back to DB: {e}")
+            print(f"[WARNING] ANN segment search failed unexpectedly, falling back: {type(e).__name__}: {e}")
 
     with get_db_session() as session:
         if ann_results:
@@ -309,11 +330,14 @@ def retrieve_segments(session_id, query=None, limit=5):
                 if seg is None:
                     continue
                 cosine_sim = 1.0 - cosine_dist
+                cosine_sim = max(0.0, min(1.0, cosine_sim))
                 score = cosine_sim * 0.5 + (seg.importance or 0.5) * 0.5
+                score = max(0.0, min(1.0, score))
                 scored.append({
                     'id': seg.id, 'summary': seg.summary, 'importance': seg.importance,
                     'start_message_id': seg.start_message_id, 'end_message_id': seg.end_message_id,
                     'score': score,
+                    'ann': ann_used,
                 })
             scored.sort(key=lambda x: x['score'], reverse=True)
             return scored[:limit]
@@ -325,7 +349,8 @@ def retrieve_segments(session_id, query=None, limit=5):
         return [{
             'id': s.id, 'summary': s.summary, 'importance': s.importance,
             'start_message_id': s.start_message_id, 'end_message_id': s.end_message_id,
-            'score': s.importance or 0.5,
+            'score': max(0.0, min(1.0, s.importance or 0.5)),
+            'ann': False,
         } for s in segments]
 
 

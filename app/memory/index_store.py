@@ -95,6 +95,19 @@ class IndexStore:
         self._semantic_loaded = False
         self._episodic_loaded = False
         self._segments_loaded = False
+        self._ann_errors: list[str] = []  # session-scoped error log
+
+    def _record_error(self, index_name: str, op: str, exc: Exception):
+        """Append a formatted error entry to the session error log."""
+        self._ann_errors.append(f"[{index_name}] {op} failed: {type(exc).__name__}: {exc}")
+
+    def get_ann_errors(self) -> list[str]:
+        """Return copy of ANN errors seen for this session."""
+        return list(self._ann_errors)
+
+    def clear_ann_errors(self):
+        """Clear the ANN error log (e.g., after successful recovery)."""
+        self._ann_errors.clear()
 
     # ── Atomic save ────────────────────────────────────────────────────────────
 
@@ -116,7 +129,8 @@ class IndexStore:
                 self._semantic = NNIndex.load(path)
                 self._semantic_loaded = True
                 return
-            except Exception:
+            except Exception as e:
+                self._record_error("semantic", "load", e)
                 pass  # fall through to rebuild
         self._semantic = self._rebuild_semantic()
         self._semantic_loaded = True
@@ -130,8 +144,9 @@ class IndexStore:
                 self._episodic = NNIndex.load(path)
                 self._episodic_loaded = True
                 return
-            except Exception:
-                pass
+            except Exception as e:
+                self._record_error("episodic", "load", e)
+                pass  # fall through to rebuild
         self._episodic = self._rebuild_episodic()
         self._episodic_loaded = True
 
@@ -144,8 +159,9 @@ class IndexStore:
                 self._segments = NNIndex.load(path)
                 self._segments_loaded = True
                 return
-            except Exception:
-                pass
+            except Exception as e:
+                self._record_error("segments", "load", e)
+                pass  # fall through to rebuild
         self._segments = self._rebuild_segments()
         self._segments_loaded = True
 
