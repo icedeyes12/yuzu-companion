@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+---
+
+## [1.0.70.1] — 2026-03-25
+
+### Fixed
+
+- **Header audit**: Standardized all file headers to `FILE:` / `DESCRIPTION:` format across 52 files (.py, .css, .js, .html). Removed legacy multi-line comment blocks (version banners, author tags, timestamps). Correct comment syntax per file type.
+
+---
+
 ## [1.0.70] — 2026-03-25
 
 ### Added
