@@ -253,6 +253,13 @@ def upsert_semantic_memory(session_id, entity, relation, target, importance=0.5)
                 existing.embedding_vector = vec_to_blob(vector)
             session.commit()
             session.expunge(existing)
+            # Invalidate ANN index so next search rebuilds from fresh DB vectors
+            try:
+                from app.memory.index_store import get_index_store
+                store = get_index_store(session_id)
+                store._invalidate_semantic()
+            except Exception:
+                pass
             return existing.id, vector
 
         dup_id = _find_similar_semantic(session_id, entity, relation, target, vector)
@@ -264,11 +271,20 @@ def upsert_semantic_memory(session_id, entity, relation, target, importance=0.5)
                 existing_dup.confidence = min(existing_dup.confidence + 0.15, 1.0)
                 existing_dup.access_count += 1
                 existing_dup.last_accessed = datetime.now()
+                if vector is not None:
+                    existing_dup.embedding_vector = vec_to_blob(vector)
                 session.commit()
                 session.expunge(existing_dup)
                 print(f"[MEMORY] Dedup: boosted similar fact id={dup_id} "
                       f"({entity} {relation} {target[:40]})")
-                return dup_id, None
+                # Invalidate ANN index — the existing entry now has a new vector
+                try:
+                    from app.memory.index_store import get_index_store
+                    store = get_index_store(session_id)
+                    store._invalidate_semantic()
+                except Exception:
+                    pass
+                return dup_id, vector
 
         new_mem = SemanticMemory(
             session_id=session_id,

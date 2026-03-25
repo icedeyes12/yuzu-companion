@@ -9,8 +9,14 @@ from app.database import get_db_session, SemanticMemory, EpisodicMemory
 
 _DECAY_STATE_FILE = os.path.join(os.path.dirname(__file__), '.decay_state.json')
 
+# ── Configurable half-life constants (hours) ────────────────────────────────────
+SEMANTIC_HALF_LIFE_HOURS = 24.0   # base stability half-life for semantic memories
+EPISODIC_HALF_LIFE_HOURS = 48.0  # base stability half-life for episodic memories
+ACCESS_COUNT_CAP = 1000           # max access_count before it stops boosting stability
 
-def _get_last_decay_time():
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _get_last_decay_time() -> str | None:
     """Return the last time decay ran (epoch), or None if never run."""
     if not os.path.exists(_DECAY_STATE_FILE):
         return None
@@ -30,7 +36,7 @@ def _set_last_decay_time():
         print(f"[WARNING] Could not write decay state: {e}")
 
 
-def _hours_since(dt):
+def _hours_since(dt) -> float:
     """Calculate hours since a given datetime."""
     if not dt:
         return 720.0  # Default: 30 days
@@ -43,12 +49,15 @@ def _hours_since(dt):
     return max((now - dt).total_seconds() / 3600.0, 0.0)
 
 
+# ── Decay ──────────────────────────────────────────────────────────────────────
+
 def decay_semantic_memories(session_id=None):
     """Apply decay to semantic memories.
 
     importance *= exp(-time_since_last_access / stability)
 
-    Stability is derived from access_count (more access = more stable).
+    Stability grows with access_count (capped at ACCESS_COUNT_CAP) so
+    frequently retrieved memories decay more slowly.
     """
     with get_db_session() as session:
         query = session.query(SemanticMemory)
@@ -58,9 +67,12 @@ def decay_semantic_memories(session_id=None):
 
         for mem in memories:
             hours = _hours_since(mem.last_accessed)
-            stability = max(24.0 * (1 + (mem.access_count or 0) * 0.5), 24.0)
+            capped_count = min(mem.access_count or 0, ACCESS_COUNT_CAP)
+            stability = max(SEMANTIC_HALF_LIFE_HOURS * (1 + capped_count * 0.5), SEMANTIC_HALF_LIFE_HOURS)
             decay_factor = math.exp(-hours / stability)
             mem.importance = max((mem.importance or 0.5) * decay_factor, 0.01)
+            # Decay resets access_count slowly to prevent unbounded growth
+            mem.access_count = max((mem.access_count or 1) - 1, 0)
 
         session.commit()
 
@@ -78,20 +90,17 @@ def decay_episodic_memories(session_id=None):
 
         for mem in memories:
             hours = _hours_since(mem.last_accessed)
-            stability = max(48.0 * (1 + (mem.access_count or 0) * 0.3), 48.0)
+            capped_count = min(mem.access_count or 0, ACCESS_COUNT_CAP)
+            stability = max(EPISODIC_HALF_LIFE_HOURS * (1 + capped_count * 0.3), EPISODIC_HALF_LIFE_HOURS)
             decay_factor = math.exp(-hours / stability)
             mem.importance = max((mem.importance or 0.5) * decay_factor, 0.01)
+            mem.access_count = max((mem.access_count or 1) - 1, 0)
 
         session.commit()
 
 
 def reinforce_memory(memory_id, memory_type='semantic'):
-    """Increase importance when a memory is retrieved.
-
-    Args:
-        memory_id: ID of the memory to reinforce.
-        memory_type: 'semantic' or 'episodic'.
-    """
+    """Increase importance when a memory is retrieved."""
     with get_db_session() as session:
         if memory_type == 'semantic':
             mem = session.query(SemanticMemory).filter(
@@ -104,7 +113,7 @@ def reinforce_memory(memory_id, memory_type='semantic'):
 
         if mem:
             mem.importance = min((mem.importance or 0.5) + 0.05, 1.0)
-            mem.access_count = (mem.access_count or 0) + 1
+            mem.access_count = min((mem.access_count or 0) + 1, ACCESS_COUNT_CAP)
             mem.last_accessed = datetime.now()
             session.commit()
 

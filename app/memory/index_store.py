@@ -68,6 +68,13 @@ class NNIndex:
             version = data[0]
             if version == _INDEX_VERSION and len(data) == 4:
                 _, embed_dim, ids, normed = data
+                # Validate embedding dimension matches current probe
+                current_dim = get_embed_dim()
+                if embed_dim != current_dim:
+                    raise ValueError(
+                        f"Index embed_dim {embed_dim} != probed dim {current_dim} "
+                        f"({path})"
+                    )
                 idx = cls(ids, normed)
                 idx._embed_dim = embed_dim
                 return idx

@@ -8,12 +8,13 @@ from app.database import (
 from app.memory.extractor import generate_episodic_summary
 
 
-# Segmentation limits
+# Segmentation limits — exposed as module constants for discoverability and tuning
 MAX_MESSAGES_PER_SEGMENT = 20
 TIME_GAP_MINUTES = 15
+MIN_MESSAGES_PER_SEGMENT = 2   # minimum to create a segment (was silently discarding)
 
 
-def _parse_timestamp(ts):
+def _parse_timestamp(ts: str):
     """Parse a message timestamp string into a datetime."""
     try:
         return datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
@@ -24,7 +25,6 @@ def _parse_timestamp(ts):
 def _get_unsegmented_messages(session_id):
     """Get messages that have not yet been assigned to a segment."""
     with get_db_session() as session:
-        # Find the last segmented message id
         last_segment = session.query(ConversationSegment).filter(
             ConversationSegment.session_id == session_id
         ).order_by(ConversationSegment.end_message_id.desc()).first()
@@ -54,6 +54,8 @@ def _detect_boundaries(messages):
     Rules:
     - Max 20 messages per segment
     - Time gap > 15 minutes
+    - Groups smaller than MIN_MESSAGES_PER_SEGMENT are merged with the
+      previous segment (unless they are the only group).
     """
     if not messages:
         return []
@@ -63,7 +65,6 @@ def _detect_boundaries(messages):
 
     for msg in messages:
         if current_group:
-            # Check time gap
             prev_ts = _parse_timestamp(current_group[-1].get('timestamp'))
             curr_ts = _parse_timestamp(msg.get('timestamp'))
             if prev_ts and curr_ts:
@@ -72,17 +73,22 @@ def _detect_boundaries(messages):
                     segments.append(current_group)
                     current_group = []
 
-            # Check max size
             if len(current_group) >= MAX_MESSAGES_PER_SEGMENT:
                 segments.append(current_group)
                 current_group = []
 
         current_group.append(msg)
 
-    # Don't create segments from groups that are too small (less than 5)
-    # unless there are no other segments
-    if current_group and len(current_group) >= 5:
-        segments.append(current_group)
+    # Last group — save if >= MIN_MESSAGES_PER_SEGMENT, otherwise merge
+    if current_group:
+        if len(current_group) >= MIN_MESSAGES_PER_SEGMENT:
+            segments.append(current_group)
+        elif segments:
+            # Small tail — merge with last segment
+            segments[-1].extend(current_group)
+        else:
+            # This is the only group — save it even if tiny
+            segments.append(current_group)
 
     return segments
 
