@@ -45,3 +45,20 @@ copilot/
 .aider*
 *.tar
 *.gz
+
+# Migration checkpoints
+*_checkpoint.json
+
+
+# Agent / session artifacts
+AGENTS.md
+SOUL.md
+TODO.md
+TODO_LIST.md
+CLAUDE.md
+MEMORY.md
+*.session
+*.agent
+.conversation/
+*.conversation
+
