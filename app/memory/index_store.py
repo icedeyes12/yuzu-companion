@@ -13,7 +13,7 @@ from app.memory.embedder import blob_to_vec
 
 _INDEX_DIR = os.path.join(os.path.dirname(__file__), 'nn_indexes')
 _EMBED_DIM = 4096  # Qwen3-Embedding-8B
-_INDEX_VERSION = 1  # schema version — bump to force rebuild on breaking changes
+_INDEX_VERSION = 2  # schema version — bump to force rebuild on breaking changes
 
 # ── Directory setup ────────────────────────────────────────────────────────────
 
@@ -54,12 +54,17 @@ class NNIndex:
         return self._normed.shape[0]
 
     def save(self, path: str):
-        joblib.dump((self._ids, self._normed), path, compress=3)
+        IndexStore._atomic_save((_INDEX_VERSION, self._ids, self._normed), path)
 
     @classmethod
     def load(cls, path: str) -> "NNIndex":
-        ids, normed = joblib.load(path)
-        return cls(ids, normed)
+        data = joblib.load(path)
+        # New format: (ids, normed) tuple with version marker
+        if isinstance(data, tuple) and len(data) == 3 and data[0] == _INDEX_VERSION:
+            _, ids, normed = data
+            return cls(ids, normed)
+        # Old format (raw ndarray, pre-v2): fall through to rebuild
+        raise ValueError(f"Stale index format at {path}")
 
     @classmethod
     def build(cls, ids: list[int], vecs: np.ndarray) -> "NNIndex":
@@ -94,10 +99,10 @@ class IndexStore:
     # ── Atomic save ────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _atomic_save(normed: np.ndarray, path: str):
+    def _atomic_save(data, path: str):
         """Write to temp file then atomic-rename to prevent corrupted pickles."""
         tmp = path + ".tmp"
-        joblib.dump(normed, tmp, compress=3)
+        joblib.dump(data, tmp, compress=3)
         os.replace(tmp, path)
 
     # ── Lazy load / build ──────────────────────────────────────────────────────
@@ -157,7 +162,7 @@ class IndexStore:
         ids = [r.id for r in rows]
         vecs = np.array([self._pad_or_truncate(blob_to_vec(r.embedding_vector)) for r in rows], dtype=np.float32)
         idx = NNIndex.build(ids, vecs)
-        self._atomic_save(idx._normed, _index_path(self.session_id, "semantic"))
+        idx.save(_index_path(self.session_id, "semantic"))
         return idx
 
     def _rebuild_episodic(self) -> NNIndex | None:
@@ -171,7 +176,7 @@ class IndexStore:
         ids = [r.id for r in rows]
         vecs = np.array([self._pad_or_truncate(blob_to_vec(r.embedding)) for r in rows], dtype=np.float32)
         idx = NNIndex.build(ids, vecs)
-        self._atomic_save(idx._normed, _index_path(self.session_id, "episodic"))
+        idx.save(_index_path(self.session_id, "episodic"))
         return idx
 
     def _rebuild_segments(self) -> NNIndex | None:
@@ -185,7 +190,7 @@ class IndexStore:
         ids = [r.id for r in rows]
         vecs = np.array([self._pad_or_truncate(blob_to_vec(r.embedding)) for r in rows], dtype=np.float32)
         idx = NNIndex.build(ids, vecs)
-        self._atomic_save(idx._normed, _index_path(self.session_id, "segments"))
+        idx.save(_index_path(self.session_id, "segments"))
         return idx
 
     @staticmethod
