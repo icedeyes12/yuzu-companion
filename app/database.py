@@ -1,5 +1,12 @@
-# FILE: database.py
-# DESCRIPTION: SQLAlchemy database
+# [FILE: database.py]
+# [VERSION: 1.0.70]
+# [DATE: 2026-03-24]
+# [PROJECT: HKKM - Yuzu Companion]
+# [DESCRIPTION: SQLAlchemy database]
+# [AUTHOR: Project Lead: Bani Baskara]
+# [TEAM: Deepseek, GPT, Qwen, Aihara]
+# [REPOSITORY: https://guthib.com/icedeyes12]
+# [LICENSE: MIT]
 
 import json
 import os

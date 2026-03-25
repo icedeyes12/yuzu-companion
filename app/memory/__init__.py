@@ -1,5 +1,10 @@
-# FILE: __init__.py
-# DESCRIPTION: 
+# Memory system public API for Yuzu Companion
+#
+# Single import point for all memory operations.
+# External code (app.py, tools, etc.) should import from here, not from internals.
+#
+# Legacy note: the extraction/retrieval pipeline is fully independent from the
+# legacy global_knowledge_json system. Both can run in parallel.
 
 from app.memory.extractor import (
     process_messages_for_memory,

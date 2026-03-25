@@ -1,6 +1,3 @@
-# FILE: image_generate.py
-# DESCRIPTION: 
-
 import os
 import requests
 from datetime import datetime

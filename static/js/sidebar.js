@@ -1,5 +1,12 @@
-// FILE: sidebar.js
-// DESCRIPTION: Unified sidebar management functionality with session actions - Markdown Safe
+// [FILE: sidebar.js]
+// [VERSION: 1.0.70]
+// [DATE: 2026-03-24]
+// [PROJECT: HKKM - Yuzu Companion]
+// [DESCRIPTION: Unified sidebar management functionality with session actions - Markdown Safe]
+// [AUTHOR: Project Lead: Bani Baskara]
+// [TEAM: Deepseek, GPT, Qwen, Aihara]
+// [REPOSITORY: https://github.com/icedeyes12]
+// [LICENSE: MIT]
 
 // Unified Sidebar Management
 let currentTheme = 'dark';

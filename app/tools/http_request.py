@@ -1,5 +1,4 @@
-# FILE: http_request.py
-# DESCRIPTION: 
+# tools/http_request.py
 
 import os
 import requests

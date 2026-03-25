@@ -1,5 +1,6 @@
-# FILE: review.py
-# DESCRIPTION: FSRS-style review and decay system for memory
+# [FILE: memory/review.py]
+# [DESCRIPTION: FSRS-style review and decay system for memory]
+# Unused schema columns removed: stability, difficulty, retrieval_count (computed dynamically)
 
 import math
 import os

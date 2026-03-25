@@ -1,5 +1,5 @@
-# FILE: migrate_history.py
-# DESCRIPTION: Migration script to extract memories from old message history
+# [FILE: memory/migrate_history.py]
+# [DESCRIPTION: Migration script to extract memories from old message history]
 
 from app.database import get_db_session, Message, ChatSession
 from app.memory.extractor import (

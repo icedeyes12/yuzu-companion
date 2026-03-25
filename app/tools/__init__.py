@@ -1,5 +1,4 @@
-# FILE: __init__.py
-# DESCRIPTION: 
+# tools package
 from app.tools.registry import execute_tool as execute_tool
 from app.tools.multimodal import multimodal_tools as multimodal_tools
 from app.tools.multimodal import MultimodalTools as MultimodalTools

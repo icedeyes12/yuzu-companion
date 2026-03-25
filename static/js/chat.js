@@ -1,5 +1,9 @@
-// FILE: chat.js
-// DESCRIPTION: Clean chat interface rebuilt for stability
+// [FILE: chat.js - Rebuilt Clean Version]
+// [VERSION: 1.0.70]
+// [DATE: 2026-03-24]
+// [PROJECT: HKKM - Yuzu Companion]
+// [DESCRIPTION: Clean chat interface rebuilt for stability]
+// [AUTHOR: Project Lead: Bani Baskara]
 
 console.log("Starting clean chat rebuild...");
 

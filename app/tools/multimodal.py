@@ -1,5 +1,12 @@
-# FILE: multimodal.py
-# DESCRIPTION: Multimodal tools with image caching
+# [FILE: tools.py]
+# [VERSION: 1.0.70]
+# [DATE: 2026-03-24]
+# [PROJECT: HKKM - Yuzu Companion]
+# [DESCRIPTION: Multimodal tools with image caching]
+# [AUTHOR: Project Lead: Bani Baskara]
+# [TEAM: Deepseek, GPT, Qwen, Gemini]
+# [REPOSITORY: https://guthib.com/icedeyes12]
+# [LICENSE: MIT]
 
 import requests
 import base64
