@@ -1,3 +1,6 @@
+FILE: app/memory/__init__.py
+DESCRIPTION: Memory system public API — single import point for all memory operations
+
 # Memory system public API for Yuzu Companion
 #
 # Single import point for all memory operations.

@@ -1,3 +1,6 @@
+FILE: app/tools/__init__.py
+DESCRIPTION: Tool registry and execution system
+
 # tools package
 from app.tools.registry import execute_tool as execute_tool
 from app.tools.multimodal import multimodal_tools as multimodal_tools

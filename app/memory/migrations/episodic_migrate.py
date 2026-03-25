@@ -1,3 +1,6 @@
+FILE: app/memory/migrations/episodic_migrate.py
+DESCRIPTION: Episodic memory vector migration
+
 # [FILE: memory/episodic_migrate.py]
 # [DESCRIPTION: Regenerate episodic summaries with LLM - raw snippets → proper narrative + title]
 # [USAGE: python -c "from app.memory.episodic_migrate import run; run()"]

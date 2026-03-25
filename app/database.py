@@ -1,3 +1,6 @@
+FILE: app/database.py
+DESCRIPTION: SQLAlchemy database models for SemanticMemory, EpisodicMemory, ConversationSegment with session management
+
 # [FILE: database.py]
 # [VERSION: 1.0.70]
 # [DATE: 2026-03-24]

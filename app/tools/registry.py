@@ -1,3 +1,6 @@
+FILE: app/tools/registry.py
+DESCRIPTION: Tool registry with metadata and capability tracking
+
 import json
 
 # Tool name → tool role used for DB storage

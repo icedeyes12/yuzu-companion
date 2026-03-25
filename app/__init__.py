@@ -1,3 +1,6 @@
+FILE: app/__init__.py
+DESCRIPTION: Re-export from app.providers for convenience imports
+
 # Re-export from app.providers for convenience imports
 from app.providers import get_ai_manager, reload_ai_manager
 

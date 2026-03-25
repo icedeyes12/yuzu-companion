@@ -1,3 +1,6 @@
+FILE: app/tools/multimodal.py
+DESCRIPTION: Multimodal tool combining image generation and analysis
+
 # [FILE: tools.py]
 # [VERSION: 1.0.70]
 # [DATE: 2026-03-24]

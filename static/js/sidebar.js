@@ -1,3 +1,6 @@
+FILE: static/js/sidebar.js
+DESCRIPTION: Sidebar JavaScript
+
 // [FILE: sidebar.js]
 // [VERSION: 1.0.70]
 // [DATE: 2026-03-24]

@@ -1,3 +1,6 @@
+FILE: app/tools/image_generate.py
+DESCRIPTION: Image generation tool
+
 import os
 import requests
 from datetime import datetime

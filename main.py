@@ -1,3 +1,6 @@
+FILE: main.py
+DESCRIPTION: Application entry point
+
 # ==========================================================
 # [FILE]        : main.py  
 # [VERSION: 1.0.70] - Complete Working Version

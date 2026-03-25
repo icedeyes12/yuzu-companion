@@ -1,3 +1,6 @@
+FILE: app/key_manager.py
+DESCRIPTION: Encryption key management utility
+
 # [FILE: key_manager.py]
 # [VERSION: 1.0.70]
 # [DATE: 2026-03-24]

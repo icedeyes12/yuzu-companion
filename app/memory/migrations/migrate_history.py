@@ -1,3 +1,6 @@
+FILE: app/memory/migrations/migrate_history.py
+DESCRIPTION: Conversation history migration to episodic memory
+
 # [FILE: memory/migrate_history.py]
 # [DESCRIPTION: Migration script to extract memories from old message history]
 

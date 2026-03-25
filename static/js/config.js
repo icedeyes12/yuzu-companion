@@ -1,3 +1,6 @@
+FILE: static/js/config.js
+DESCRIPTION: Configuration page JavaScript
+
 // [FILE: config.js]
 // [VERSION: 1.0.70]
 // [DATE: 2026-03-24]

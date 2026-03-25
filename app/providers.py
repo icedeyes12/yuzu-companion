@@ -1,3 +1,6 @@
+FILE: app/providers.py
+DESCRIPTION: AI provider manager — orchestrates multiple AI providers with fallback routing
+
 # ==========================================================
 # [FILE]        : providers.py
 # [VERSION: 1.0.70]

@@ -1,3 +1,6 @@
+FILE: web.py
+DESCRIPTION: Web server and routing
+
 # [FILE: web.py]
 # [VERSION: 1.0.70]
 # [DATE: 2026-03-24]

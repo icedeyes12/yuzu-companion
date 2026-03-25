@@ -1,3 +1,6 @@
+FILE: app/app.py
+DESCRIPTION: Flask app with WebSocket support, AI provider routing, memory context injection, and tool execution
+
 # ==========================================================
 # [FILE]        : app.py
 # [VERSION: 1.0.70]

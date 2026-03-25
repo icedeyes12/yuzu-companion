@@ -1,3 +1,6 @@
+FILE: app/memory/segmenter.py
+DESCRIPTION: Conversation segmentation into semantic chunks
+
 # [FILE: memory/segmenter.py]
 # [DESCRIPTION: Conversation segmentation engine]
 

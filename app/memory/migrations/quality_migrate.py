@@ -1,3 +1,6 @@
+FILE: app/memory/migrations/quality_migrate.py
+DESCRIPTION: Memory quality scoring migration
+
 # [FILE: memory/quality_migrate.py]
 # [DESCRIPTION: High-quality semantic memory extraction via LLM from existing episodic records]
 # [USAGE: python -c "from app.memory.quality_migrate import run_migration; run_migration()"]
