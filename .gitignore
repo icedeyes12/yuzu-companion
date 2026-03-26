@@ -61,4 +61,6 @@ MEMORY.md
 *.agent
 .conversation/
 *.conversation
+**/indexes/
+**/.decay_state.json
 
