@@ -94,7 +94,7 @@ The single entry point for all user messages. Handles:
 
 1. Image caching from user messages
 2. Vision model routing when images detected
-3. **Standard tool calling** — `tool_calls` from LLM + legacy `/command` fallback
+3. **Standard tool calling** — `tool_calls` from LLM
 4. Memory pipeline triggering
 5. Response generation via provider selection
 6. Markdown contract building for tool results
@@ -331,8 +331,6 @@ deepseek-ai/DeepSeek-V3, Qwen/Qwen3-8B, meta-llama/llama-3.3-70b-instruct
 The tool system has two execution modes:
 
 1. **Standard tool calling** — OpenAI `function` call format (primary, v2.1+)
-2. **Legacy `/command` text detection** — command-prefixed responses (fallback compat)
-
 ### `tools/schemas.py` — Tool Schema Definitions
 
 Declarative tool definitions using `ToolParam` and `ToolDefinition` dataclasses.
@@ -387,11 +385,8 @@ Errors use the same shape with `ok=False` and an `error` string. The registry va
 flowchart TD
     A[LLM response] --> B{tool_calls present?}
     B -->|Yes| C[Structured function call]
-    B -->|No| D{Legacy /command?}
-    D -->|Yes| E[Text command detection]
-    D -->|No| F[Plain text response]
+    B -->|No| F[Plain text response]
     C --> G[execute_tool name, args]
-    E --> G
     G --> H[Normalized tool result]
     H --> I{Terminal tool?}
     I -->|Yes| J[Return result]
@@ -402,8 +397,7 @@ flowchart TD
 
 **Dispatch priority:**
 1. Structured `tool_calls[0]` from LLM → execute via registry → done
-2. Legacy `/command` text detection → execute via registry → done
-3. Plain text → return as-is
+2. Plain text → return as-is
 
 ### Registered Tool Schemas
 

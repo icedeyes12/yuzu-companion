@@ -32,11 +32,23 @@ That is fine short-term, but it becomes expensive to maintain as the tool set gr
 - registry returns canonical tool definitions only
 - provider manager preserves OpenAI-compatible `tool_calls`
 - app orchestration can consume structured `GenerateResult` tool calls
+- **Duplicate helper functions deduplicated** — `_is_model_using_markdown_image_shortcut`, `_extract_prompt_from_markdown_image`, `_parse_image_result_from_formatted`, `_load_generated_image_base64`, `_cache_images_from_message` all now delegate to `skills/multimodal_review.py` equivalents (app.py lines 1603–1613). Original implementations removed. `_detect_command` and `_execute_command_tool` remain for streaming path legacy support.
+
+### Phase 3 — tool-by-tool simplification (DONE)
+- `http_request`: removed legacy dual-mode args (string vs dict); added `body` param for POST/PUT/PATCH; replaced `if/elif/else` method dispatch with `getattr(requests, method.lower())`; renamed internal helpers to `_get_media_dir`
+- `image_generate`: removed duplicate `profile`/`partner_name` fetch in exception handler; removed unused `re` import
+- `memory_search`: already clean
+- `memory_store`: already clean (minor — length validation is manual but harmless since it adds context-aware error messages beyond schema validation)
+
+### Phase 4 — introduce skills (DONE)
+- multimodal routing now goes through `run_multimodal_review`
+- global profile summary is already behind `run_global_profile_summary`
+- memory workflows remain skill-based (`run_memory_pipeline`, `run_memory_summary`)
+- tools stay atomic; orchestration lives in skill helpers
 
 ### Still in progress
 - full removal of legacy `/command` parsing
 - cleanup of direct command-specific assumptions inside `app.py`
-- moving multi-step workflows into explicit skills
 - docs/tests for the new tool contract
 
 ## Phase 1 — contract hardening

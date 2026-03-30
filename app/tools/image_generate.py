@@ -34,7 +34,7 @@ TOOL_DEFINITION = ToolDefinition(
 )
 
 
-def execute(arguments, **kwargs):
+def execute(arguments: dict, **kwargs) -> dict:
     from app.database import Database
 
     prompt = arguments.get("prompt", "")
@@ -89,12 +89,7 @@ def execute(arguments, **kwargs):
             "Content-Type": "application/json",
         }
 
-        response = requests.post(
-            endpoint,
-            headers=headers,
-            json=payload,
-            timeout=300,
-        )
+        response = requests.post(endpoint, headers=headers, json=payload, timeout=300)
 
         if response.status_code != 200:
             print(f"[IMAGE TOOL] API error {response.status_code}")
@@ -119,21 +114,18 @@ def execute(arguments, **kwargs):
 
         print(f"[IMAGE TOOL] Saved: {filepath}")
 
-        full_command = f"/imagine {prompt}"
         return ok_result(
             {
                 "image_path": f"static/generated_images/{filename}",
                 "model": image_model,
             },
             TOOL_DEFINITION,
-            full_command,
+            f"/imagine {prompt}",
             partner_name,
         )
 
     except Exception as e:
         print(f"[IMAGE TOOL] Exception: {str(e)}")
-        profile = Database.get_profile() or {}
-        partner_name = profile.get("partner_name", "Yuzu")
         return error_result(
             "Image generation failed. Please try again later.",
             TOOL_DEFINITION,

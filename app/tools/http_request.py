@@ -5,7 +5,6 @@ import os
 import requests
 import socket
 import ipaddress
-import re
 from urllib.parse import urlparse
 from datetime import datetime
 
@@ -14,12 +13,11 @@ from app.tools.schemas import ToolDefinition, ToolParam, error_result, ok_result
 MAX_BYTES = 2 * 1024 * 1024
 TIMEOUT = 90
 
-
 TOOL_DEFINITION = ToolDefinition(
     name="http_request",
     description="Make HTTP requests to public HTTPS endpoints. "
                 "Use for web searches, fetching data from public APIs, or retrieving content. "
-                "Only accepts public HTTPS URLs. Returns text content or downloaded images.",
+                "Only accepts public HTTPS URLs. Returns text or image content.",
     role="request_tools",
     category="integration",
     execution_mode="external",
@@ -40,6 +38,13 @@ TOOL_DEFINITION = ToolDefinition(
             default="GET",
             enum=["GET", "POST", "PUT", "DELETE", "PATCH"],
         ),
+        ToolParam(
+            name="body",
+            description="JSON-serializable body to send with POST/PUT/PATCH requests",
+            type="object",
+            required=False,
+            default=None,
+        ),
     ],
     is_terminal=True,
 )
@@ -47,73 +52,36 @@ TOOL_DEFINITION = ToolDefinition(
 
 def is_safe_public_url(url: str) -> bool:
     parsed = urlparse(url)
-
     if parsed.scheme != "https":
         return False
-
     if not parsed.hostname:
         return False
-
     try:
         ip = socket.gethostbyname(parsed.hostname)
         ip_obj = ipaddress.ip_address(ip)
-
-        if (
-            ip_obj.is_private
-            or ip_obj.is_loopback
-            or ip_obj.is_link_local
-            or ip_obj.is_reserved
-        ):
+        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_reserved:
             return False
     except Exception:
         return False
-
     return True
 
 
-def _extract_url(args_str: str) -> tuple:
-    """Extract HTTP method and URL from arguments.
-
-    Supports formats like:
-    - "https://example.com" (implicit GET)
-    - "GET https://example.com"
-    - "POST https://example.com"
-
-    Returns: (method, url) tuple, defaults to GET if no method specified.
-    """
-    args_str = args_str.strip()
-
-    method_match = re.match(r'^(GET|POST|PUT|DELETE|PATCH)\s+(.+)$', args_str, re.IGNORECASE)
-    if method_match:
-        method = method_match.group(1).upper()
-        url = method_match.group(2).strip()
-        return method, url
-
-    return "GET", args_str
-
-
-def get_media_dir():
+def _get_media_dir():
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     media_dir = os.path.join(project_root, "static", "media")
     os.makedirs(media_dir, exist_ok=True)
     return media_dir
 
 
-def execute(arguments, **kwargs):
+def execute(arguments: dict, **kwargs) -> dict:
     from app.database import Database
 
     profile = Database.get_profile() or {}
     partner_name = profile.get("partner_name", "Yuzu")
 
-    if isinstance(arguments, dict):
-        args_str = arguments.get("url", "").strip()
-    else:
-        args_str = str(arguments).strip()
-
-    method, url = _extract_url(args_str)
-
-    if isinstance(arguments, dict) and arguments.get("method"):
-        method = arguments["method"].upper()
+    url = (arguments.get("url") or "").strip()
+    method = (arguments.get("method") or "GET").strip().upper()
+    body = arguments.get("body")
 
     full_command = f"/request {method} {url}" if method != "GET" else f"/request {url}"
 
@@ -129,21 +97,16 @@ def execute(arguments, **kwargs):
         return error_result(
             "Unsafe or invalid URL (HTTPS public endpoints only)",
             TOOL_DEFINITION,
-            f"/request {args_str}",
+            full_command,
             partner_name,
         )
 
     try:
-        if method == "POST":
-            resp = requests.post(url, timeout=TIMEOUT, stream=True)
-        elif method == "PUT":
-            resp = requests.put(url, timeout=TIMEOUT, stream=True)
-        elif method == "DELETE":
-            resp = requests.delete(url, timeout=TIMEOUT, stream=True)
-        elif method == "PATCH":
-            resp = requests.patch(url, timeout=TIMEOUT, stream=True)
-        else:
-            resp = requests.get(url, timeout=TIMEOUT, stream=True)
+        req_kwargs = {"timeout": TIMEOUT, "stream": True}
+        if body is not None and method in ("POST", "PUT", "PATCH"):
+            req_kwargs["json"] = body
+
+        resp = getattr(requests, method.lower())(url, **req_kwargs)
 
         content = b""
         for chunk in resp.iter_content(8192):
@@ -160,8 +123,7 @@ def execute(arguments, **kwargs):
         size = len(content)
 
         if content_type.startswith("image/"):
-            media_dir = get_media_dir()
-
+            media_dir = _get_media_dir()
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             ext = content_type.split("/")[-1].split(";")[0]
             filename = f"{timestamp}.{'jpg' if ext == 'jpeg' else ext}"
@@ -170,12 +132,10 @@ def execute(arguments, **kwargs):
             with open(filepath, "wb") as f:
                 f.write(content)
 
-            web_path = f"static/media/{filename}"
-
             return ok_result(
                 {
                     "type": "image",
-                    "path": web_path,
+                    "path": f"static/media/{filename}",
                     "content_type": content_type,
                     "size_bytes": size,
                 },

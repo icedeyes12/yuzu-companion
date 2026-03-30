@@ -4,7 +4,6 @@
 import os
 import threading
 import re
-import json
 from datetime import datetime
 from typing import Dict
 from app.database import Database
@@ -12,16 +11,31 @@ from app.providers import get_ai_manager, reload_ai_manager
 from app.tools import multimodal_tools
 from app.tools.registry import execute_tool, get_tool_role, TOOL_ROLE_MAP, get_tool_definitions
 from app.tools.schemas import GenerateResult
-from app.skills import run_memory_pipeline, run_memory_summary, run_session_naming, run_tool_synthesis
+from app.skills import run_memory_pipeline, run_memory_summary, run_multimodal_review, run_session_naming, run_tool_synthesis
 from app.skills.multimodal_review import (
-    attach_generated_image_to_messages as review_attach_generated_image_to_messages,
-    cache_images_from_message as review_cache_images_from_message,
-    extract_prompt_from_markdown_image as review_extract_prompt_from_markdown_image,
-    is_model_using_markdown_image_shortcut as review_is_model_using_markdown_image_shortcut,
-    load_generated_image_base64 as review_load_generated_image_base64,
-    parse_image_result_from_formatted as review_parse_image_result_from_formatted,
-    prepare_multimodal_turn as review_prepare_multimodal_turn,
+    cache_images_from_message as _review_cache_images,
+    extract_prompt_from_markdown_image as _review_extract_prompt,
+    is_model_using_markdown_image_shortcut as _review_is_markdown_shortcut,
+    load_generated_image_base64 as _review_load_base64,
+    parse_image_result_from_formatted as _review_parse_img,
 )
+
+# Backward-compat wrappers kept for internal callers until the legacy path is fully retired.
+def _is_model_using_markdown_image_shortcut(response_text):
+    return _review_is_markdown_shortcut(response_text)
+
+def _extract_prompt_from_markdown_image(response_text):
+    return _review_extract_prompt(response_text)
+
+def _parse_image_result_from_formatted(formatted_result):
+    return _review_parse_img(formatted_result)
+
+def _load_generated_image_base64(img_path):
+    return _review_load_base64(img_path)
+
+def _cache_images_from_message(user_message):
+    return _review_cache_images(user_message)
+
 # ---------------------------------------------------------------------------
 # Persistent visual context buffer (per-session, runtime-only)
 # Stores the last processed image as base64 for N follow-up turns so the
@@ -72,76 +86,6 @@ def _is_image_generation_tool(command_name):
     """Check if the command is for image generation."""
     return command_name in ("imagine", "image_generate")
 
-def _parse_image_result_from_formatted(formatted_result):
-    """
-    Parse image path from formatted tool result.
-    
-    Args:
-        formatted_result: Formatted tool result string with header
-    
-    Returns:
-        str: Image path if found, None otherwise
-    """
-    try:
-        # Extract image src from markdown contract
-        import re
-        m = re.search(r'src="(static/generated_images/[^"]+)"', formatted_result)
-        if m:
-            return m.group(1)
-    except Exception:
-        pass
-    return None
-
-def _load_generated_image_base64(img_path):
-    """Load a generated image and return base64 + mime for vision model."""
-    try:
-        import base64
-        if not os.path.exists(img_path):
-            print(f"[Vision2nd] Image file not found: {img_path}")
-            return None, None
-        with open(img_path, 'rb') as f:
-            img_data = f.read()
-        mime_type = 'image/png' if img_path.endswith('.png') else 'image/jpeg'
-        img_b64 = base64.b64encode(img_data).decode('utf-8')
-        return img_b64, mime_type
-    except Exception as e:
-        print(f"[Vision2nd] Failed to load image: {e}")
-        return None, None
-
-
-def _detect_command(response_text):
-    """
-    Detect if the response starts with a tool command on the first line.
-    
-    Returns:
-        dict: {"command": str, "args": str, "full_command": str} if command detected
-        None: if no command on first line or invalid format
-    """
-    if not response_text or not response_text.strip():
-        return None
-    
-    # Split into lines
-    lines = response_text.split('\n')
-    first_line = lines[0].strip()
-    
-    # Check if first line starts with /
-    if not first_line.startswith('/'):
-        return None
-    
-    # Parse command
-    parts = first_line.split(None, 1)  # Split on first whitespace
-    command = parts[0]  # e.g., "/request"
-    args = parts[1] if len(parts) > 1 else ""
-    
-    # Extract tool name (remove /)
-    tool_name = command[1:]  # Remove leading /
-    
-    return {
-        "command": tool_name,
-        "args": args,
-        "full_command": first_line
-    }
-
 def _is_tool_markdown(response_text):
     """True when response is a formatted tool markdown contract."""
     if not response_text:
@@ -155,114 +99,18 @@ def _is_tool_markdown(response_text):
 # Pattern: ![alt](static/.../something.png) or ![alt](uploads/...)
 # This is NOT the same as a tool contract — it's raw text output.
 # ----------------------------------------------------------------------
-def _is_model_using_markdown_image_shortcut(response_text):
-    """Detect if model is outputting markdown image syntax instead of /imagine tool call."""
-    if not response_text:
-        return False
-    # Match markdown image syntax that points to local generated/uploaded images
-    # Exclude tool contracts (which use <details>) and URLs (external images)
-    import re
-    md_img_pattern = re.compile(r'!\[[^\]]*\]\((static/|uploads/|generated_images/)[^)]+\)')
-    return bool(md_img_pattern.search(response_text))
-
-def _extract_prompt_from_markdown_image(response_text):
-    """If model outputs a markdown image shortcut, extract the path for logging."""
-    import re
-    m = re.search(r'!\[[^\]]*\]\(([^)]+)\)', response_text)
-    return m.group(1) if m else None
-
-def _extract_tool_role(response_text):
-    """Extract tool role from <summary>🔧 role</summary> in a markdown contract."""
-    if not response_text:
-        return None
-    import re
-    m = re.search(r'<summary>🔧\s*(\S+)</summary>', response_text)
-    return m.group(1) if m else None
-
-def _extract_command_from_markdown(content):
-    """Extract the original /command line from a tool markdown contract.
-
-    The contract format (from build_markdown_contract) stores the command
-    inside a bash code block with the executor prompt:
-        ```bash
-        Yuzu$ /command args
-        ```
-
-    The regex matches ``<prompt>$ /command ...`` up to the closing
-    code fence.  Returns the command string (e.g. "/request https://example.com")
-    or the original content unchanged when extraction fails.
-    """
-    if not content:
-        return content
-    # Match: ```bash\n<executor>$ /<command line>\n``` — single-line command
-    m = re.search(r'```bash\n\S+\$\s*(/[^\n]+)\n```', content)
-    if m:
-        return m.group(1).strip()
-    return content
-
-def _execute_command_tool(command_info, session_id=None):
-    """
-    Execute a tool based on command detection.
-    
-    Args:
-        command_info: dict from _detect_command()
-        session_id: current session ID
-    
-    Returns:
-        tuple: (tool_name, formatted_markdown_contract)
-    """
-    tool_name = command_info["command"]
-    args_str = command_info["args"]
-    
-    print(f"[COMMAND] Detected command: /{tool_name} {args_str}")
-    
-    # Prepare arguments based on tool type
-    if tool_name == "imagine":
-        # Map to image_generate tool for execution
-        exec_tool_name = "image_generate"
-        args = {"prompt": args_str}
-    elif tool_name == "request":
-        exec_tool_name = "request"
-        args = {"url": args_str}
-    elif tool_name in ("memory_search", "web_search", "weather"):
-        exec_tool_name = tool_name
-        # Parse arguments as JSON if possible, otherwise use as query
-        try:
-            args = json.loads(args_str) if args_str else {}
-        except json.JSONDecodeError:
-            args = {"query": args_str} if args_str else {}
-    else:
-        # Generic argument handling
-        exec_tool_name = tool_name
-        args = {"query": args_str} if args_str else {}
-    
-    # Execute the tool via registry — returns formatted markdown contract
-    result = execute_tool(exec_tool_name, args, session_id=session_id)
-    
-    return exec_tool_name, result
-
 def _load_and_attach_generated_image(img_path, messages, session_id):
-    """
-    Load a generated image file, encode as base64, and attach to messages.
-    Also stores visual context for potential follow-up questions.
-    
-    Returns: True if successful, False otherwise
-    """
+    """Load a generated image, encode as base64, attach to messages and store visual context."""
     try:
         import base64
         if not os.path.exists(img_path):
             print(f"[IMAGE TOOL] Image file not found: {img_path}")
             return False
-            
         with open(img_path, 'rb') as f:
             img_data = f.read()
         img_b64 = base64.b64encode(img_data).decode('utf-8')
         mime_type = 'image/png' if img_path.endswith('.png') else 'image/jpeg'
-        
-        # Store visual context for potential follow-up questions
         _store_visual_context(session_id, img_b64, mime_type)
-        
-        # Append image to messages for vision model
         messages.append({
             "role": "user",
             "content": [
@@ -276,53 +124,15 @@ def _load_and_attach_generated_image(img_path, messages, session_id):
         print(f"[IMAGE TOOL] Failed to load generated image: {e}")
         return False
 
+
+
+
 class UserContext:
-    def __init__(self):
-        pass
-        
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
-
-def _cache_images_from_message(user_message):
-    """Extract image URLs from a user message, download them to the local
-    cache, and return the list of cached file paths."""
-    cached_paths = []
-    # Check for uploaded images first
-    if "UPLOADED_IMAGES:" in user_message and "IMAGE_UPLOAD:" in user_message:
-        for line in user_message.split('\n'):
-            if line.startswith("IMAGE_UPLOAD:"):
-                path = line.replace("IMAGE_UPLOAD:", "").strip()
-                if os.path.isfile(path):
-                    cached_paths.append(path)
-        return cached_paths
-
-    # Markdown image URLs
-    md_pattern = re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
-    for match in md_pattern.finditer(user_message):
-        source = match.group(1)
-        # Handle local file paths directly
-        if source.startswith('static/') or source.startswith('uploads/') or source.startswith('generated_images/'):
-            local_path = source if source.startswith('static/') else f"static/{source}"
-            if os.path.isfile(local_path):
-                cached_paths.append(local_path)
-                print(f"[Vision] Local image found → {local_path}")
-        else:
-            cached = multimodal_tools.download_image_to_cache(source)
-            if cached:
-                cached_paths.append(cached)
-
-    # Bare image URLs
-    if not cached_paths:
-        urls = multimodal_tools.extract_image_urls(user_message)
-        for url in urls[:3]:
-            cached = multimodal_tools.download_image_to_cache(url)
-            if cached:
-                cached_paths.append(cached)
-
-    return cached_paths
+        return False
 
 
 def handle_user_message(user_message, interface="terminal"):
@@ -413,43 +223,6 @@ def handle_user_message(user_message, interface="terminal"):
                 if img_b64:
                     img_context = [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}}]
                     print("[TOOL SYNC] Attached generated image to synthesis pass")
-
-            second_text = run_tool_synthesis(
-                profile,
-                interface,
-                session_id,
-                image_content_for_context=img_context,
-            )
-            second_clean = re.sub(r'\s*\[?\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]?\s*$', '', second_text).strip()
-
-            if second_clean:
-                Database.add_message('assistant', second_clean, session_id=session_id)
-                final_response = tool_md + "\n\n" + second_clean
-            else:
-                final_response = tool_md
-
-            run_session_naming(session_id, active_session)
-            if should_summarize_memory(profile, user_message, session_id):
-                run_memory_summary(profile, user_message, final_response, session_id)
-            _trigger_memory_pipeline(session_id)
-            return final_response
-
-        # LEGACY: Fallback to command-string detection
-        cmd_info = _detect_command(raw_ai_response)
-
-        if cmd_info:
-            exec_tool_name, tool_output = _execute_command_tool(cmd_info, session_id=session_id)
-            tool_md = tool_output.get("markdown", str(tool_output)) if isinstance(tool_output, dict) else str(tool_output)
-            tool_role = get_tool_role(exec_tool_name)
-
-            Database.add_message(tool_role, tool_md, session_id=session_id)
-
-            img_path = _parse_image_result_from_formatted(tool_md)
-            img_context = None
-            if img_path:
-                img_b64, mime = _load_and_attach_generated_image(img_path, [], session_id)
-                if img_b64:
-                    img_context = [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}}]
 
             second_text = run_tool_synthesis(
                 profile,
@@ -565,80 +338,6 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
             if not full_response_clean:
                 full_response_clean = "I'm having trouble responding right now. Please try again."
             
-            # PHASE 2: Tool detection — ONLY in handle_user_message
-            cmd_info = _detect_command(full_response_clean)
-            
-            if cmd_info:
-                # TOOL DETECTED: Execute via registry
-                exec_tool_name, tool_output = _execute_command_tool(cmd_info, session_id=session_id)
-                tool_role = get_tool_role(exec_tool_name)
-                
-                # Save tool output as tool message
-                tool_md = tool_output.get("markdown", str(tool_output))
-                Database.add_message(tool_role, tool_md, session_id=session_id)
-
-                # Yield raw tool output first
-                yield "\n\n" + tool_md
-
-                # PHASE 3: SYNTHESIS PASS — 2nd LLM call with tool result
-                img_path = _parse_image_result_from_formatted(tool_md)
-                img_context = None
-                if img_path:
-                    img_b64, mime = _load_and_attach_generated_image(img_path, [], session_id)
-                    if img_b64:
-                        img_context = [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}}]
-
-                second_result = generate_ai_response(
-                    profile, "", interface, session_id,
-                    image_content_for_context=img_context,
-                )
-
-                is_image_tool = img_context is not None
-
-                second_text = second_result if isinstance(second_result, str) else (second_result or "" if second_result else "")
-
-                if second_text and second_text.strip():
-                    second_clean = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', second_text.strip())
-                    Database.add_message('assistant', second_clean, session_id=session_id)
-                    if is_image_tool:
-                        yield tool_md + "\n\n" + second_clean
-                    else:
-                        yield second_clean
-                    final_response = second_clean
-                if img_path:
-                    # Load image and encode as base64 for vision model
-                    img_b64, mime = _load_generated_image_base64(img_path)
-                    if img_b64:
-                        second_reply = run_tool_synthesis(
-                            profile,
-                            interface,
-                            session_id,
-                            image_content_for_context=[{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}}],
-                        )
-                    else:
-                        second_reply = None
-                else:
-                    second_reply = None
-
-                if second_reply and second_reply.strip():
-                    second_clean = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', second_reply).strip()
-                    Database.add_message('assistant', second_clean, session_id=session_id)
-                    yield "\n\n" + second_clean
-                    final_response = second_clean
-
-                run_session_naming(session_id, active_session)
-                if should_summarize_memory(profile, user_message, session_id):
-                    run_memory_summary(profile, user_message, final_response, session_id)
-                _trigger_memory_pipeline(session_id)
-                return
-            
-            else:
-                # NO TOOL: Save as assistant message
-                Database.add_message('assistant', full_response_clean, session_id=session_id)
-        
-        run_session_naming(session_id, active_session)
-        
-        if should_summarize_memory(profile, user_message, session_id):
             run_memory_summary(profile, user_message, full_response, session_id)
 
         _trigger_memory_pipeline(session_id)
@@ -1273,42 +972,15 @@ Your speaking style and personality are defined above.
     return messages
 
 def _handle_vision_processing(messages, user_message, current_provider, current_model, image_content_for_context=None):
-    """Handle vision model switching and message formatting.
-    
-    Force switches to vision model when image_content_for_context is present
-    (i.e., second pass after image_tools generated a response).
-    """
-    # Force vision on second pass — image_tools output means we need vision model
-    force_vision = image_content_for_context is not None
-
-    if force_vision:
-        vision_provider, vision_model = multimodal_tools.get_best_vision_provider()
-        if vision_provider and vision_model:
-            print(f"[Vision] Force switching to {vision_provider}/{vision_model} for image_tools output")
-            # Inject image into an empty user message so vision model can see it
-            messages.append({
-                "role": "user",
-                "content": [{
-                    "type": "text",
-                    "text": "Here's the generated image for your reference."
-                }] + image_content_for_context
-            })
-            return messages, vision_provider, vision_model
-
-    should_switch_provider = multimodal_tools.should_use_vision(user_message, current_provider, current_model)
-
-    if should_switch_provider:
-        vision_provider, vision_model = multimodal_tools.get_best_vision_provider()
-        if vision_provider and vision_model:
-            current_provider = vision_provider
-            current_model = vision_model
-            
-            vision_messages = multimodal_tools.format_vision_message(user_message)
-            # Replace last user message with vision format
-            if messages and messages[-1]['role'] == 'user':
-                messages = messages[:-1] + vision_messages
-    
-    return messages, current_provider, current_model
+    """Handle multimodal routing through the dedicated skill workflow."""
+    review = run_multimodal_review(
+        messages,
+        user_message,
+        current_provider,
+        current_model,
+        image_content_for_context=image_content_for_context,
+    )
+    return review["messages"], review["provider"], review["model"]
 
 def _handle_image_generation(user_message, session_id):
     """Handle direct image generation requests"""
@@ -1423,11 +1095,6 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
         
         # Case: plain text response
         if isinstance(ai_response, str) and ai_response.strip():
-            cmd_info = _detect_command(ai_response)
-            if cmd_info:
-                exec_tool_name, tool_result = _execute_command_tool(cmd_info, session_id=session_id)
-                yield tool_result
-                return
             yield ai_response
             return
         
