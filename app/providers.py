@@ -840,7 +840,7 @@ class AIProviderManager:
         if provider_name not in self.providers:
             return None
         
-        provider = self.providers[provider_name]
+        provider = self.providers[provider_name]            start_time = time.time()
         start_time = time.time()
         response = provider.send_message(messages, model, **kwargs)
         response_time = time.time() - start_time
