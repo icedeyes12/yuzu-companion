@@ -16,7 +16,7 @@ The tool layer currently works, but it mixes several concerns:
 - dispatch
 - validation
 - markdown rendering
-- legacy `/command` compatibility
+- legacy `/command` compatibility (now removed from app flow)
 - some tool-specific business logic
 
 That is fine short-term, but it becomes expensive to maintain as the tool set grows.
@@ -47,7 +47,7 @@ That is fine short-term, but it becomes expensive to maintain as the tool set gr
 - tools stay atomic; orchestration lives in skill helpers
 
 ### Still in progress
-- full removal of legacy `/command` parsing
+- full removal of legacy `/command` parsing from codebase
 - cleanup of direct command-specific assumptions inside `app.py`
 - docs/tests for the new tool contract
 

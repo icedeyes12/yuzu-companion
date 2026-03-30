@@ -113,7 +113,7 @@ sequenceDiagram
     app.py->>Memory: trigger extraction
     alt images detected
         app.py->>Provider: vision model
-    else tool command detected
+    else tool_calls present
         app.py->>app.py: execute_tool()
     else normal message
         app.py->>Provider: generate_ai_response()
