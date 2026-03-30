@@ -2,7 +2,8 @@
 # DESCRIPTION: Tool for storing memories to vector database
 
 from datetime import datetime
-from app.tools.schemas import ToolDefinition, ToolParam, ok_result, error_result
+
+from app.tools.schemas import ToolDefinition, ToolParam, error_result, ok_result
 
 
 TOOL_DEFINITION = ToolDefinition(
@@ -11,6 +12,10 @@ TOOL_DEFINITION = ToolDefinition(
                 "The system auto-classifies into categories: Identity, Preference, Interest, "
                 "Personality, Relationship, Experience, Goal, or Guideline.",
     role="memory_store_tools",
+    category="memory",
+    execution_mode="stateful",
+    aliases=["remember", "store_memory"],
+    safety_notes="Requires an active session and writes to persistent memory storage.",
     parameters=[
         ToolParam(
             name="fact",
@@ -121,7 +126,6 @@ def execute(arguments, **kwargs):
         category = _classify_category_llm(fact)
     full_command = f'/memory_store fact="{fact[:60]}" category={category}'
 
-    # Embed the fact text
     fact_embed_text = f"[{category}] {fact}"
     try:
         from app.memory.embedder import embed_texts as _embed
@@ -136,7 +140,6 @@ def execute(arguments, **kwargs):
             partner_name,
         )
 
-    # Check for duplicate using cosine similarity
     with get_db_session() as session:
         existing = session.query(SemanticMemory).filter(
             SemanticMemory.session_id == session_id,
@@ -168,7 +171,6 @@ def execute(arguments, **kwargs):
                 partner_name,
             )
 
-        # Insert new fact — store as blob bytes, not raw list
         new_mem = SemanticMemory(
             session_id=session_id,
             entity="User",

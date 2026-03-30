@@ -1,7 +1,7 @@
 # FILE: app/tools/memory_search.py
 # DESCRIPTION: Query structured memory - semantic, episodic, and temporal
 
-from app.tools.schemas import ToolDefinition, ToolParam, ok_result, error_result
+from app.tools.schemas import ToolDefinition, ToolParam, error_result, ok_result
 
 
 TOOL_DEFINITION = ToolDefinition(
@@ -9,6 +9,10 @@ TOOL_DEFINITION = ToolDefinition(
     description="Search the user's stored memories and facts across all categories. "
                 "Returns relevant memories ranked by relevance.",
     role="memory_search_tools",
+    category="memory",
+    execution_mode="stateful",
+    aliases=["search_memory"],
+    safety_notes="Requires an active session and only reads memory data.",
     parameters=[
         ToolParam(
             name="query",

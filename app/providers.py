@@ -13,6 +13,7 @@ import time
 from typing import List, Dict, Optional, Generator
 from app.database import Database
 from app.tools import multimodal_tools
+from app.tools.schemas import GenerateResult, ToolCall
 
 class AIProvider:
     def __init__(self, name: str, config: Dict = None):
@@ -24,24 +25,38 @@ class AIProvider:
         raise NotImplementedError
     
     def send_message(self, messages: List[Dict], model: str, **kwargs) -> Optional[str]:
-        """Send a message. Supports tools=[] kwarg for function calling.
-        
-        Returns:
-            str: Natural text response. Tool execution is handled by caller
-                 via parse_tool_calls() on the raw response.
-        """
+        """Send a text response. Structured tool calls are handled by the manager."""
         raise NotImplementedError
     
     def send_message_streaming(self, messages: List[Dict], model: str, **kwargs) -> Generator[str, None, None]:
         raise NotImplementedError
     
     def parse_tool_calls(self, raw_response) -> List[Dict]:
-        """Parse tool_calls from a provider-specific response object.
-
-        Returns list of {"name": str, "arguments": dict, "id": str} or empty list.
-        Override per-provider since response shapes differ.
-        """
-        return []
+        """Parse OpenAI-compatible tool_calls from a raw provider response."""
+        if not isinstance(raw_response, dict):
+            return []
+        try:
+            message = raw_response.get('choices', [{}])[0].get('message', {})
+            tool_calls = message.get('tool_calls', []) or []
+            results = []
+            for tc in tool_calls:
+                fn = tc.get('function', {})
+                arguments = fn.get('arguments', {})
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except Exception:
+                        arguments = {}
+                elif not isinstance(arguments, dict):
+                    arguments = {}
+                results.append({
+                    'id': tc.get('id', ''),
+                    'name': fn.get('name', ''),
+                    'arguments': arguments,
+                })
+            return results
+        except Exception:
+            return []
     
     def test_connection(self) -> bool:
         try:
@@ -88,7 +103,7 @@ class OllamaProvider(AIProvider):
             "qwen3-vl:235b-cloud",
             "qwen3-coder:480b-cloud",
             "kimi-k2:1t-cloud",
-	    "kimi-k2.5:cloud",
+    "kimi-k2.5:cloud",
             "gpt-oss:120b-cloud",
             "gpt-oss:20b-cloud",
             "deepseek-v3.1:671b-cloud"
@@ -241,6 +256,12 @@ class CerebrasProvider(AIProvider):
             # Normalize messages (convert custom tool roles to assistant)
             messages = self._normalize_messages(messages)
 
+            if self.supports_vision(model) and messages:
+                last_user_message = self._get_last_user_message(messages)
+                if last_user_message and multimodal_tools.has_images(last_user_message):
+                    vision_messages = self.format_vision_message(last_user_message)
+                    messages = self._replace_last_user_message(messages, last_user_message, vision_messages)
+            
             temperature = kwargs.get('temperature', 0.69)
             max_tokens = kwargs.get('max_tokens', 4096)
             top_p = kwargs.get('top_p', 0.7)
@@ -262,11 +283,11 @@ class CerebrasProvider(AIProvider):
                 "typical_p": typical_p,
                 "stream": False
             }
+            tools = kwargs.get('tools')
+            if tools:
+                payload["tools"] = tools
 
-            # Debug: Log summary (not full payload)
-            # Count only new messages (not historical context from DB)
-            sum(1 for m in messages if m.get('role') == 'user' and m == messages[-1])
-            print(f"[Cerebras] {model} | new_msg=1 | max_tokens={max_tokens}")
+            print(f"[Chutes] {model} | max_tokens={max_tokens}")
 
             response = requests.post(
                 self.base_url,
@@ -275,41 +296,48 @@ class CerebrasProvider(AIProvider):
                 timeout=kwargs.get('timeout', 120)
             )
 
-            # Debug: Log response
             if response.status_code != 200:
-                print(f"[Cerebras] Error {response.status_code}: {response.text[:200]}")
+                print(f"[Chutes] Error {response.status_code}: {response.text[:200]}")
             else:
-                print(f"[Cerebras] OK {response.status_code}")
+                print(f"[Chutes] OK {response.status_code}")
 
             if response.status_code == 200:
                 result = response.json()
                 return result['choices'][0]['message']['content'].strip()
             else:
+                print(f"[ERROR] Chutes API error {response.status_code}: {response.text}")
                 return None
                 
-        except Exception:
+        except Exception as e:
+            print(f"[ERROR] Chutes send_message exception: {str(e)}")
             return None
     
     def send_message_streaming(self, messages: List[Dict], model: str, **kwargs) -> Generator[str, None, None]:
         if not self.api_key or model not in self.available_models:
             yield ""
             return
-
+        
         try:
-            # Normalize messages (convert custom tool roles to assistant)
-            messages = self._normalize_messages(messages)
-
-            temperature = kwargs.get('temperature', 0.69)
+            # Normalize messages for Chutes API (system message must be first)
+            messages = self._normalize_messages_for_chutes(messages)
+            
+            if self.supports_vision(model) and messages:
+                last_user_message = self._get_last_user_message(messages)
+                if last_user_message and multimodal_tools.has_images(last_user_message):
+                    vision_messages = self.format_vision_message(last_user_message)
+                    messages = self._replace_last_user_message(messages, last_user_message, vision_messages)
+            
+            temperature = kwargs.get('temperature', 0.73)
             max_tokens = kwargs.get('max_tokens', 4096)
-            top_p = kwargs.get('top_p', 0.7)
-            top_k = kwargs.get('top_k', 40)
-            typical_p = kwargs.get('typical_p', 0.8)
-
+            top_p = kwargs.get('top_p', 0.9)
+            top_k = kwargs.get('top_k', 45)
+            typical_p = kwargs.get('typical_p', 0.85)
+            
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json"
             }
-
+            
             payload = {
                 "model": model,
                 "messages": messages,
@@ -320,7 +348,7 @@ class CerebrasProvider(AIProvider):
                 "typical_p": typical_p,
                 "stream": True
             }
-
+            
             response = requests.post(
                 self.base_url,
                 headers=headers,
@@ -334,6 +362,8 @@ class CerebrasProvider(AIProvider):
                     if line:
                         try:
                             if line.startswith(b'data: '):
+                                if line == b'data: [DONE]':
+                                    break
                                 json_data = json.loads(line[6:])
                                 if 'choices' in json_data and len(json_data['choices']) > 0:
                                     delta = json_data['choices'][0].get('delta', {})
@@ -342,9 +372,11 @@ class CerebrasProvider(AIProvider):
                         except (json.JSONDecodeError, KeyError):
                             continue
             else:
+                print(f"[ERROR] Chutes streaming API error {response.status_code}: {response.text}")
                 yield ""
                 
         except Exception as e:
+            print(f"[ERROR] Chutes send_message_streaming exception: {str(e)}")
             yield f"Error: {str(e)}"
 
 class OpenRouterProvider(AIProvider):
@@ -839,12 +871,46 @@ class AIProviderManager:
     def send_message(self, provider_name: str, model: str, messages: List[Dict], **kwargs) -> Optional[str]:
         if provider_name not in self.providers:
             return None
-        
-        provider = self.providers[provider_name]            start_time = time.time()
+
+        provider = self.providers[provider_name]
         start_time = time.time()
+        tools = kwargs.get('tools')
+
+        if tools:
+            raw_response = self.send_message_full(provider_name, model, messages, **kwargs)
+            response_time = time.time() - start_time
+            if not raw_response:
+                print(f"AI service failed after {response_time:.1f}s")
+                return None
+
+            message = raw_response.get('choices', [{}])[0].get('message', {})
+            content = message.get('content', '') or ''
+            tool_calls = provider.parse_tool_calls(raw_response)
+            if tool_calls:
+                result = GenerateResult(
+                    text=content.strip(),
+                    tool_calls=[
+                        ToolCall(
+                            name=call.get('name', ''),
+                            arguments=call.get('arguments', {}) or {},
+                            id=call.get('id', ''),
+                        )
+                        for call in tool_calls
+                    ],
+                )
+                print(f"Response time: {response_time:.1f}s")
+                return result
+
+            if content.strip():
+                print(f"Response time: {response_time:.1f}s")
+                return content.strip()
+
+            print(f"AI service failed after {response_time:.1f}s")
+            return None
+
         response = provider.send_message(messages, model, **kwargs)
         response_time = time.time() - start_time
-        
+
         if response:
             print(f"Response time: {response_time:.1f}s")
             return response
@@ -877,20 +943,9 @@ class AIProviderManager:
         """
         if provider_name not in self.providers:
             return None
+
         provider = self.providers[provider_name]
-        start_time = time.time()
         try:
-            # Call the provider's raw send_message path but return full response
-            result = provider.send_message(messages, model, **kwargs)
-            # Providers return str, not full dict — we need to return the raw response
-            # So we call requests directly here for full control
-            import requests as _req
-            headers = {
-                "Authorization": f"Bearer {provider.api_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/icedeyes12/yuzu-companion",
-                "X-Title": "Yuzu-Companion"
-            }
             temperature = kwargs.get('temperature', 0.73)
             max_tokens = kwargs.get('max_tokens', 4096)
             payload = {
@@ -903,12 +958,28 @@ class AIProviderManager:
             tools = kwargs.get('tools')
             if tools:
                 payload["tools"] = tools
-            resp = _req.post(
-                provider.base_url,
-                headers=headers,
-                json=payload,
-                timeout=kwargs.get('timeout', 180),
-            )
+
+            if provider_name == "ollama":
+                resp = requests.post(
+                    f"{provider.base_url}/api/chat",
+                    json=payload,
+                    timeout=kwargs.get('timeout', 180),
+                )
+            else:
+                headers = {
+                    "Authorization": f"Bearer {provider.api_key}",
+                    "Content-Type": "application/json",
+                }
+                if provider_name in {"openrouter", "chutes"}:
+                    headers["HTTP-Referer"] = "https://github.com/icedeyes12/yuzu-companion"
+                    headers["X-Title"] = "Yuzu-Companion"
+                resp = requests.post(
+                    provider.base_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=kwargs.get('timeout', 180),
+                )
+
             if resp.status_code == 200:
                 return resp.json()
             print(f"[send_message_full] {provider_name} error {resp.status_code}")

@@ -361,13 +361,27 @@ class ToolDefinition:
 Single source of truth for tool dispatch. Lazy-loads `TOOL_DEFINITIONS` from each tool module on first access.
 
 **Key exports:**
-- `get_tool_definitions()` — returns list of all registered `ToolDefinition` dicts
-- `get_tool_definition(name)` — returns schema for a specific tool
-- `execute_tool(name, arguments, session_id)` — dispatch and return markdown contract
-- `format_tool_result()` — produces structured `GenerateResult(text, tool_calls)`
+- `get_tool_definitions()` — returns list of all registered canonical `ToolDefinition` objects
+- `get_tool_definition(name)` — returns schema for a specific tool or alias
+- `execute_tool(name, arguments, session_id)` — validates, dispatches, and returns a normalized tool result dict
 - `get_tool_role(name)` — maps tool name to DB role string
 
-### Tool Dispatch Flow
+### Structured Tool Result Contract
+
+Tool execution now returns a normalized dictionary with this shape:
+
+```python
+{
+    "ok": True,
+    "data": {...},
+    "markdown": "<details>...</details>",
+    "meta": {...}
+}
+```
+
+Errors use the same shape with `ok=False` and an `error` string. The registry validates arguments before execution and wraps legacy string/markdown results when needed.
+
+### Provider Tool Calling Flow
 
 ```mermaid
 flowchart TD
@@ -378,7 +392,7 @@ flowchart TD
     D -->|No| F[Plain text response]
     C --> G[execute_tool name, args]
     E --> G
-    G --> H[Markdown contract]
+    G --> H[Normalized tool result]
     H --> I{Terminal tool?}
     I -->|Yes| J[Return result]
     I -->|No| K[Synthesis pass]
@@ -420,7 +434,12 @@ Yuzu$ /imagine a cute cat
 
 ### Tool Modules
 
-Each tool module exports a `TOOL_DEFINITION` dict alongside its `execute()` function:
+Each tool module exports a `TOOL_DEFINITION` object alongside its `execute()` function. Tool definitions now support:
+- canonical names and aliases
+- categories and execution modes
+- optional return schemas
+- safety notes
+- argument validation before execution
 
 | Module | Purpose |
 |--------|---------|

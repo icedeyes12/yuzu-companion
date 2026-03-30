@@ -1,19 +1,27 @@
 # FILE: app/app.py
 # DESCRIPTION: Main application entrypoint
 
-import requests
 import os
 import threading
 import re
 import json
-import traceback
 from datetime import datetime
-from typing import Dict, Optional, List
+from typing import Dict
 from app.database import Database
 from app.providers import get_ai_manager, reload_ai_manager
 from app.tools import multimodal_tools
 from app.tools.registry import execute_tool, get_tool_role, TOOL_ROLE_MAP, get_tool_definitions
 from app.tools.schemas import GenerateResult
+from app.skills import run_memory_pipeline, run_memory_summary, run_session_naming, run_tool_synthesis
+from app.skills.multimodal_review import (
+    attach_generated_image_to_messages as review_attach_generated_image_to_messages,
+    cache_images_from_message as review_cache_images_from_message,
+    extract_prompt_from_markdown_image as review_extract_prompt_from_markdown_image,
+    is_model_using_markdown_image_shortcut as review_is_model_using_markdown_image_shortcut,
+    load_generated_image_base64 as review_load_generated_image_base64,
+    parse_image_result_from_formatted as review_parse_image_result_from_formatted,
+    prepare_multimodal_turn as review_prepare_multimodal_turn,
+)
 # ---------------------------------------------------------------------------
 # Persistent visual context buffer (per-session, runtime-only)
 # Stores the last processed image as base64 for N follow-up turns so the
@@ -406,13 +414,12 @@ def handle_user_message(user_message, interface="terminal"):
                     img_context = [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}}]
                     print("[TOOL SYNC] Attached generated image to synthesis pass")
 
-            second_result = generate_ai_response(
-                profile, "", interface, session_id,
+            second_text = run_tool_synthesis(
+                profile,
+                interface,
+                session_id,
                 image_content_for_context=img_context,
-                tools=None,
             )
-
-            second_text = second_result.text if isinstance(second_result, GenerateResult) else (second_result or "")
             second_clean = re.sub(r'\s*\[?\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]?\s*$', '', second_text).strip()
 
             if second_clean:
@@ -421,9 +428,9 @@ def handle_user_message(user_message, interface="terminal"):
             else:
                 final_response = tool_md
 
-            auto_name_session_if_needed(session_id, active_session)
+            run_session_naming(session_id, active_session)
             if should_summarize_memory(profile, user_message, session_id):
-                summarize_memory(profile, user_message, final_response, session_id)
+                run_memory_summary(profile, user_message, final_response, session_id)
             _trigger_memory_pipeline(session_id)
             return final_response
 
@@ -444,13 +451,12 @@ def handle_user_message(user_message, interface="terminal"):
                 if img_b64:
                     img_context = [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}}]
 
-            second_result = generate_ai_response(
-                profile, "", interface, session_id,
+            second_text = run_tool_synthesis(
+                profile,
+                interface,
+                session_id,
                 image_content_for_context=img_context,
-                tools=None,
             )
-
-            second_text = second_result.text if isinstance(second_result, GenerateResult) else (second_result or "")
             second_clean = re.sub(r'\s*\[?\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]?\s*$', '', second_text).strip()
 
             if second_clean:
@@ -459,18 +465,18 @@ def handle_user_message(user_message, interface="terminal"):
             else:
                 final_response = tool_md
 
-            auto_name_session_if_needed(session_id, active_session)
+            run_session_naming(session_id, active_session)
             if should_summarize_memory(profile, user_message, session_id):
-                summarize_memory(profile, user_message, final_response, session_id)
+                run_memory_summary(profile, user_message, final_response, session_id)
             _trigger_memory_pipeline(session_id)
             return final_response
 
         else:
             Database.add_message('assistant', raw_ai_response, session_id=session_id)
 
-            auto_name_session_if_needed(session_id, active_session)
+            run_session_naming(session_id, active_session)
             if should_summarize_memory(profile, user_message, session_id):
-                summarize_memory(profile, user_message, raw_ai_response, session_id)
+                run_memory_summary(profile, user_message, raw_ai_response, session_id)
             _trigger_memory_pipeline(session_id)
             return raw_ai_response
 
@@ -490,66 +496,16 @@ def _trigger_memory_pipeline(session_id):
     - Decay: time-gated (once per _DECAY_INTERVAL_HOURS).
     """
     try:
-        from app.memory.extractor import should_create_episodic, calculate_emotional_weight
-        from app.memory.extractor import generate_episodic_summary, create_episodic_memory
-        from app.memory.extractor import extract_semantic_facts, upsert_semantic_memory
-        from app.memory.review import run_decay
-
-        recent = Database.get_chat_history(session_id=session_id, limit=20, recent=True)
-        if not recent:
-            return
-
-        # Extract IDs once — used for both episodic and semantic passes
-        recent_ids = [m['id'] for m in recent]
-
-        # --- Episodic: emotion gated ---
-        if should_create_episodic(recent):
-            emotional_weight = calculate_emotional_weight(recent)
-            summary = generate_episodic_summary(recent)
-            if summary:
-                importance = 0.5 + emotional_weight * 0.3
-                try:
-                    create_episodic_memory(
-                        session_id, summary, emotional_weight, importance,
-                        source_message_ids=recent_ids,
-                    )
-                except Exception as e:
-                    print(f"[WARNING] Episodic memory creation failed: {e}")
-
-        # --- Semantic: cooldown-gated lightweight regex per message ---
-        last_run = _memory_semantic_last_run.get(session_id)
-        session_memory = Database.get_session_memory(session_id)
-        msg_count = session_memory.get('message_count', 0) if session_memory else 0
-        msg_delta = msg_count - _memory_semantic_last_msg_count.get(session_id, 0)
-        time_ok = (
-            last_run is None or
-            (datetime.now() - last_run).total_seconds() >= 300  # 5 min cooldown
+        run_memory_pipeline(
+            session_id,
+            {
+                "semantic_last_run": _memory_semantic_last_run,
+                "semantic_last_msg_count": _memory_semantic_last_msg_count,
+                "last_decay_run": _last_decay_run,
+                "semantic_cooldown_msgs": _SEMANTIC_COOLDOWN_MSGS,
+                "decay_interval_hours": _DECAY_INTERVAL_HOURS,
+            },
         )
-        should_run_semantic = msg_delta >= _SEMANTIC_COOLDOWN_MSGS and time_ok
-        if should_run_semantic:
-            try:
-                facts = extract_semantic_facts(recent)
-                for fact in facts:
-                    try:
-                        upsert_semantic_memory(session_id, fact['entity'], fact['relation'], fact['target'])
-                    except (KeyError, ValueError) as e:
-                        print(f"[WARNING] Semantic fact malformed: {e}")
-                    except Exception as e:
-                        print(f"[WARNING] Semantic memory upsert failed: {e}")
-                _memory_semantic_last_run[session_id] = datetime.now()
-                _memory_semantic_last_msg_count[session_id] = msg_count
-            except Exception as e:
-                print(f"[WARNING] Per-message semantic extraction failed: {e}")
-
-        # --- Decay: time-gated (once per 6 hours) ---
-        try:
-            last_decay = _last_decay_run.get(session_id)
-            now = datetime.now()
-            if last_decay is None or (now - last_decay).total_seconds() >= _DECAY_INTERVAL_HOURS * 3600:
-                run_decay(session_id)
-                _last_decay_run[session_id] = now
-        except Exception as e:
-            print(f"[WARNING] Memory decay failed: {e}")
     except Exception as e:
         print(f"[WARNING] Memory extraction failed: {e}")
 
@@ -653,9 +609,11 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
                     # Load image and encode as base64 for vision model
                     img_b64, mime = _load_generated_image_base64(img_path)
                     if img_b64:
-                        second_reply = generate_ai_response(
-                            profile, "", interface, session_id,
-                            image_content_for_context=[{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}}]
+                        second_reply = run_tool_synthesis(
+                            profile,
+                            interface,
+                            session_id,
+                            image_content_for_context=[{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}}],
                         )
                     else:
                         second_reply = None
@@ -668,9 +626,9 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
                     yield "\n\n" + second_clean
                     final_response = second_clean
 
-                auto_name_session_if_needed(session_id, active_session)
+                run_session_naming(session_id, active_session)
                 if should_summarize_memory(profile, user_message, session_id):
-                    summarize_memory(profile, user_message, final_response, session_id)
+                    run_memory_summary(profile, user_message, final_response, session_id)
                 _trigger_memory_pipeline(session_id)
                 return
             
@@ -678,10 +636,10 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
                 # NO TOOL: Save as assistant message
                 Database.add_message('assistant', full_response_clean, session_id=session_id)
         
-        auto_name_session_if_needed(session_id, active_session)
+        run_session_naming(session_id, active_session)
         
         if should_summarize_memory(profile, user_message, session_id):
-            summarize_memory(profile, user_message, full_response, session_id)
+            run_memory_summary(profile, user_message, full_response, session_id)
 
         _trigger_memory_pipeline(session_id)
     return
@@ -1599,81 +1557,6 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
         # SAFEGUARD: Never raise, always return safe fallback
         return "Sorry, I couldn't process that. Please try again."
 
-def auto_name_session_if_needed(session_id, active_session):
-    if active_session.get('name') != 'New Chat':
-        return
-    
-    message_count = Database.get_session_messages_count(session_id)
-    
-    if message_count == 10:
-        conversation_summary = Database.get_session_conversation_summary(session_id, limit=15)
-        
-        api_keys = Database.get_api_keys()
-        openrouter_key = api_keys.get('openrouter')
-        
-        if openrouter_key:
-            name = generate_session_name_ai(conversation_summary, openrouter_key)
-            if name:
-                Database.rename_session(session_id, name)
-                return
-        
-        chat_history = Database.get_chat_history(session_id, limit=5)
-        for msg in chat_history:
-            if msg['role'] == 'user' and len(msg['content'].strip()) > 10:
-                first_msg = msg['content'].strip()[:40]
-                if len(msg['content']) > 40:
-                    first_msg += "..."
-                Database.rename_session(session_id, first_msg)
-                return
-        
-        fallback_name = f"Chat {session_id}"
-        Database.rename_session(session_id, fallback_name)
-
-def generate_session_name_ai(conversation_summary, api_key):
-    prompt = f"""Based on this conversation, create a SHORT session title (max 6 words):
-
-{conversation_summary}
-
-Reply with ONLY the title, nothing else."""
-    
-    headers = {
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/icedeyes/yuzu-companion",
-        "X-Title": "Yuzu-Session-Naming"
-    }
-    
-    try:
-        headers["Authorization"] = f"Bearer {api_key}"
-        
-        data = {
-            "model": "tngtech/deepseek-r1t2-chimera:free",
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
-            "max_tokens": 1000,
-            "temperature": 3,
-            "stream": False
-        }
-        
-        response = requests.post(
-            "https://llm.chutes.ai/v1/chat/completions",
-            headers=headers,
-            json=data,
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            name = result['choices'][0]['message']['content'].strip()
-            name = name.replace('"', '').replace("'", "").strip()
-            if len(name) > 50:
-                name = name[:50] + "..."
-            return name
-        else:
-            return None
-            
-    except Exception:
-        return None
 
 def end_session_cleanup(profile, interface="terminal", unexpected_exit=False):
     with UserContext():
@@ -1839,812 +1722,11 @@ def should_summarize_memory(profile, user_message, session_id):
 
     return False
 
-def summarize_memory(profile, user_message, ai_reply, session_id):
-    chat_history = Database.get_chat_history(session_id=session_id, limit=80)
-    
-    conversation_messages = [msg for msg in chat_history if msg['role'] in ['user', 'assistant']]
-    current_count = len(conversation_messages)
-    
-    if not chat_history:
-        return False
-    
-    conversation_text = ""
-    for msg in chat_history[-100:]:
-        role = "User" if msg["role"] == "user" else "AI"
-        conversation_text += f"{role}: {msg['content']}\n"
-    
-    analysis_prompt = f"""
-Write ONE paragraph summarizing the current conversation context in this session.
-
-Recent Conversation:
-{conversation_text}
-
-Current Interaction:
-User: {user_message}
-AI: {ai_reply}
-
-Write one concise paragraph (3-5 sentences) summarizing what this session is about, 
-the current topics being discussed, and the general context. No lists, no bullet points, 
-just a natural paragraph.
-"""
-    
-    api_keys = Database.get_api_keys()
-    openrouter_key = api_keys.get('openrouter')
-    
-    if not openrouter_key:
-        return False
-    
-    context_paragraph = session_context_analysis(analysis_prompt, openrouter_key)
-    
-    if context_paragraph:
-        memory_update = {
-            "session_context": context_paragraph.strip(),
-            "last_summarized": datetime.now().isoformat(),
-            "last_summary_count": current_count,
-            "last_message_time": datetime.now().isoformat(),
-        }
-        
-        Database.update_session_memory(session_id, memory_update)
-
-        # Also sync to structured DB so both systems stay aligned
-        # Note: semantic facts are already extracted by _trigger_memory_pipeline()
-        # to avoid duplicate LLM calls. Only episodic sync here.
-        try:
-            from app.memory.extractor import create_episodic_memory, calculate_emotional_weight
-
-            emotional = calculate_emotional_weight(chat_history[-20:])
-            importance = 0.5 + emotional * 0.3
-            try:
-                create_episodic_memory(
-                    session_id, context_paragraph.strip(), emotional, importance,
-                    source_message_ids=[m['id'] for m in chat_history[-20:]],
-                )
-            except Exception as e:
-                print(f"[WARNING] Sync episodic to DB failed: {e}")
-        except Exception as e:
-            print(f"[WARNING] Structured-DB sync skipped: {e}")
-
-        return True
-    else:
-        return False
-
-def session_context_analysis(prompt, api_key):
-    headers = {
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/icedeyes12/yuzu-companion", 
-        "X-Title": "Yuzu-Session-Context"
-    }
-    
-    try:
-        headers["Authorization"] = f"Bearer {api_key}"
-        
-        data = {
-            "model": "Qwen/Qwen3-Next-80B-A3B-Instruct",
-            "messages": [
-                {
-                    "role": "system", 
-                    "content": "You write concise, natural paragraphs summarizing conversation context. One paragraph only."
-                },
-                {
-                    "role": "user", 
-                    "content": prompt
-                }
-            ],
-            "max_tokens": 500,
-            "temperature": 0.2,
-            "stream": False
-        }
-        
-        response = requests.post(
-            "https://llm.chutes.ai/v1/chat/completions",
-            headers=headers,
-            json=data,
-            timeout=60
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            return result['choices'][0]['message']['content'].strip()
-        else:
-            return None
-            
-    except Exception:
-        return None
 
 def summarize_global_player_profile():
-    """Analyze ALL conversation history across ALL sessions with optimized sampling"""
-    all_sessions = Database.get_all_sessions()
-    Database.get_profile()
-    
-    # CONFIGURABLE SETTINGS
-    MAX_MSGS_PER_SESSION = 2000           # Messages per session limit
-    MAX_CONTEXT_CHARS = 900000           # Max characters (≈175K tokens)
-    RECENT_RATIO = 0.7                   # 70% recent messages, 30% random from older
-    MIN_MSG_LENGTH = 5                   # Skip very short messages
-    
-    print(f"[INFO] Starting global profile analysis for {len(all_sessions)} sessions")
-    print(f"[CONFIG] Max {MAX_MSGS_PER_SESSION} msgs/session, {MAX_CONTEXT_CHARS:,} max chars")
-    print(f"[CONFIG] Sampling: {int(RECENT_RATIO*100)}% recent, {int((1-RECENT_RATIO)*100)}% random")
-    
-    # Sort sessions by date (newest first for priority)
-    sorted_sessions = sorted(
-        all_sessions, 
-        key=lambda x: x.get('created_at', ''), 
-        reverse=True
-    )
-    
-    all_conversations = []
-    total_messages_processed = 0
-    total_sessions_with_data = 0
-    
-    for session in sorted_sessions:
-        session_id = session['id']
-        session_name = session.get('name', f'Session {session_id}')
-        
-        # Get ALL messages for this session
-        all_messages = Database.get_chat_history(session_id=session_id, limit=None)
-        
-        if not all_messages:
-            continue
-            
-        total_sessions_with_data += 1
-        
-        # Filter only user/assistant messages
-        filtered_messages = [
-            msg for msg in all_messages 
-            if msg['role'] in ['user', 'assistant'] 
-            and len(msg['content'].strip()) >= MIN_MSG_LENGTH
-        ]
-        
-        if not filtered_messages:
-            continue
-            
-        # Select messages with 70/30 strategy
-        if len(filtered_messages) <= MAX_MSGS_PER_SESSION:
-            selected_messages = filtered_messages
-            selection_method = "all"
-        else:
-            # Calculate counts
-            recent_count = int(MAX_MSGS_PER_SESSION * RECENT_RATIO)
-            random_count = MAX_MSGS_PER_SESSION - recent_count
-            
-            # Get recent messages (newest first)
-            recent_messages = filtered_messages[-recent_count:]
-            
-            # Get random sample from older messages
-            older_messages = filtered_messages[:-recent_count]
-            
-            if len(older_messages) > 0 and random_count > 0:
-                import random
-                random_sample = random.sample(
-                    older_messages, 
-                    min(random_count, len(older_messages))
-                )
-                selected_messages = recent_messages + random_sample
-                selection_method = f"recent+random ({recent_count}+{len(random_sample)})"
-            else:
-                selected_messages = recent_messages
-                selection_method = f"recent only ({len(recent_messages)})"
-        
-        # Process selected messages
-        session_conversations = []
-        for msg in selected_messages:
-            role = "User" if msg["role"] == "user" else "AI"
-            content = msg['content'].strip()
-            
-            # Clean and truncate if too long
-            if len(content) > 400:
-                content = content[:400] + "..."
-            
-            session_conversations.append(f"{role}: {content}")
-            total_messages_processed += 1
-        
-        if session_conversations:
-            # Format session header with stats
-            session_header = f"\n\n=== SESSION: {session_name} ==="
-            session_header += f"\n[Total: {len(filtered_messages)} msgs | Selected: {len(selected_messages)} | Method: {selection_method}]"
-            
-            session_text = session_header + "\n" + "\n".join(session_conversations)
-            all_conversations.append(session_text)
-    
-    if not all_conversations:
-        print("[INFO] No conversations found for analysis")
-        return False
-    
-    # Combine all text
-    conversation_text = "".join(all_conversations)
-    
-    # Apply character limit
-    if len(conversation_text) > MAX_CONTEXT_CHARS:
-        print(f"[WARNING] Conversation text too long ({len(conversation_text):,} chars), truncating to {MAX_CONTEXT_CHARS:,}")
-        # Try to keep complete sessions by removing oldest sessions first
-        while len(conversation_text) > MAX_CONTEXT_CHARS and len(all_conversations) > 1:
-            # Remove oldest session (first in list after reverse sort)
-            all_conversations.pop(0)
-            conversation_text = "".join(all_conversations)
-            print(f"[INFO] Removed oldest session, now {len(conversation_text):,} chars")
-    
-    print("[INFO] Analysis Summary:")
-    print(f"  - Sessions total: {len(all_conversations)}")
-    print(f"  - Messages processed: {total_messages_processed}")
-    print(f"  - Data volume: {len(conversation_text):,} chars")
-    print(f"  - Model utilization: ~{len(conversation_text)//4:,} tokens")
-    
-    # Create analysis prompt (sama seperti sebelumnya)
-    analysis_prompt = f"""# PLAYER PROFILE ANALYSIS TASK
+    from app.skills import run_global_profile_summary
 
-## CONVERSATION HISTORY:
-Below is the complete conversation history between the User and AI across multiple sessions.
-
-{conversation_text}
-
-## ANALYSIS INSTRUCTIONS:
-You are an expert psychologist and data analyst. Your task is to analyze the conversation history above and extract deep insights about the User.
-
-### FOCUS AREAS:
-1. **Personality Analysis**: Identify core personality traits, communication style, emotional patterns
-2. **Interests & Preferences**: What does the user like/dislike? Topics they frequently discuss
-3. **Behavioral Patterns**: How do they interact? Response patterns, engagement style
-4. **Relationship Dynamics**: How is their relationship with the AI? Emotional tone, trust level, interaction patterns, and development over time.
-
-### OUTPUT FORMAT REQUIREMENTS:
-You MUST use this exact format. Do not add any commentary, explanations, or additional text.
-
-Player Summary: [Provide a comprehensive summary of the user's personality, interests, and overall interaction patterns. Be specific and evidence-based.]
-
-Likes: [Provide specific likes, interests, or positive preferences. Format as comma-separated list.]
-
-Dislikes: [Provide specific dislikes, aversions, or negative preferences. Format as comma-separated list.]
-
-Personality Traits: [Provide personality characteristics. Use descriptive adjectives.]
-
-Important Memories: [List significant memories, experiences, or topics that were emotionally important or frequently mentioned.]
-
-Relationship Dynamics: [Provide analysis of the relationship dynamics between User and AI. Include emotional tone, trust level, interaction patterns, and development over time.]
-
-### CRITICAL RULES:
-- Base EVERYTHING on evidence from the conversations
-- Be specific and concrete - avoid vague statements
-- No markdown formatting, no bullet points, no numbering
-- Follow the EXACT format above - no additional sections"""
-    
-    api_keys = Database.get_api_keys()
-    openrouter_key = api_keys.get('openrouter')
-    
-    if not openrouter_key:
-        print("[ERROR] No OpenRouter API key found")
-        return False
-    
-    print("[INFO] Sending to Server...")
-    
-    summary_text = global_profile_analysis(analysis_prompt)
-    
-    if summary_text:
-        print(f"[SUCCESS] Analysis received: {len(summary_text):,} chars")
-        
-        # Save raw analysis for debugging
-        import os
-        os.makedirs("debug_logs", exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        debug_file = f"debug_logs/profile_summary_{timestamp}.txt"
-        
-        with open(debug_file, "w", encoding="utf-8") as f:
-            f.write("=== GLOBAL PROFILE ANALYSIS ===\n")
-            f.write(f"Date: {timestamp}\n")
-            f.write(f"Sessions: {len(all_conversations)}\n")
-            f.write(f"Messages: {total_messages_processed}\n")
-            f.write(f"Chars: {len(conversation_text)}\n")
-            f.write("\n=== RAW ANALYSIS ===\n")
-            f.write(summary_text)
-        
-        print(f"[DEBUG] Raw analysis saved to: {debug_file}")
-        
-        # Parse and update profile
-        profile_update = parse_global_profile_summary(summary_text)
-        profile_update['last_global_summary'] = datetime.now().isoformat()
-        profile_update['sessions_analyzed'] = len(all_conversations)
-        profile_update['total_messages'] = total_messages_processed
-        profile_update['analysis_chars'] = len(conversation_text)
-        
-        # Merge with existing profile
-        current_profile = Database.get_profile()
-        current_memory = current_profile.get('memory', {})
-        current_memory = _merge_profile_data(current_memory, profile_update)
-        
-        try:
-            Database.update_profile({'memory': current_memory})
-            
-            # Success report
-            print(f"\n{'='*50}")
-            print("GLOBAL PROFILE UPDATE COMPLETE!")
-            print(f"{'='*50}")
-            print(f"✅ Sessions analyzed: {len(all_conversations)}")
-            print(f"✅ Messages processed: {total_messages_processed}")
-            print(f"✅ Data volume: {len(conversation_text):,} chars")
-            print(f"✅ Player summary: {len(current_memory.get('player_summary', '')):,} chars")
-            print(f"✅ Likes identified: {len(current_memory.get('key_facts', {}).get('likes', []))}")
-            print(f"✅ Personality traits: {len(current_memory.get('key_facts', {}).get('personality_traits', []))}")
-            print("✅ Relationship analysis saved")
-            print(f"{'='*50}")
-            
-            return True
-            
-        except Exception as e:
-            print(f"[ERROR] Database update failed: {str(e)}")
-            traceback.print_exc()
-            return False
-    
-    print("[ERROR] Analysis generation failed")
-    return False
-
-
-def normalize_memory_item(text: str) -> str:
-    """Normalize a memory item for deduplication comparison.
-    
-    Rules:
-    - Convert to lowercase
-    - Strip leading/trailing whitespace
-    - Remove trailing punctuation (. , " ')
-    - Collapse multiple spaces into one
-    """
-    text = text.strip().lower()
-    text = re.sub(r'\s+', ' ', text)
-    text = text.rstrip('.,"\'')
-    return text
-
-
-def merge_and_clean_memory(existing_list: List[str], new_items: List[str], max_size: int) -> List[str]:
-    """Merge new items into an existing list with normalization-based deduplication and size limits.
-    
-    - Normalizes text for comparison only; preserves original text of the first occurrence.
-    - Skips items whose normalized form already exists.
-    - Enforces max_size by keeping the earliest items.
-    """
-    result = []
-    seen_normalized = set()
-
-    for item in existing_list:
-        if not item or not item.strip():
-            continue
-        norm = normalize_memory_item(item)
-        if norm and norm not in seen_normalized:
-            seen_normalized.add(norm)
-            result.append(item)
-
-    for item in new_items:
-        if not item or not item.strip():
-            continue
-        norm = normalize_memory_item(item)
-        if norm and norm not in seen_normalized:
-            seen_normalized.add(norm)
-            result.append(item)
-
-    return result[:max_size]
-
-
-# Maximum list sizes for each key_facts category
-_MEMORY_LIST_LIMITS = {
-    'likes': 30,
-    'dislikes': 30,
-    'personality_traits': 15,
-    'important_memories': 20,
-}
-
-
-def _merge_profile_data(existing_memory: Dict, new_data: Dict) -> Dict:
-    """Smart merge of existing profile data with new analysis"""
-    if not existing_memory:
-        return new_data
-    
-    result = existing_memory.copy()
-    
-    # Merge player summary - keep newer if significantly different
-    if 'player_summary' in new_data and new_data['player_summary']:
-        existing_summary = result.get('player_summary', '')
-        new_summary = new_data['player_summary']
-        
-        # Keep the more detailed summary
-        if len(new_summary) > len(existing_summary) * 1.5:  # New summary is 50% longer
-            result['player_summary'] = new_summary
-            print(f"[INFO] Updated player summary (new: {len(new_summary)} chars, old: {len(existing_summary)} chars)")
-    
-    # Merge relationship dynamics
-    if 'relationship_dynamics' in new_data and new_data['relationship_dynamics']:
-        result['relationship_dynamics'] = new_data['relationship_dynamics']
-    
-    # Merge key facts with normalization, deduplication, and size limits
-    if 'key_facts' in new_data:
-        if 'key_facts' not in result:
-            result['key_facts'] = {
-                'likes': [],
-                'dislikes': [],
-                'personality_traits': [],
-                'important_memories': []
-            }
-        
-        for category in ['likes', 'dislikes', 'personality_traits', 'important_memories']:
-            existing_items = result['key_facts'].get(category, [])
-            new_items = new_data['key_facts'].get(category, [])
-            max_size = _MEMORY_LIST_LIMITS[category]
-            
-            existing_normalized = {normalize_memory_item(i) for i in existing_items if i and i.strip()}
-            added = sum(1 for i in new_items if i and i.strip() and normalize_memory_item(i) not in existing_normalized)
-            
-            merged = merge_and_clean_memory(existing_items, new_items, max_size)
-            result['key_facts'][category] = merged
-            
-            if added > 0:
-                print(f"[INFO] Added {added} new items to {category}")
-    
-    # Update metadata
-    result['last_global_summary'] = new_data.get('last_global_summary', '')
-    result['sessions_analyzed'] = new_data.get('sessions_analyzed', 0)
-    
-    return result
-
-
-def global_profile_analysis(prompt: str) -> Optional[str]:
-    """Analyze conversation history using qwen with optimal settings"""
-    api_key = Database.get_api_key("chutes")
-    headers = {
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/icedeyes12/yuzu-companion", 
-        "X-Title": "Yuzu-Global-Profile",
-        "Authorization": f"Bearer {api_key}"
-    }
-    
-    try:
-        
-        model = "Qwen/Qwen3-Next-80B-A3B-Instruct"
-        
-        # Optimize for long context analysis
-        data = {
-            "model": model,
-            "messages": [
-                {
-                    "role": "system", 
-                    "content": """You are an expert psychologist and data analyst specializing in conversation analysis. 
-                    Your task is to extract deep, meaningful insights from conversation history.
-                    
-                    ANALYSIS APPROACH:
-                    1. Read and comprehend the ENTIRE conversation history
-                    2. Identify patterns, themes, and significant moments
-                    3. Extract evidence-based insights about personality, preferences, and relationship dynamics
-                    4. Be specific, concrete, and thorough
-                    5. Follow the output format EXACTLY as specified
-                    
-                    Your analysis should be comprehensive, insightful, and directly based on the conversation evidence."""
-                },
-                {
-                    "role": "user", 
-                    "content": prompt
-                }
-            ],
-            "temperature": 0.2,  # Low temperature for consistent analysis
-            "max_tokens": 4000,  
-            "top_p": 0.9,
-            "frequency_penalty": 0.0,
-            "presence_penalty": 0.1,
-            "stream": False
-        }
-        
-        print(f"[DEBUG] Using model: {model}")
-        print(f"[DEBUG] Prompt tokens estimate: ~{len(prompt) // 4}")
-        print(f"[DEBUG] Max response tokens: {data['max_tokens']}")
-        
-        response = requests.post(
-            "https://llm.chutes.ai/v1/chat/completions",
-            headers=headers,
-            json=data,
-            timeout=300  # 5 minute timeout for large analysis
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            content = result['choices'][0]['message']['content'].strip()
-            
-            print(f"[SUCCESS] Analysis complete: {len(content):,} characters")
-            return content
-            
-        else:
-            error_msg = f"Chutes API error: {response.status_code}"
-            
-            try:
-                error_data = response.json()
-                error_detail = error_data.get('error', {}).get('message', 'Unknown')
-                error_msg += f" - {error_detail}"
-                
-                print(f"[ERROR] {error_msg}")
-                
-                # Handle specific errors
-                if "insufficient_quota" in error_detail.lower():
-                    print("[ERROR] Insufficient API quota")
-                    return _try_free_model(prompt, api_key)
-                elif "model not found" in error_detail.lower():
-                    print("[WARNING] GLM-4.7 not available, trying alternatives...")
-                    return _try_alternative_models(prompt, api_key)
-                    
-            except Exception:
-                error_msg += f" - {response.text[:200]}"
-                print(f"[ERROR] {error_msg}")
-            
-            return None
-            
-    except requests.exceptions.Timeout:
-        print("[ERROR] Request timeout - analysis took too long")
-        return None
-    except Exception as e:
-        print(f"[ERROR] Analysis failed: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-
-def _try_alternative_models(prompt: str, api_key: str) -> Optional[str]:
-    """Try alternative models if GLM-4.7 fails"""
-    alternatives = [
-        ("z-ai/glm-4.6", 8000),  # GLM-4.6
-        ("qwen/qwen3-235b-a22b-2507", 6000),  # Qwen 3 235B
-        ("deepseek/deepseek-chat-v3.1", 6000),  # DeepSeek V3.1
-        ("tngtech/deepseek-r1t2-chimera", 4000),  # Chimera
-        ("google/gemini-2.0-flash-exp:free", 4000),  # Gemini Flash (free)
-    ]
-    
-    headers = {
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/icedeyes12/yuzu-companion", 
-        "X-Title": "Yuzu-Global-Profile",
-        "Authorization": f"Bearer {api_key}"
-    }
-    
-    for model in alternatives:
-        print(f"[INFO] Trying alternative model: {model}")
-        
-        try:
-            # Potong prompt secara signifikan untuk model free
-            shortened_prompt = prompt[:20000] + "\n\n...[prompt truncated for lighter model]"
-            actual_prompt = shortened_prompt
-            
-            data = {
-                "model": model,
-                "messages": [
-                    {
-                        "role": "system", 
-                        "content": "You are a conversation analyst. Extract comprehensive insights from the conversation history."
-                    },
-                    {
-                        "role": "user", 
-                        "content": actual_prompt
-                    }
-                ],
-                "temperature": 0.2,
-                "max_tokens": 2000,  # Free models have lower limits
-                "top_p": 0.9,
-                "stream": False
-            }
-            
-            response = requests.post(
-                "https://llm.chutes.ai/v1/chat/completions",
-                headers=headers,
-                json=data,
-                timeout=300
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                content = result['choices'][0]['message']['content'].strip()
-                print(f"[SUCCESS] Free model response: {len(content):,} chars")
-                return content
-                
-        except Exception as e:
-            print(f"[WARNING] Free model {model} error: {str(e)}")
-            continue
-    
-    print("[ERROR] All free models failed")
-    return None
-
-
-def _try_free_model(prompt: str, api_key: str) -> Optional[str]:
-    """Try free model if quota exhausted"""
-    free_models = [
-        "google/gemini-2.0-flash-exp:free",
-        "deepseek/deepseek-chat-v3.1:free",
-        "qwen/qwen3-235b-a22b:free",
-    ]
-    
-    headers = {
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/icedeyes12/yuzu-companion", 
-        "X-Title": "Yuzu-Global-Profile",
-        "Authorization": f"Bearer {api_key}"
-    }
-    
-    for model in free_models:
-        print(f"[INFO] Trying free model: {model}")
-        
-        try:
-            # Potong prompt secara signifikan untuk model free
-            shortened_prompt = prompt[:15000] + "\n\n...[analysis limited due to free tier constraints]"
-            
-            data = {
-                "model": model,
-                "messages": [
-                    {
-                        "role": "system", 
-                        "content": "Extract key insights from conversation history. Focus on most important patterns."
-                    },
-                    {
-                        "role": "user", 
-                        "content": shortened_prompt
-                    }
-                ],
-                "temperature": 0.3,
-                "max_tokens": 2000,  # Free models have lower limits
-                "top_p": 0.9,
-                "stream": False
-            }
-            
-            response = requests.post(
-                "https://llm.chutes.ai/v1/chat/completions",
-                headers=headers,
-                json=data,
-                timeout=300
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                content = result['choices'][0]['message']['content'].strip()
-                print(f"[SUCCESS] Free model response: {len(content):,} chars")
-                return content
-                
-        except Exception as e:
-            print(f"[WARNING] Free model {model} error: {str(e)}")
-            continue
-    
-    print("[ERROR] All free models failed")
-    return None
-
-
-def parse_global_profile_summary(summary_text: str) -> Dict:
-    """Parse the global profile summary text into structured data"""
-    profile_data = {
-        "player_summary": "",
-        "key_facts": {
-            "likes": [],
-            "dislikes": [], 
-            "personality_traits": [],
-            "important_memories": []
-        },
-        "relationship_dynamics": "",
-        "last_updated": datetime.now().isoformat()
-    }
-    
-    # Clean the text
-    cleaned_text = summary_text.replace('\r\n', '\n').replace('\r', '\n')
-    
-    # Normalize section headers
-    section_patterns = {
-        'Player Summary:': 'player_summary',
-        'Player Summary': 'player_summary',
-        'Summary:': 'player_summary',
-        'Summary': 'player_summary',
-        
-        'Likes:': 'likes',
-        'Likes': 'likes',
-        'Interests:': 'likes',
-        'Interests': 'likes',
-        
-        'Dislikes:': 'dislikes',
-        'Dislikes': 'dislikes',
-        'Aversions:': 'dislikes',
-        
-        'Personality Traits:': 'personality_traits',
-        'Personality Traits': 'personality_traits',
-        'Traits:': 'personality_traits',
-        'Personality:': 'personality_traits',
-        
-        'Important Memories:': 'important_memories',
-        'Important Memories': 'important_memories',
-        'Memories:': 'important_memories',
-        'Key Memories:': 'important_memories',
-        
-        'Relationship Dynamics:': 'relationship_dynamics',
-        'Relationship Dynamics': 'relationship_dynamics',
-        'Relationship:': 'relationship_dynamics',
-        'Dynamics:': 'relationship_dynamics'
-    }
-    
-    lines = cleaned_text.split('\n')
-    current_section = None
-    buffer = []
-    
-    def save_current_section():
-        if current_section and buffer:
-            content = ' '.join(buffer).strip()
-            if current_section == 'player_summary':
-                profile_data["player_summary"] = content
-            elif current_section == 'relationship_dynamics':
-                profile_data["relationship_dynamics"] = content
-            elif current_section in ['likes', 'dislikes', 'personality_traits', 'important_memories']:
-                # Parse comma-separated lists
-                items = [item.strip() for item in content.split(',') if item.strip()]
-                profile_data["key_facts"][current_section] = items
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-            
-        # Check if this line starts a new section
-        section_found = False
-        for pattern, section_key in section_patterns.items():
-            if line.startswith(pattern):
-                # Save previous section
-                save_current_section()
-                
-                # Start new section
-                current_section = section_key
-                buffer = []
-                
-                # Remove the pattern from the line
-                remaining = line[len(pattern):].strip()
-                if remaining:
-                    buffer.append(remaining)
-                
-                section_found = True
-                break
-        
-        if not section_found and current_section:
-            # Continue current section
-            buffer.append(line)
-    
-    # Save the last section
-    save_current_section()
-    
-    # Clean up the data
-    for section in ['player_summary', 'relationship_dynamics']:
-        if profile_data[section]:
-            # Remove any trailing punctuation
-            profile_data[section] = profile_data[section].strip()
-            if profile_data[section].endswith('.'):
-                profile_data[section] = profile_data[section][:-1]
-    
-    # Clean lists
-    for key in ['likes', 'dislikes', 'personality_traits', 'important_memories']:
-        if profile_data["key_facts"][key]:
-            # Remove duplicates and empty items
-            unique_items = []
-            seen = set()
-            for item in profile_data["key_facts"][key]:
-                if item and item not in seen:
-                    seen.add(item)
-                    unique_items.append(item)
-            profile_data["key_facts"][key] = unique_items
-    
-    print(f"[DEBUG] Parsed profile: player_summary={len(profile_data['player_summary'])} chars, "
-          f"likes={len(profile_data['key_facts']['likes'])}, "
-          f"personality_traits={len(profile_data['key_facts']['personality_traits'])}")
-    
-    return profile_data
-
-
-def save_section_content(profile_data, section_key, content):
-    if section_key == 'player_summary':
-        if not profile_data["player_summary"]:
-            profile_data["player_summary"] = content
-        else:
-            profile_data["player_summary"] += " " + content
-            
-    elif section_key == 'relationship_dynamics':
-        if not profile_data["relationship_dynamics"]:
-            profile_data["relationship_dynamics"] = content
-        else:
-            profile_data["relationship_dynamics"] += " " + content
-            
-    elif section_key in ['likes', 'dislikes', 'personality_traits', 'important_memories']:
-        items = [item.strip() for item in content.split(',') if item.strip()]
-        profile_data["key_facts"][section_key] = items
-
+    return run_global_profile_summary()
 
 def get_available_providers():
     ai_manager = get_ai_manager()
@@ -2679,24 +1761,24 @@ def get_provider_models(provider_name):
 
 def get_vision_capabilities():
     from app.tools import multimodal_tools
-    
+
     capabilities = {
         'has_vision': False,
         'vision_provider': None,
         'vision_model': None,
         'has_image_generation': False,
-        'image_generation_provider': None
+        'image_generation_provider': None,
     }
-    
+
     vision_provider, vision_model = multimodal_tools.get_best_vision_provider()
     if vision_provider:
         capabilities['has_vision'] = True
         capabilities['vision_provider'] = vision_provider
         capabilities['vision_model'] = vision_model
-    
+
     api_keys = Database.get_api_keys()
     if 'openrouter' in api_keys:
         capabilities['has_image_generation'] = True
         capabilities['image_generation_provider'] = 'openrouter'
-    
+
     return capabilities

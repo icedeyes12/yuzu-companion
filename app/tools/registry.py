@@ -2,38 +2,45 @@
 # DESCRIPTION: Central tool registry — single source of truth for dispatch.
 #
 # Architecture:
-#   - TOOL_DEFINITIONS: dict[name -> ToolDefinition] — lazily populated on first access
+#   - TOOL_DEFINITIONS: dict[name -> ToolDefinition] — canonical tools only
+#   - TOOL_ALIAS_MAP: dict[alias -> canonical_name]
 #   - _TOOL_MODULES: dict[name -> module] — lazy-loaded on first dispatch
-#   - execute_tool(): calls tool.execute() and returns structured result
-#   - get_tool_definitions(): returns list for LLM tools[] array
+#   - execute_tool(): validates arguments, calls tool.execute(), normalizes result
+#   - get_tool_definitions(): returns canonical tool schemas for LLM tools[] array
 #   - get_tools_by_role(): filters tools by role
 #
 # How to register a new tool:
 #   1. Add TOOL_DEFINITION to the tool's module (e.g. image_generate.py)
-#   2. Import it in _collect_definitions() below (at the bottom of this file)
-#   3. The tool must have execute(arguments, session_id=None) -> dict
+#   2. Set aliases/category/execution_mode in the TOOL_DEFINITION if needed
+#   3. Import it in _collect_definitions() below
+#   4. The tool must have execute(arguments, session_id=None) -> dict
 
-from typing import Optional
+from typing import Any, Optional
 
-# Lazy-load tool modules on first dispatch
-_TOOL_MODULES: dict = {}
+from app.tools.schemas import error_result, normalize_tool_result
 
-# Lazily populated on first get_tool_definitions() call
-_TOOL_DEFINITIONS: dict = {}
+_TOOL_MODULES: dict[str, Any] = {}
+_TOOL_DEFINITIONS: dict[str, Any] = {}
+_TOOL_ALIAS_MAP: dict[str, str] = {}
 _DEFINITIONS_INITIALIZED = False
 
 
+def _register_definition(tool_def):
+    canonical_name = tool_def.name
+    _TOOL_DEFINITIONS[canonical_name] = tool_def
+    _TOOL_ALIAS_MAP[canonical_name] = canonical_name
+
+    for alias in getattr(tool_def, "aliases", []) or []:
+        _TOOL_ALIAS_MAP[alias] = canonical_name
+
+
 def _load_tool_module(tool_name: str):
-    """Lazy-import a tool module by name."""
+    """Lazy-import a tool module by canonical name."""
     if tool_name not in _TOOL_MODULES:
         if tool_name == "image_generate":
             from app.tools import image_generate
             _TOOL_MODULES[tool_name] = image_generate
-        elif tool_name == "imagine":
-            # Alias for image_generate
-            from app.tools import image_generate
-            _TOOL_MODULES[tool_name] = image_generate
-        elif tool_name == "request" or tool_name == "http_request":
+        elif tool_name == "http_request":
             from app.tools import http_request
             _TOOL_MODULES[tool_name] = http_request
         elif tool_name == "memory_store":
@@ -51,38 +58,41 @@ def _load_tool_module(tool_name: str):
 
 
 def _collect_definitions():
-    """Lazily import and register all tool definitions."""
-    global _TOOL_DEFINITIONS, _DEFINITIONS_INITIALIZED
+    """Lazily import and register all canonical tool definitions."""
+    global _DEFINITIONS_INITIALIZED
     if _DEFINITIONS_INITIALIZED:
         return
 
     try:
         from app.tools import image_generate
-        _TOOL_DEFINITIONS["image_generate"] = image_generate.TOOL_DEFINITION
-        _TOOL_DEFINITIONS["imagine"] = image_generate.TOOL_DEFINITION  # alias
+        _register_definition(image_generate.TOOL_DEFINITION)
     except Exception as e:
         print(f"[registry] Failed to load image_generate definition: {e}")
 
     try:
         from app.tools import http_request
-        _TOOL_DEFINITIONS["http_request"] = http_request.TOOL_DEFINITION
-        _TOOL_DEFINITIONS["request"] = http_request.TOOL_DEFINITION  # alias for backward compat
+        _register_definition(http_request.TOOL_DEFINITION)
     except Exception as e:
         print(f"[registry] Failed to load http_request definition: {e}")
 
     try:
         from app.tools import memory_store
-        _TOOL_DEFINITIONS["memory_store"] = memory_store.TOOL_DEFINITION
+        _register_definition(memory_store.TOOL_DEFINITION)
     except Exception as e:
         print(f"[registry] Failed to load memory_store definition: {e}")
 
     try:
         from app.tools import memory_search
-        _TOOL_DEFINITIONS["memory_search"] = memory_search.TOOL_DEFINITION
+        _register_definition(memory_search.TOOL_DEFINITION)
     except Exception as e:
         print(f"[registry] Failed to load memory_search definition: {e}")
 
     _DEFINITIONS_INITIALIZED = True
+
+
+def _resolve_tool_name(tool_name: str) -> str:
+    _collect_definitions()
+    return _TOOL_ALIAS_MAP.get(tool_name, tool_name)
 
 
 # --------------------------------------------------------------------
@@ -90,27 +100,30 @@ def _collect_definitions():
 # --------------------------------------------------------------------
 
 def get_tool_definitions() -> list:
-    """Return all tool definitions for LLM tools[] array."""
+    """Return all canonical tool definitions for LLM tools[] array."""
     _collect_definitions()
-    return list(_TOOL_DEFINITIONS.values())
+    return [
+        _TOOL_DEFINITIONS[name]
+        for name in sorted(_TOOL_DEFINITIONS.keys())
+    ]
 
 
 def get_tool_definition(name: str):
-    """Return a single tool definition by name, or None."""
+    """Return a single tool definition by canonical name or alias."""
     _collect_definitions()
-    return _TOOL_DEFINITIONS.get(name)
+    canonical_name = _resolve_tool_name(name)
+    return _TOOL_DEFINITIONS.get(canonical_name)
 
 
 def get_tools_by_role(role: str) -> list:
-    """Return all tools that match the given role prefix."""
+    """Return all canonical tools that match the given role."""
     _collect_definitions()
     return [t for t in _TOOL_DEFINITIONS.values() if t.role == role]
 
 
 def get_tool_role(tool_name: str) -> str:
     """Get the storage role for a tool name (for DB)."""
-    _collect_definitions()
-    tool_def = _TOOL_DEFINITIONS.get(tool_name)
+    tool_def = get_tool_definition(tool_name)
     if tool_def:
         return tool_def.role
     return f"{tool_name}_tools"
@@ -118,8 +131,7 @@ def get_tool_role(tool_name: str) -> str:
 
 def is_terminal_tool(tool_name: str) -> bool:
     """Check if a tool is terminal (skips second LLM pass on success)."""
-    _collect_definitions()
-    tool_def = _TOOL_DEFINITIONS.get(tool_name)
+    tool_def = get_tool_definition(tool_name)
     if tool_def:
         return tool_def.is_terminal
     return False
@@ -150,9 +162,8 @@ def build_markdown_contract(
     Note: New code should use schemas.build_tool_contract() instead.
     This function is kept for backward compatibility with existing tools.
     """
-    from app.tools.schemas import build_tool_contract, ToolDefinition
+    from app.tools.schemas import ToolDefinition, build_tool_contract
 
-    # Synthesize a minimal ToolDefinition for rendering
     temp_def = ToolDefinition(name="", description="", role=tool_role)
     return build_tool_contract(temp_def, full_command, output_lines, partner_name)
 
@@ -164,18 +175,13 @@ def build_markdown_contract(
 def execute_tool(tool_name: str, arguments: dict, session_id: Optional[str] = None) -> dict:
     """Dispatch a tool call and return a structured result dict.
 
-    This is the SINGLE source of truth for tool dispatch.
+    This is the single source of truth for tool dispatch.
     All tool execution MUST go through this function.
-
-    Returns:
-        {"ok": True,  "data": {...}, "markdown": "..."}
-        {"ok": False, "error": "...", "markdown": "..."}
     """
-    from app.tools.schemas import error_result
-
     _collect_definitions()
 
-    tool_def = _TOOL_DEFINITIONS.get(tool_name)
+    canonical_name = _resolve_tool_name(tool_name)
+    tool_def = _TOOL_DEFINITIONS.get(canonical_name)
     if not tool_def:
         return {
             "ok": False,
@@ -183,59 +189,84 @@ def execute_tool(tool_name: str, arguments: dict, session_id: Optional[str] = No
             "markdown": build_markdown_contract(
                 f"{tool_name}_tools",
                 f"/{tool_name}",
-                ["Error: Unknown tool. Available tools: " + ", ".join(_TOOL_DEFINITIONS.keys())],
+                ["Error: Unknown tool. Available tools: " + ", ".join(sorted(_TOOL_DEFINITIONS.keys()))],
                 "Yuzu",
             ),
+            "meta": {"tool_name": tool_name, "canonical_name": None},
         }
 
-    # Inject session_id if tool expects it
-    if tool_def.needs_session and "session_id" not in arguments:
-        arguments = {**arguments, "session_id": session_id}
-
-    module = _load_tool_module(tool_name)
+    module = _load_tool_module(canonical_name)
     if not module:
         return error_result(
-            f"Tool module unavailable: {tool_name}",
+            f"Tool module unavailable: {canonical_name}",
             tool_def,
-            f"/{tool_name}",
+            f"/{canonical_name}",
             _get_partner_name(),
+            meta={"tool_name": tool_name, "canonical_name": canonical_name},
         )
 
+    validated_arguments, validation_errors = tool_def.validate_arguments(arguments)
+    if validation_errors:
+        return error_result(
+            "Invalid tool arguments: " + "; ".join(validation_errors),
+            tool_def,
+            f"/{canonical_name}",
+            _get_partner_name(),
+            meta={
+                "tool_name": tool_name,
+                "canonical_name": canonical_name,
+                "validation_errors": validation_errors,
+            },
+        )
+
+    if tool_def.needs_session and "session_id" not in validated_arguments:
+        validated_arguments["session_id"] = session_id
+
+    full_command = _build_full_command(canonical_name, validated_arguments)
+
     try:
-        result = module.execute(arguments, session_id=session_id)
-
-        # New-style structured result (already a dict with ok/data/markdown)
-        if isinstance(result, dict) and "ok" in result:
-            return result
-
-        # Old-style: tools still return markdown directly — wrap it
-        if isinstance(result, str) and result.strip().startswith("<details>"):
-            return {
-                "ok": True,
-                "data": {},
-                "markdown": result,
-            }
-
-        # Fallback: treat as raw text
-        return {
-            "ok": True,
-            "data": {"result": result},
-            "markdown": build_markdown_contract(
-                tool_def.role,
-                f"/{tool_name}",
-                [str(result)],
-                _get_partner_name(),
-            ),
-        }
-
+        result = module.execute(validated_arguments, session_id=session_id)
+        return normalize_tool_result(
+            result,
+            tool_def,
+            full_command,
+            _get_partner_name(),
+            meta={
+                "tool_name": tool_name,
+                "canonical_name": canonical_name,
+            },
+        )
     except Exception as e:
-        print(f"[tool_error] {tool_name}: {e}")
+        print(f"[tool_error] {canonical_name}: {e}")
         return error_result(
             "Tool execution failed. Please try again later.",
             tool_def,
-            f"/{tool_name}",
+            full_command,
             _get_partner_name(),
+            meta={
+                "tool_name": tool_name,
+                "canonical_name": canonical_name,
+            },
         )
+
+
+def _build_full_command(tool_name: str, arguments: dict[str, Any]) -> str:
+    if not arguments:
+        return f"/{tool_name}"
+
+    parts = []
+    for key, value in arguments.items():
+        if key == "session_id":
+            continue
+        if isinstance(value, str):
+            safe_value = value.replace('"', '\\"')
+            parts.append(f'{key}="{safe_value}"')
+        else:
+            parts.append(f"{key}={value}")
+
+    if parts:
+        return f"/{tool_name} " + " ".join(parts)
+    return f"/{tool_name}"
 
 
 def _get_partner_name() -> str:

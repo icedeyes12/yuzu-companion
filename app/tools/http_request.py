@@ -8,7 +8,8 @@ import ipaddress
 import re
 from urllib.parse import urlparse
 from datetime import datetime
-from app.tools.schemas import ToolDefinition, ToolParam, ok_result, error_result
+
+from app.tools.schemas import ToolDefinition, ToolParam, error_result, ok_result
 
 MAX_BYTES = 2 * 1024 * 1024
 TIMEOUT = 90
@@ -20,6 +21,10 @@ TOOL_DEFINITION = ToolDefinition(
                 "Use for web searches, fetching data from public APIs, or retrieving content. "
                 "Only accepts public HTTPS URLs. Returns text content or downloaded images.",
     role="request_tools",
+    category="integration",
+    execution_mode="external",
+    aliases=["request"],
+    safety_notes="HTTPS only. Blocks private, loopback, and link-local targets to reduce SSRF risk.",
     parameters=[
         ToolParam(
             name="url",
@@ -33,7 +38,7 @@ TOOL_DEFINITION = ToolDefinition(
             type="string",
             required=False,
             default="GET",
-            enum=["GET", "POST", "PUT", "DELETE"],
+            enum=["GET", "POST", "PUT", "DELETE", "PATCH"],
         ),
     ],
     is_terminal=True,
@@ -105,10 +110,8 @@ def execute(arguments, **kwargs):
     else:
         args_str = str(arguments).strip()
 
-    # Extract HTTP method and URL from arguments
     method, url = _extract_url(args_str)
 
-    # Allow method override from arguments dict
     if isinstance(arguments, dict) and arguments.get("method"):
         method = arguments["method"].upper()
 
@@ -137,6 +140,8 @@ def execute(arguments, **kwargs):
             resp = requests.put(url, timeout=TIMEOUT, stream=True)
         elif method == "DELETE":
             resp = requests.delete(url, timeout=TIMEOUT, stream=True)
+        elif method == "PATCH":
+            resp = requests.patch(url, timeout=TIMEOUT, stream=True)
         else:
             resp = requests.get(url, timeout=TIMEOUT, stream=True)
 

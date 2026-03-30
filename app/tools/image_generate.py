@@ -2,9 +2,11 @@
 # DESCRIPTION: Image generation tool using diffusion models
 
 import os
-import requests
 from datetime import datetime
-from app.tools.schemas import ToolDefinition, ToolParam, ok_result, error_result
+
+import requests
+
+from app.tools.schemas import ToolDefinition, ToolParam, error_result, ok_result
 
 HUNYUAN_ENDPOINT = "https://chutes-hunyuan-image-3.chutes.ai/generate"
 Z_TURBO_ENDPOINT = "https://chutes-z-image-turbo.chutes.ai/generate"
@@ -16,6 +18,10 @@ TOOL_DEFINITION = ToolDefinition(
     description="Generate an image from a text prompt using AI diffusion models. "
                 "Returns the generated image displayed inline.",
     role="image_tools",
+    category="media",
+    execution_mode="external",
+    aliases=["imagine"],
+    safety_notes="Requires a valid Chutes API key and writes generated media to disk.",
     parameters=[
         ToolParam(
             name="prompt",
@@ -45,7 +51,7 @@ def execute(arguments, **kwargs):
 
     try:
         api_keys = Database.get_api_keys()
-        api_key = api_keys.get('chutes')
+        api_key = api_keys.get("chutes")
         if not api_key:
             return error_result(
                 "No Chutes API key available",
@@ -80,14 +86,14 @@ def execute(arguments, **kwargs):
 
         headers = {
             "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         response = requests.post(
             endpoint,
             headers=headers,
             json=payload,
-            timeout=300
+            timeout=300,
         )
 
         if response.status_code != 200:
@@ -103,12 +109,12 @@ def execute(arguments, **kwargs):
         os.makedirs(images_dir, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (" ", "-", "_")).rstrip()
         ext = "jpg" if image_model == "qwen_image" else "png"
         filename = f"{timestamp}_{safe_prompt}.{ext}"
         filepath = os.path.join(images_dir, filename)
 
-        with open(filepath, 'wb') as f:
+        with open(filepath, "wb") as f:
             f.write(response.content)
 
         print(f"[IMAGE TOOL] Saved: {filepath}")
