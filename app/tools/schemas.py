@@ -7,11 +7,17 @@ from typing import Any
 
 
 @dataclass
+class GenerateResult:
+    text: str = ""
+    tool_calls: list = field(default_factory=list)
+
+
+@dataclass
 class ToolParam:
     """A single parameter for a tool's execute() function."""
     name: str
     description: str
-    type: str = "string"  # string | number | boolean | object | array
+    type: str = "string"
     required: bool = True
     default: Any = None
     enum: list[str] | None = None
@@ -23,18 +29,16 @@ class ToolDefinition:
 
     This object is the single source of truth for:
     - The LLM's tools[] array (serialized to function-calling schema)
-    - Dispatcher routing (tool_name → module)
+    - Dispatcher routing (tool_name -> module)
     - Role categorization for DB storage
     - Terminal/non-terminal classification for second LLM pass
     """
-    name: str  # unique, matches module name, e.g. "image_generate"
-    description: str  # human-readable; LLM uses this to decide when to call
-    role: str  # DB storage role, e.g. "image_tools", "request_tools"
+    name: str
+    description: str
+    role: str
     parameters: list[ToolParam] = field(default_factory=list)
-    is_terminal: bool = False  # if True, skip second LLM pass on success
-
-    # Internal fields (not serialized to LLM schema)
-    needs_session: bool = False  # if True, dispatcher injects session_id from context
+    is_terminal: bool = False
+    needs_session: bool = False
 
     def to_llm_schema(self) -> dict:
         """Serialize to OpenAI function-calling schema format."""
@@ -85,17 +89,10 @@ def build_tool_contract(
 ) -> str:
     """Build the unified markdown contract for tool output.
 
-    Returns a ``<details>`` block — the ONLY format stored in DB
+    Returns a ``<details>`` block - the ONLY format stored in DB
     and rendered by the frontend.
     """
-    quoted = []
-    raw = []
-    for line in output_lines:
-        if line.startswith("<img ") or line.startswith("<video "):
-            raw.append(line)
-        else:
-            quoted.append(f"> {line}")
-    formatted_output = "\n".join(quoted) + ("\n\n" + "\n".join(raw) if raw else "")
+    formatted_output = "\n".join(f"> {line}" for line in output_lines)
 
     return (
         f"<details>\n"

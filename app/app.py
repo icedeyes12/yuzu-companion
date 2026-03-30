@@ -3,7 +3,6 @@
 
 import requests
 import os
-import threading
 import re
 import json
 import traceback
@@ -12,12 +11,14 @@ from typing import Dict, Optional, List
 from app.database import Database
 from app.providers import get_ai_manager, reload_ai_manager
 from app.tools import multimodal_tools
-from app.tools.registry import execute_tool, get_tool_role, TOOL_ROLE_MAP
+from app.tools.registry import execute_tool, get_tool_role, TOOL_ROLE_MAP, get_tool_definitions
+from app.tools.schemas import GenerateResult
 # ---------------------------------------------------------------------------
 # Persistent visual context buffer (per-session, runtime-only)
 # Stores the last processed image as base64 for N follow-up turns so the
 # model can compare or reference it without a new tool call.
 # ---------------------------------------------------------------------------
+import threading
 _visual_context_buffer = {}  # session_id -> {"base64": str, "mime": str, "turns_left": int}
 _visual_context_lock = threading.Lock()
 _VISUAL_CONTEXT_TURNS = 3
@@ -393,38 +394,31 @@ def handle_user_message(user_message, interface="terminal"):
             tool_role = get_tool_role(exec_tool_name)
             
             # Save tool output as tool message
-            tool_md = tool_output.get("markdown", str(tool_output))
-            Database.add_message(tool_role, tool_md, session_id=session_id)
-
-            # PHASE 3: SYNTHESIS PASS — 2nd LLM call with tool result so model
-            # can respond naturally based on what the tool returned.
-            # Image tools: also attach the generated image for vision synthesis.
-            img_path = _parse_image_result_from_formatted(tool_md)
-            img_context = None
+            Database.add_message(tool_role, tool_output, session_id=session_id)
+            
+            # PHASE 3: image_tools — 2nd pass with vision model for natural response
+            # Extract image path from tool output and send to vision model
+            img_path = _parse_image_result_from_formatted(tool_output)
             if img_path:
+                # Load image and encode as base64 for vision model
                 img_b64, mime = _load_generated_image_base64(img_path)
                 if img_b64:
-                    img_context = [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}}]
-                    print("[IMAGE TOOL] Attached generated image to synthesis pass")
-
-            second_result = generate_ai_response(
-                profile, "", interface, session_id,
-                image_content_for_context=img_context,
-            )
-
-            is_image_tool = img_context is not None
-
-            second_text = second_result if isinstance(second_result, str) else (second_result or "" if second_result else "")
-
-            if second_text and second_text.strip():
-                second_clean = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', second_text.strip())
-                Database.add_message('assistant', second_clean, session_id=session_id)
-                # Image tools: show tool output (image visible before reload)
-                # Non-image tools: synthesis response only (already summarized)
-                if is_image_tool:
-                    final_response = tool_md + "\n\n" + second_clean
+                    second_reply = generate_ai_response(
+                        profile, "", interface, session_id,
+                        image_content_for_context=[{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}}]
+                    )
                 else:
-                    final_response = second_clean
+                    second_reply = None
+            else:
+                second_reply = None
+
+            if second_reply and second_reply.strip():
+                second_clean = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', second_reply).strip()
+                Database.add_message('assistant', second_clean, session_id=session_id)
+                final_response = tool_output + "\n\n" + second_clean
+            else:
+                # Vision pass failed or no image path — fall back to tool output
+                final_response = tool_output
             
             auto_name_session_if_needed(session_id, active_session)
             if should_summarize_memory(profile, user_message, session_id):
@@ -587,37 +581,14 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
                 tool_role = get_tool_role(exec_tool_name)
                 
                 # Save tool output as tool message
-                tool_md = tool_output.get("markdown", str(tool_output))
-                Database.add_message(tool_role, tool_md, session_id=session_id)
+                Database.add_message(tool_role, tool_output, session_id=session_id)
+                
+                # Yield tool output
+                yield "\n\n" + tool_output
 
-                # Yield raw tool output first
-                yield "\n\n" + tool_md
-
-                # PHASE 3: SYNTHESIS PASS — 2nd LLM call with tool result
-                img_path = _parse_image_result_from_formatted(tool_md)
-                img_context = None
-                if img_path:
-                    img_b64, mime = _load_and_attach_generated_image(img_path, [], session_id)
-                    if img_b64:
-                        img_context = [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}}]
-
-                second_result = generate_ai_response(
-                    profile, "", interface, session_id,
-                    image_content_for_context=img_context,
-                )
-
-                is_image_tool = img_context is not None
-
-                second_text = second_result if isinstance(second_result, str) else (second_result or "" if second_result else "")
-
-                if second_text and second_text.strip():
-                    second_clean = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', second_text.strip())
-                    Database.add_message('assistant', second_clean, session_id=session_id)
-                    if is_image_tool:
-                        yield tool_md + "\n\n" + second_clean
-                    else:
-                        yield second_clean
-                    final_response = second_clean
+                # PHASE 3: image_tools — 2nd pass with vision model for natural response
+                # Extract image path from tool output and send to vision model
+                img_path = _parse_image_result_from_formatted(tool_output)
                 if img_path:
                     # Load image and encode as base64 for vision model
                     img_b64, mime = _load_generated_image_base64(img_path)
@@ -635,7 +606,7 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
                     second_clean = re.sub(r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', second_reply).strip()
                     Database.add_message('assistant', second_clean, session_id=session_id)
                     yield "\n\n" + second_clean
-                    final_response = second_clean
+                    final_response = tool_output + "\n\n" + second_clean
 
                 auto_name_session_if_needed(session_id, active_session)
                 if should_summarize_memory(profile, user_message, session_id):
@@ -1421,10 +1392,48 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
             preferred_provider,
             preferred_model,
             messages,
+            tools=get_tool_definitions(),
             **kwargs
         )
-        
-        # Handle None — retry once before giving up
+
+        result = ai_manager.send_message_full(
+            preferred_provider,
+            preferred_model,
+            messages,
+            tools=get_tool_definitions(),
+            **kwargs
+        )
+
+        # Parse structured response
+        raw_text = result.text if result else ""
+        tool_calls = result.tool_calls if result else []
+        if raw_text is None:
+            raw_text = ""
+
+        if tool_calls:
+            return GenerateResult(text=raw_text, tool_calls=tool_calls)
+
+        if raw_text.strip():
+            return GenerateResult(text=raw_text, tool_calls=[])
+
+        print("[WARNING] Empty response, retrying...")
+
+        result = ai_manager.send_message_full(
+            preferred_provider, preferred_model, messages, **kwargs
+        )
+        raw_text = result.text if result else ""
+        tool_calls = result.tool_calls if result else []
+        if raw_text is None:
+            raw_text = ""
+        if raw_text.strip():
+            return GenerateResult(text=raw_text, tool_calls=[])
+        return GenerateResult(text="AI service failed to generate a response.", tool_calls=[])
+    except Exception as e:
+        error_msg = f"AI service error: {str(e)}"
+        print(f"[ERROR] {error_msg}")
+        return GenerateResult(text=error_msg, tool_calls=[])
+
+    # Handle None — retry once before giving up
         if ai_response is None:
             print("[WARNING] AI returned None, retrying...")
             ai_response = ai_manager.send_message(
@@ -1534,10 +1543,48 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
             preferred_provider,
             preferred_model,
             messages,
+            tools=get_tool_definitions(),
             **kwargs
         )
-        
-        # Handle None — retry once before giving up
+
+        result = ai_manager.send_message_full(
+            preferred_provider,
+            preferred_model,
+            messages,
+            tools=get_tool_definitions(),
+            **kwargs
+        )
+
+        # Parse structured response
+        raw_text = result.text if result else ""
+        tool_calls = result.tool_calls if result else []
+        if raw_text is None:
+            raw_text = ""
+
+        if tool_calls:
+            return GenerateResult(text=raw_text, tool_calls=tool_calls)
+
+        if raw_text.strip():
+            return GenerateResult(text=raw_text, tool_calls=[])
+
+        print("[WARNING] Empty response, retrying...")
+
+        result = ai_manager.send_message_full(
+            preferred_provider, preferred_model, messages, **kwargs
+        )
+        raw_text = result.text if result else ""
+        tool_calls = result.tool_calls if result else []
+        if raw_text is None:
+            raw_text = ""
+        if raw_text.strip():
+            return GenerateResult(text=raw_text, tool_calls=[])
+        return GenerateResult(text="AI service failed to generate a response.", tool_calls=[])
+    except Exception as e:
+        error_msg = f"AI service error: {str(e)}"
+        print(f"[ERROR] {error_msg}")
+        return GenerateResult(text=error_msg, tool_calls=[])
+
+    # Handle None — retry once before giving up
         if ai_response is None:
             print("[WARNING] AI returned None, retrying...")
             ai_response = ai_manager.send_message(
