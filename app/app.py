@@ -1358,6 +1358,16 @@ def detect_important_content(message):
     important_keywords = ['love', 'hate', 'important', 'always', 'never', 'forever', 'remember']
     return any(keyword in message.lower() for keyword in important_keywords)
 
+def summarize_memory(profile, user_message, ai_reply, session_id):
+    return run_memory_summary(profile, user_message, ai_reply, session_id)
+
+
+def summarize_global_player_profile():
+    from app.skills import run_global_profile_summary
+
+    return run_global_profile_summary()
+
+
 def should_summarize_memory(profile, user_message, session_id):
     chat_history = Database.get_chat_history(session_id=session_id)
     conversation_messages = [msg for msg in chat_history if msg['role'] in ['user', 'assistant']]
@@ -1389,11 +1399,6 @@ def should_summarize_memory(profile, user_message, session_id):
 
     return False
 
-
-def summarize_global_player_profile():
-    from app.skills import run_global_profile_summary
-
-    return run_global_profile_summary()
 
 def get_available_providers():
     ai_manager = get_ai_manager()
