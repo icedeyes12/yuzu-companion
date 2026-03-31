@@ -278,7 +278,7 @@ class CerebrasProvider(AIProvider):
 
         try:
             # Normalize messages (convert custom tool roles to assistant)
-            messages = self._normalize_messages(messages)
+            messages = self._normalize_messages_for_chutes(messages)
 
             if self.supports_vision(model) and messages:
                 last_user_message = self._get_last_user_message(messages)
@@ -343,7 +343,7 @@ class CerebrasProvider(AIProvider):
         
         try:
             # Normalize messages for Chutes API (system message must be first)
-            messages = self._normalize_messages(messages)
+            messages = self._normalize_messages_for_chutes(messages)
             
             if self.supports_vision(model) and messages:
                 last_user_message = self._get_last_user_message(messages)
@@ -485,7 +485,7 @@ class OpenRouterProvider(AIProvider):
 
         try:
             # Normalize messages (convert custom tool roles to assistant)
-            messages = self._normalize_messages(messages)
+            messages = self._normalize_messages_for_chutes(messages)
 
             if self.supports_vision(model) and messages:
                 last_user_message = self._get_last_user_message(messages)
@@ -676,6 +676,9 @@ class ChutesProvider(AIProvider):
         ]
     
     def _normalize_messages_for_chutes(self, messages: List[Dict]) -> List[Dict]:
+        return self._normalize_messages(messages)
+
+    def _normalize_messages(self, messages: List[Dict]) -> List[Dict]:
         """Normalize messages for Chutes API: ensure single system message at the beginning
         and convert custom tool roles to standard 'assistant' role."""
         if not messages:
@@ -728,7 +731,7 @@ class ChutesProvider(AIProvider):
         
         try:
             # Normalize messages for Chutes API (system message must be first)
-            messages = self._normalize_messages(messages)
+            messages = self._normalize_messages_for_chutes(messages)
             
             if self.supports_vision(model) and messages:
                 last_user_message = self._get_last_user_message(messages)
@@ -797,7 +800,7 @@ class ChutesProvider(AIProvider):
         
         try:
             # Normalize messages for Chutes API (system message must be first)
-            messages = self._normalize_messages(messages)
+            messages = self._normalize_messages_for_chutes(messages)
             
             if self.supports_vision(model) and messages:
                 last_user_message = self._get_last_user_message(messages)
