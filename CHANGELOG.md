@@ -14,8 +14,7 @@ All notable changes to this project will be documented in this file.
   - Lazy-loaded `TOOL_DEFINITIONS` collected from each tool module on first access
   - `get_tool_definitions()` — returns list of all registered tool schemas
   - `get_tool_definition(name)` — returns schema for a specific tool
-  - `format_tool_result()` — produces structured `GenerateResult(text, tool_calls)`
-  - Legacy `execute_tool()` and `get_tool_role()` maintained for backward compat
+  - Legacy compatibility results are normalized through a structured result contract
 
 - **`app/tools/__init__.py`**: Re-exports new registry API
 
@@ -23,17 +22,15 @@ All notable changes to this project will be documented in this file.
 
 - **`app/providers.py`**: OpenRouter and Chutes providers now accept `tools=[]` parameter
   - OpenAI-compatible `function` call schemas injected into chat completions payload
-  - `send_message_full()` — returns `GenerateResult(text, tool_calls, provider, model)`
-  - `parse_tool_calls()` — extracts structured tool calls from LLM response
+  - Structured tool calls are parsed into `GenerateResult` + `ToolCall`
 
 ### Changed — App Orchestration
 
-- **`app/app.py`**: `handle_user_message` now dispatches structured tool_calls first
+- **`app/app.py`**: `handle_user_message` now dispatches structured `tool_calls` first
   - `ToolCall` and `GenerateResult` dataclasses for typed tool call handling
-  - `generate_ai_response()` calls `send_message_full(tools=[...])` — LLM sees tool schemas
-  - **New priority**: structured `tool_calls[0]` from LLM → execute via registry → done
-  - **Fallback**: legacy `/command` text detection still works (backward compat)
+  - `generate_ai_response()` sends tool schemas to providers so the LLM can request tools directly
   - Image tools remain terminal (no synthesis pass on success)
+  - Legacy `/command` parsing has been removed from the app flow
 
 ### Tool Schemas Registered
 
