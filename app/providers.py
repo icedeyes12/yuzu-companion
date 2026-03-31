@@ -784,7 +784,13 @@ class ChutesProvider(AIProvider):
             
             if response.status_code == 200:
                 result = response.json()
-                return result['choices'][0]['message']['content'].strip()
+                content = result['choices'][0]['message'].get('content') or ''
+                # VL models return content as list of blocks: [{"type":"text","text":"..."}]
+                if isinstance(content, list):
+                    content = ' '.join(
+                        block.get('text', '') for block in content if block.get('type') == 'text'
+                    )
+                return content.strip() if content else None
             else:
                 print(f"[ERROR] Chutes API error {response.status_code}: {response.text}")
                 return None
