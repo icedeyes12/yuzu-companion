@@ -328,45 +328,25 @@ deepseek-ai/DeepSeek-V3, Qwen/Qwen3-8B, meta-llama/llama-3.3-70b-instruct
 
 ## Tool System
 
-The tool system has two execution modes:
+The tool system is now fully structured and registry-driven.
 
-1. **Standard tool calling** — OpenAI `function` call format (primary, v2.1+)
 ### `tools/schemas.py` — Tool Schema Definitions
 
-Declarative tool definitions using `ToolParam` and `ToolDefinition` dataclasses.
-
-```python
-@dataclass
-class ToolParam:
-    name: str
-    description: str
-    type: str = "string"
-    required: bool = True
-    default: Optional[str] = None
-
-@dataclass
-class ToolDefinition:
-    name: str
-    description: str
-    parameters: List[ToolParam]
-    requires_session: bool = False
-    is_terminal: bool = False   # skips second LLM pass on success
-    category: str = "general"
-```
+Declarative tool definitions using `ToolParam` and `ToolDefinition` dataclasses. Each tool has a canonical name, typed parameters, optional aliases, and a terminal/non-terminal flag.
 
 ### `tools/registry.py` — Central Registry
 
-Single source of truth for tool dispatch. Lazy-loads `TOOL_DEFINITIONS` from each tool module on first access.
+Single source of truth for tool dispatch.
 
 **Key exports:**
-- `get_tool_definitions()` — returns list of all registered canonical `ToolDefinition` objects
-- `get_tool_definition(name)` — returns schema for a specific tool or alias
-- `execute_tool(name, arguments, session_id)` — validates, dispatches, and returns a normalized tool result dict
+- `get_tool_definitions()` — canonical tool schemas for the model
+- `get_tool_definition(name)` — lookup by canonical name or alias
+- `execute_tool(name, arguments, session_id)` — validate, dispatch, normalize
 - `get_tool_role(name)` — maps tool name to DB role string
 
 ### Structured Tool Result Contract
 
-Tool execution now returns a normalized dictionary with this shape:
+Tool execution returns a normalized dictionary:
 
 ```python
 {
@@ -377,7 +357,7 @@ Tool execution now returns a normalized dictionary with this shape:
 }
 ```
 
-Errors use the same shape with `ok=False` and an `error` string. The registry validates arguments before execution and wraps legacy string/markdown results when needed.
+Errors use the same shape with `ok=False` and an `error` string.
 
 ### Provider Tool Calling Flow
 
@@ -385,18 +365,18 @@ Errors use the same shape with `ok=False` and an `error` string. The registry va
 flowchart TD
     A[LLM response] --> B{tool_calls present?}
     B -->|Yes| C[Structured function call]
-    B -->|No| F[Plain text response]
-    C --> G[execute_tool name, args]
-    G --> H[Normalized tool result]
-    H --> I{Terminal tool?}
-    I -->|Yes| J[Return result]
-    I -->|No| K[Synthesis pass]
-    K --> L[Final response]
-    J --> L
+    B -->|No| D[Plain text response]
+    C --> E[execute_tool name, args]
+    E --> F[Normalized tool result]
+    F --> G{Terminal tool?}
+    G -->|Yes| H[Return result]
+    G -->|No| I[Synthesis pass]
+    I --> J[Final response]
+    H --> J
 ```
 
 **Dispatch priority:**
-1. Structured `tool_calls[0]` from LLM → execute via registry → done
+1. Structured `tool_calls[0]` from LLM → execute via registry
 2. Plain text → return as-is
 
 ### Registered Tool Schemas
@@ -404,27 +384,13 @@ flowchart TD
 | Tool | Role | Params | Terminal |
 |------|-------|--------|----------|
 | `image_generate` | `image_tools` | `prompt` (str, required) | ✅ |
-| `request` | `request_tools` | `url` (str, required), `method` (str, optional) | ❌ |
-| `memory_search` | `memory_search_tools` | `query` (str, required) | ❌ |
-| `memory_store` | `memory_store_tools` | `fact` (str, required), `category` (str, optional) | ❌ |
+| `http_request` | `request_tools` | `url` (str, required), `method` (str, optional), `body` (object, optional) | ✅ |
+| `memory_search` | `memory_search_tools` | `query` (str, optional) | ✅ |
+| `memory_store` | `memory_store_tools` | `fact` (str, required), `category` (str, optional) | ✅ |
 
 ### Markdown Contract Format
 
-Tool results are stored in a `<details>` block:
-
-```html
-<details>
-<summary>🔧 image_tools</summary>
-
-```bash
-Yuzu$ /imagine a cute cat
-```
-
-> Image generated successfully
-> Saved to: static/generated_images/xxx.png
-
-</details>
-```
+Tool results are stored in a `<details>` block for display and logging consistency.
 
 ### Tool Modules
 
@@ -620,24 +586,31 @@ API keys are stored encrypted in `api_keys` table:
 sequenceDiagram
     participant U as User
     participant A as app.py
-    participant M as Multimodal
+    participant S as Skills
     participant T as Tools/Registry
     participant P as Providers
     participant D as Database
     
-    U->>A: "Hello! /imagine a cat"
-    A->>M: detect_images()
-    M-->>A: no images
-    A->>A: detect_command()
-    A->>T: execute_tool("imagine", {prompt})
-    T->>P: generate_image()
-    P-->>T: image path
-    T-->>A: markdown contract
-    A->>A: generate_ai_response()
-    A->>P: send_message()
-    P-->>A: text response
+    U->>A: user message
+    A->>S: multimodal/memory/session helpers
+    A->>P: single LLM call
+    alt tool_calls present
+        A->>T: execute_tool(name, args)
+        T-->>A: normalized tool result
+        alt terminal tool
+            A-->>U: tool result
+        else non-terminal tool
+            A->>S: synthesis pass
+            S->>P: follow-up LLM call
+            P-->>S: final response
+            S-->>A: synthesized text
+            A-->>U: tool result + synthesis
+        end
+    else plain text
+        P-->>A: response
+        A-->>U: final response
+    end
     A->>D: save messages
-    A-->>U: combined response
 ```
 
 ---
