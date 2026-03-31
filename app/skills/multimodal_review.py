@@ -19,11 +19,16 @@ def cache_images_from_message(user_message: str) -> List[str]:
     cached_paths: List[str] = []
 
     if "UPLOADED_IMAGES:" in user_message and "IMAGE_UPLOAD:" in user_message:
+        # Restrict IMAGE_UPLOAD paths to the static/uploads directory to prevent path traversal
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        uploads_dir = os.path.abspath(os.path.join(base_dir, "static", "uploads"))
         for line in user_message.split("\n"):
             if line.startswith("IMAGE_UPLOAD:"):
                 path = line.replace("IMAGE_UPLOAD:", "").strip()
-                if os.path.isfile(path):
-                    cached_paths.append(path)
+                # Join with uploads_dir and normalize, then ensure the result stays within uploads_dir
+                candidate_path = os.path.abspath(os.path.normpath(os.path.join(uploads_dir, path)))
+                if candidate_path.startswith(uploads_dir + os.sep) and os.path.isfile(candidate_path):
+                    cached_paths.append(candidate_path)
         return cached_paths
 
     md_pattern = re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
