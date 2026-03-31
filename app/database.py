@@ -7,8 +7,7 @@ from datetime import datetime
 from contextlib import contextmanager
 from typing import Generator
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, Text, DateTime, Float, LargeBinary, Index
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from sqlalchemy.pool import StaticPool
 
 # SQLAlchemy setup
