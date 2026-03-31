@@ -866,20 +866,10 @@ class Database:
                         'content': content
                     })
                 elif msg.role in ALL_TOOL_ROLES:
-                    # Parse canonical markdown contract
-                    command_line = Database._extract_command_from_markdown_contract(content)
-                    raw_result = Database._extract_raw_result_from_markdown_contract(content)
-                    # Append TWO entries: assistant command + tool result
-                    formatted_messages.append({
-                        'role': 'assistant',
-                        'content': command_line
-                    })
                     formatted_messages.append({
                         'role': msg.role,
-                        'content': raw_result
+                        'content': content
                     })
-
-            return formatted_messages
 
     @staticmethod
     def add_image_tools_message(image_url, session_id=None):
@@ -948,37 +938,3 @@ class Database:
         """Add a memory note (alias for add_system_note)."""
         Database.add_system_note(content, session_id)
 
-    @staticmethod
-    def _extract_command_from_markdown_contract(content):
-        """Extract command from markdown contract."""
-        import re
-        if not content:
-            return content
-        m = re.search(r'```bash\n\S+\$\s*(/[^\n]+)\n```', content)
-        if m:
-            return m.group(1).strip()
-        return content
-
-    @staticmethod
-    def _extract_raw_result_from_markdown_contract(content):
-        """Extract raw result from markdown contract, stripping formatting."""
-        import re
-        if not content:
-            return content
-
-        result = content
-        result = re.sub(r'<details>\s*<summary>.*?</summary>', '', result, flags=re.DOTALL)
-        result = re.sub(r'</details>', '', result, flags=re.DOTALL)
-        result = re.sub(r'```bash\n.*?\n```', '', result, flags=re.DOTALL)
-        result = re.sub(r'```[\w]*\n?', '', result)
-        result = re.sub(r'```', '', result)
-        result = re.sub(r'^>\s*', '', result, flags=re.MULTILINE)
-        result = re.sub(r'<[^>]+>', '', result)
-        result = re.sub(r'^\n+', '', result)
-        result = re.sub(r'\n+$', '', result)
-        result = result.strip()
-
-        return result
-
-# Initialize database
-init_db()
