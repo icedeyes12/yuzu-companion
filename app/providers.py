@@ -17,12 +17,26 @@ from app.tools.schemas import GenerateResult, ToolCall
 
 
 def _normalize_tools_for_payload(tools):
+    """Convert ToolDefinition objects (or raw dicts) to minimal OpenAI tool schema.
+
+    Only sends the three fields Chutes/OpenAI accept:
+    name, description, parameters. Strips extra manifest fields.
+    """
     normalized = []
     for tool in tools or []:
         if hasattr(tool, "to_llm_schema"):
+            # ToolDefinition — use the LLM schema (already minimal)
             normalized.append(tool.to_llm_schema())
         elif isinstance(tool, dict):
-            normalized.append(tool)
+            # Raw dict — keep only the OpenAI surface
+            normalized.append({
+                "type": "function",
+                "function": {
+                    "name": tool.get("name", ""),
+                    "description": tool.get("description", ""),
+                    "parameters": tool.get("parameters", {}),
+                }
+            })
     return normalized
 
 class AIProvider:
@@ -329,7 +343,7 @@ class CerebrasProvider(AIProvider):
         
         try:
             # Normalize messages for Chutes API (system message must be first)
-            messages = self._normalize_messages_for_chutes(messages)
+            messages = self._normalize_messages(messages)
             
             if self.supports_vision(model) and messages:
                 last_user_message = self._get_last_user_message(messages)
@@ -714,7 +728,7 @@ class ChutesProvider(AIProvider):
         
         try:
             # Normalize messages for Chutes API (system message must be first)
-            messages = self._normalize_messages_for_chutes(messages)
+            messages = self._normalize_messages(messages)
             
             if self.supports_vision(model) and messages:
                 last_user_message = self._get_last_user_message(messages)
@@ -726,7 +740,7 @@ class ChutesProvider(AIProvider):
             max_tokens = kwargs.get('max_tokens', 4096)
             top_p = kwargs.get('top_p', 0.9)
             top_k = kwargs.get('top_k', 45)
-            kwargs.get('typical_p', 0.85)
+            typical_p = kwargs.get('typical_p', 0.85)
             stream = kwargs.get('stream', False)
             
             headers = {
@@ -741,6 +755,7 @@ class ChutesProvider(AIProvider):
                 "max_tokens": max_tokens,
                 "top_p": top_p,
                 "top_k": top_k,
+                "typical_p": typical_p,
                 "stream": stream
             }
             # Add tools if provided (for function calling)
@@ -782,7 +797,7 @@ class ChutesProvider(AIProvider):
         
         try:
             # Normalize messages for Chutes API (system message must be first)
-            messages = self._normalize_messages_for_chutes(messages)
+            messages = self._normalize_messages(messages)
             
             if self.supports_vision(model) and messages:
                 last_user_message = self._get_last_user_message(messages)
@@ -863,7 +878,7 @@ class AIProviderManager:
         chutes = ChutesProvider()
         if chutes.is_available:
             self.providers["chutes"] = chutes
-    
+
     def get_available_providers(self) -> List[str]:
         return list(self.providers.keys())
     
