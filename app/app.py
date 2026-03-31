@@ -219,10 +219,12 @@ def handle_user_message(user_message, interface="terminal"):
             img_path = _parse_image_result_from_formatted(tool_md)
             img_context = None
             if img_path:
-                img_b64, mime = _load_and_attach_generated_image(img_path, [], session_id)
-                if img_b64:
-                    img_context = [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}}]
-                    print("[TOOL SYNC] Attached generated image to synthesis pass")
+                success = _load_and_attach_generated_image(img_path, [], session_id)
+                if success:
+                    img_b64, mime = _consume_visual_context(session_id)
+                    if img_b64:
+                        img_context = [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}}]
+                        print("[TOOL SYNC] Attached generated image to synthesis pass")
 
             second_text = run_tool_synthesis(
                 profile,
@@ -338,7 +340,8 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
             if not full_response_clean:
                 full_response_clean = "I'm having trouble responding right now. Please try again."
             
-            run_memory_summary(profile, user_message, full_response, session_id)
+            Database.add_message('assistant', full_response_clean, session_id=session_id)
+            run_memory_summary(profile, user_message, full_response_clean, session_id)
 
         _trigger_memory_pipeline(session_id)
     return
@@ -400,7 +403,7 @@ def build_visual_context(session_id):
 
 
 def _build_generation_context(profile, session_id, interface="terminal", user_message=None):
-    """Shared context building logic for both streaming and non-streaming responses"""
+    """Shared context building logic for both streaming and non-streaminging responses"""
     from datetime import datetime
 
     datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -892,8 +895,7 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
         
         # Case: plain text response
         if isinstance(ai_response, str) and ai_response.strip():
-            yield ai_response
-            return
+            return ai_response
         
         # Empty response — retry once
         print("[WARNING] Empty response, retrying...")
@@ -901,16 +903,14 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
             preferred_provider, preferred_model, messages, tools=get_tool_definitions(), **kwargs
         )
         if isinstance(ai_response, str) and ai_response.strip():
-            yield ai_response
-            return
+            return ai_response
         
-        yield "AI service failed to generate a response."
-        return
+        return "AI service failed to generate a response."
         
     except Exception as e:
         error_msg = f"AI service error: {str(e)}"
         print(f"[ERROR] Streaming response failed: {error_msg}")
-        yield error_msg
+        return error_msg
 
 def generate_ai_response(profile, user_message, interface="terminal", session_id=None, image_content_for_context=None):
     """Generate a single AI response — no agentic looping.
