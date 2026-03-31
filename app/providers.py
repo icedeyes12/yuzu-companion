@@ -354,8 +354,8 @@ class CerebrasProvider(AIProvider):
             temperature = kwargs.get('temperature', 0.73)
             max_tokens = kwargs.get('max_tokens', 4096)
             top_p = kwargs.get('top_p', 0.9)
-            top_k = kwargs.get('top_k', 45)
-            typical_p = kwargs.get('typical_p', 0.85)
+            top_k = kwargs.get('top_k', 40)
+            typical_p = kwargs.get('typical_p', 0.8)
             
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
@@ -672,7 +672,8 @@ class ChutesProvider(AIProvider):
             "zai-org/GLM-4.5-TEE",
             "zai-org/GLM-4.6-TEE",
             "zai-org/GLM-4.7-TEE",
-            "deepseek-ai/DeepSeek-R1"
+            "deepseek-ai/DeepSeek-R1",
+            "Qwen/Qwen3-30B-A3B-Instruct"
         ]
     
     def _normalize_messages_for_chutes(self, messages: List[Dict]) -> List[Dict]:
@@ -1017,44 +1018,72 @@ class AIProviderManager:
             return None
 
     # Preferred models for internal (non-chat) LLM calls
-    _PREFERRED_MODELS = [
-        'Qwen/Qwen3-Next-80B-A3B-Instruct',
-        'moonshotai/Kimi-K2.5-TEE',
-        'deepseek-ai/DeepSeek-V3-0324',
-    ]
+    # Per-provider ordered list: primary -> fallback -> fallback ...
+    # Falls back within provider before moving to next provider.
+    _PREFERRED_MODELS = {
+        'chutes': [
+            'Qwen/Qwen3-Next-80B-A3B-Instruct',
+            'Qwen/Qwen3-30B-A3B-Instruct',
+            'moonshotai/Kimi-K2.5-TEE',
+            'deepseek-ai/DeepSeek-V3-0324',
+        ],
+        'openrouter': [
+            'moonshotai/Kimi-K2.5',
+            'deepseek/deepseek-chat-v3-0324',
+        ],
+        'ollama': [],
+        'cerebras': [],
+    }
 
-    def _best_model(self, provider: str) -> Optional[str]:
-        """Pick the best available model for internal LLM tasks."""
+    def _best_model(self, provider: str, exclude: Optional[str] = None) -> Optional[str]:
+        """Pick the best available model for internal LLM tasks.
+        
+        Args:
+            provider: provider name
+            exclude: skip this model (used for fallback when primary fails)
+        """
         if provider not in self.providers:
             return None
         models = self.providers[provider].get_models()
-        for preferred in self._PREFERRED_MODELS:
-            if preferred in models:
-                return preferred
-        return models[0] if models else None
+        preferred = self._PREFERRED_MODELS.get(provider, [])
+        for pmodel in preferred:
+            if pmodel != exclude and pmodel in models:
+                return pmodel
+        # Fallback: first available model not excluded
+        for m in models:
+            if m != exclude:
+                return m
+        return None
 
     def auto_send_message(self, messages: List[Dict], **kwargs) -> Optional[str]:
-        """Auto-select provider and model, then dispatch. Fallback wrapper."""
+        """Auto-select provider and model, then dispatch. Per-provider model fallback.
+        
+        When a provider's primary model fails (503/422/etc), tries the next
+        preferred model from the same provider before moving to the next provider.
+        """
         model_hint = kwargs.pop('model', None) or kwargs.pop('model_name', None)
-        # Try each available provider in priority order
+
         for provider in ['chutes', 'openrouter', 'ollama', 'cerebras']:
             if provider not in self.providers:
                 continue
-            provider_obj = self.providers[provider]
-            if model_hint:
-                model = model_hint if model_hint in provider_obj.get_models() else provider_obj.get_models()[0]
-            else:
-                model = self._best_model(provider)
-            if not model:
-                continue
-            try:
-                result = provider_obj.send_message(messages, model, **kwargs)
-                if result:
-                    print(f"[AIProviderManager] auto_send_message: {provider}/{model} OK")
-                    return result
-            except Exception as e:
-                print(f"[AIProviderManager] {provider} failed: {e}")
-                continue
+
+            model = None
+            while True:
+                try:
+                    result = self.providers[provider].send_message(messages, model or model_hint or self._best_model(provider), **kwargs)
+                    if result:
+                        print(f"[AIProviderManager] auto_send_message: {provider}/{model or model_hint or 'auto'} OK")
+                        return result
+                except Exception as e:
+                    print(f"[AIProviderManager] {provider}/{model or 'auto'} failed: {e}")
+
+                # Current model failed — try next fallback model in this provider
+                next_model = self._best_model(provider, exclude=model)
+                if next_model == model or next_model is None:
+                    break  # no more fallback models for this provider
+                print(f"[AIProviderManager] {provider}/{model or 'auto'} unavailable, trying {next_model} ...")
+                model = next_model
+
         print("[AIProviderManager] auto_send_message: all providers failed")
         return None
 
