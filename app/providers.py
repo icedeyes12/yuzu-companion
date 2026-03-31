@@ -15,6 +15,16 @@ from app.database import Database
 from app.tools import multimodal_tools
 from app.tools.schemas import GenerateResult, ToolCall
 
+
+def _normalize_tools_for_payload(tools):
+    normalized = []
+    for tool in tools or []:
+        if hasattr(tool, "to_llm_schema"):
+            normalized.append(tool.to_llm_schema())
+        elif isinstance(tool, dict):
+            normalized.append(tool)
+    return normalized
+
 class AIProvider:
     def __init__(self, name: str, config: Dict = None):
         self.name = name
@@ -285,7 +295,7 @@ class CerebrasProvider(AIProvider):
             }
             tools = kwargs.get('tools')
             if tools:
-                payload["tools"] = tools
+                payload["tools"] = _normalize_tools_for_payload(tools)
 
             print(f"[Chutes] {model} | max_tokens={max_tokens}")
 
@@ -500,7 +510,7 @@ class OpenRouterProvider(AIProvider):
             # Add tools if provided (for function calling)
             tools = kwargs.get('tools')
             if tools:
-                payload["tools"] = tools
+                payload["tools"] = _normalize_tools_for_payload(tools)
 
             # Debug: Log summary (not full payload)
             print(f"[OpenRouter] {model} | max_tokens={max_tokens}")
@@ -736,7 +746,7 @@ class ChutesProvider(AIProvider):
             # Add tools if provided (for function calling)
             tools = kwargs.get('tools')
             if tools:
-                payload["tools"] = tools
+                payload["tools"] = _normalize_tools_for_payload(tools)
 
             # Debug: Log summary (not full payload)
             print(f"[Chutes] {model} | max_tokens={max_tokens}")
@@ -957,7 +967,7 @@ class AIProviderManager:
             }
             tools = kwargs.get('tools')
             if tools:
-                payload["tools"] = tools
+                payload["tools"] = _normalize_tools_for_payload(tools)
 
             if provider_name == "ollama":
                 resp = requests.post(
