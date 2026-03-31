@@ -870,6 +870,8 @@ class Database:
                         'content': content
                     })
 
+            return formatted_messages
+
     @staticmethod
     def add_image_tools_message(image_url, session_id=None):
         """Add an image tools message."""
