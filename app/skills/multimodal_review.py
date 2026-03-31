@@ -9,6 +9,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.tools import multimodal_tools
 
+# Base directories for resolving and constraining local image paths
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATIC_DIR = os.path.abspath(os.path.join(BASE_DIR, "static"))
+UPLOADS_DIR = os.path.abspath(os.path.join(STATIC_DIR, "uploads"))
+GENERATED_DIR = os.path.abspath(os.path.join(STATIC_DIR, "generated_images"))
+
 VISUAL_CONTEXT_BUFFER = {}
 VISUAL_CONTEXT_TURNS = 3
 
@@ -49,8 +55,7 @@ def cache_images_from_message(user_message: str) -> List[str]:
 
     if "UPLOADED_IMAGES:" in user_message and "IMAGE_UPLOAD:" in user_message:
         # Restrict IMAGE_UPLOAD paths to the static/uploads directory to prevent path traversal
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        uploads_dir = os.path.abspath(os.path.join(base_dir, "static", "uploads"))
+        uploads_dir = UPLOADS_DIR
         for line in user_message.split("\n"):
             if line.startswith("IMAGE_UPLOAD:"):
                 path = line.replace("IMAGE_UPLOAD:", "").strip()
@@ -62,10 +67,24 @@ def cache_images_from_message(user_message: str) -> List[str]:
 
     for source in _extract_markdown_image_sources(user_message):
         if source.startswith(("static/", "uploads/", "generated_images/")):
-            local_path = source if source.startswith("static/") else f"static/{source}"
-            if os.path.isfile(local_path):
-                cached_paths.append(local_path)
-                print(f"[Vision] Local image found → {local_path}")
+            # Resolve markdown-referenced local images against known-safe static directories
+            if source.startswith("static/"):
+                base_dir = STATIC_DIR
+                # strip leading "static/" so we can join to STATIC_DIR safely
+                relative_part = source[len("static/") :]
+            elif source.startswith("uploads/"):
+                base_dir = UPLOADS_DIR
+                relative_part = source[len("uploads/") :]
+            else:  # "generated_images/"
+                base_dir = GENERATED_DIR
+                relative_part = source[len("generated_images/") :]
+
+            candidate_path = os.path.abspath(os.path.normpath(os.path.join(base_dir, relative_part)))
+
+            # Ensure the resolved path stays within the intended base directory
+            if candidate_path.startswith(base_dir + os.sep) and os.path.isfile(candidate_path):
+                cached_paths.append(candidate_path)
+                print(f"[Vision] Local image found → {candidate_path}")
         else:
             cached = multimodal_tools.download_image_to_cache(source)
             if cached:
