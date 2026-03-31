@@ -5,13 +5,42 @@ from __future__ import annotations
 
 import base64
 import os
-import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.tools import multimodal_tools
 
 VISUAL_CONTEXT_BUFFER = {}
 VISUAL_CONTEXT_TURNS = 3
+
+def _extract_markdown_image_sources(text: str) -> List[str]:
+    """Extract markdown image destinations without regex."""
+    sources: List[str] = []
+    index = 0
+
+    while True:
+        start = text.find('![', index)
+        if start == -1:
+            break
+
+        open_paren = text.find('](', start + 2)
+        if open_paren == -1:
+            index = start + 2
+            continue
+
+        url_start = open_paren + 2
+        close_paren = text.find(')', url_start)
+        if close_paren == -1:
+            index = url_start
+            continue
+
+        source = text[url_start:close_paren].strip()
+        if source:
+            sources.append(source)
+
+        index = close_paren + 1
+
+    return sources
+
 
 
 def cache_images_from_message(user_message: str) -> List[str]:
@@ -31,9 +60,7 @@ def cache_images_from_message(user_message: str) -> List[str]:
                     cached_paths.append(candidate_path)
         return cached_paths
 
-    md_pattern = re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
-    for match in md_pattern.finditer(user_message):
-        source = match.group(1)
+    for source in _extract_markdown_image_sources(user_message):
         if source.startswith(("static/", "uploads/", "generated_images/")):
             local_path = source if source.startswith("static/") else f"static/{source}"
             if os.path.isfile(local_path):
@@ -56,13 +83,17 @@ def cache_images_from_message(user_message: str) -> List[str]:
 
 def parse_image_result_from_formatted(formatted_result: str) -> Optional[str]:
     """Extract the generated image path from a formatted tool result."""
-    try:
-        match = re.search(r'src="(static/generated_images/[^"]+)"', formatted_result)
-        if match:
-            return match.group(1)
-    except Exception:
-        pass
-    return None
+    start = formatted_result.find('src="')
+    if start == -1:
+        return None
+
+    start += len('src="')
+    end = formatted_result.find('"', start)
+    if end == -1:
+        return None
+
+    value = formatted_result[start:end].strip()
+    return value or None
 
 
 def load_generated_image_base64(img_path: str) -> Tuple[Optional[str], Optional[str]]:
@@ -161,17 +192,17 @@ def is_model_using_markdown_image_shortcut(response_text: str) -> bool:
     """Detect if a model is trying to output a markdown image instead of using the image tool."""
     if not response_text:
         return False
-    md_img_pattern = re.compile(r'!\[[^\]]*\]\((static/|uploads/|generated_images/)[^)]+\)')
-    return bool(md_img_pattern.search(response_text))
+
+    for source in _extract_markdown_image_sources(response_text):
+        if source.startswith(("static/", "uploads/", "generated_images/")):
+            return True
+    return False
 
 
 def extract_prompt_from_markdown_image(response_text: str) -> Optional[str]:
     """Extract the image path or URL from markdown image syntax."""
-    try:
-        match = re.search(r'!\[[^\]]*\]\(([^)]+)\)', response_text)
-        return match.group(1) if match else None
-    except Exception:
-        return None
+    sources = _extract_markdown_image_sources(response_text)
+    return sources[0] if sources else None
 
 
 def run_multimodal_review(
