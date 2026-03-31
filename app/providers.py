@@ -913,11 +913,11 @@ class AIProviderManager:
                 return None
 
             message = raw_response.get('choices', [{}])[0].get('message', {})
-            content = message.get('content', '') or ''
+            content = (message.get('content') or '').strip()
             tool_calls = provider.parse_tool_calls(raw_response)
             if tool_calls:
                 result = GenerateResult(
-                    text=content.strip(),
+                    text=content,
                     tool_calls=[
                         ToolCall(
                             name=call.get('name', ''),
@@ -930,9 +930,9 @@ class AIProviderManager:
                 print(f"Response time: {response_time:.1f}s")
                 return result
 
-            if content.strip():
+            if content:
                 print(f"Response time: {response_time:.1f}s")
-                return content.strip()
+                return content
 
             print(f"AI service failed after {response_time:.1f}s")
             return None
@@ -946,7 +946,6 @@ class AIProviderManager:
         else:
             print(f"AI service failed after {response_time:.1f}s")
             return None
-    
     def send_message_streaming(self, provider_name: str, model: str, messages: List[Dict], **kwargs) -> Generator[str, None, None]:
         if provider_name not in self.providers:
             yield ""
