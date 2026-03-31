@@ -20,7 +20,7 @@ from app.skills.multimodal_review import (
     parse_image_result_from_formatted as _review_parse_img,
 )
 
-# Backward-compat wrappers kept for internal callers until the legacy path is fully retired.
+# Backward-compat wrappers kept for internal callers.
 def _is_model_using_markdown_image_shortcut(response_text):
     return _review_is_markdown_shortcut(response_text)
 
