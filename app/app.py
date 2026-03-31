@@ -9,7 +9,7 @@ from typing import Dict
 from app.database import Database
 from app.providers import get_ai_manager, reload_ai_manager
 from app.tools import multimodal_tools
-from app.tools.registry import execute_tool, get_tool_role, TOOL_ROLE_MAP, get_tool_definitions
+from app.tools.registry import execute_tool, get_tool_role, get_tool_definitions
 from app.tools.schemas import GenerateResult
 from app.skills import run_memory_pipeline, run_memory_summary, run_multimodal_review, run_session_naming, run_tool_synthesis
 from app.skills.multimodal_review import (
@@ -508,13 +508,6 @@ def _build_generation_context(profile, session_id, interface="terminal", user_me
         session_context += f"\n- {event['content']} at {event['timestamp']}"
 
     # =========================
-    # Available tools list
-    # =========================
-    available_tools = "\n".join(
-        [f"- /{cmd} -> maps to role '{role}'" for cmd, role in TOOL_ROLE_MAP.items()]
-    )
-
-    # =========================
     # System message
     # =========================
     system_message = f'''
@@ -728,43 +721,10 @@ When discussing code or technical topics:
 - Explain calmly, like guiding—not lecturing.
 
 
-DISCUSSION VS EXECUTION SEPARATION (GLOBAL):
-
-- Not all discussion implies execution.
-- Planning, brainstorming, recommending, or explaining
-  are NOT execution.
-
-Discussion mode includes:
-- Asking for ideas, options, opinions, or preferences.
-- Exploring alternatives (“gimana kalau…”, “menurutmu cocoknya…”).
-- Hypothetical or conditional phrasing.
-
-Execution mode activates ONLY when:
-- The user explicitly asks to perform the action now.
-- The intent is clear, direct, and unambiguous.
-
-Execution signals include:
-- Imperatives (“kirim”, “buat”, “generate”, “jalanin sekarang”).
-- Explicit approval (“oke, pakai itu. lanjut”).
-- Commands or activation keywords.
-
-Transition rule:
-- Never transition from discussion → execution automatically.
-- Always wait for explicit execution intent.
-
----
-
-AVAILABLE TOOLS
-
-The following tools are available for execution via structured tool calls:
-{available_tools}
-
-When a tool is needed:
-- emit a `tool_calls` entry instead of plain text
-- do not print slash commands as normal assistant output
-- keep any natural-language response minimal
-
----
+Tool usage:
+- Use structured `tool_calls` only when a tool is needed.
+- Never output slash commands as assistant text.
+- Keep the response minimal and natural.
 
 Memory usage note:
 The following information is background context only.
