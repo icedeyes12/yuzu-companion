@@ -384,15 +384,17 @@ async def api_send_message_with_images(
 
 @app.post("/api/generate_image")
 async def api_generate_image(request: MessageRequest):
-    """Image generation now uses /api/send_message. Redirect for backwards compat."""
+    """Generate an image directly without routing through text-command handling."""
     try:
         prompt = request.message.strip()
         if not prompt:
             raise HTTPException(status_code=400, detail="Prompt required")
         
-        # Route through the unified send_message pipeline
-        ai_reply = handle_user_message(f"/imagine {prompt}", interface="web")
-        return {"reply": ai_reply, "status": "success"}
+        from app.tools.image_generate import execute as execute_image_generate
+        result = execute_image_generate({"prompt": prompt}, session_id=Database.get_active_session()["id"])
+        if result.get("ok"):
+            return {"reply": result["markdown"], "status": "success"}
+        return {"reply": result.get("error", "Image generation failed"), "status": "error"}
     except Exception as e:
         print(f"Error generating image: {e}")
         raise HTTPException(status_code=500, detail=str(e))
