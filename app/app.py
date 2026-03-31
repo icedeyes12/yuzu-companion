@@ -959,6 +959,9 @@ Your speaking style and personality are defined above.
         session_id=session_id, limit=50, recent=True
     )
 
+    if chat_history is None:
+        chat_history = []
+
     messages = [{"role": "system", "content": system_message}]
 
     for msg in chat_history:
