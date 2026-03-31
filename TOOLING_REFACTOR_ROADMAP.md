@@ -42,12 +42,12 @@ The tooling layer now follows a cleaner shape:
 - memory workflows remain skill-based (`run_memory_pipeline`, `run_memory_summary`)
 - tools stay atomic; orchestration lives in skill helpers
 
-### Cleanup and verification
+### Verification
 - legacy `/command` parsing removed from the app flow
 - duplicate compatibility branches removed where possible
 - README updated to describe the current tool contract
 - smoke tests added for registry/tool-contract behavior
-- `ruff check` and test suite pass
+- `ruff check` and tests pass
 
 ## Current architecture rules
 
@@ -56,8 +56,8 @@ The tooling layer now follows a cleaner shape:
 - the registry is the single source of truth for dispatch
 - app-level orchestration should stay thin and predictable
 
-## Suggested future work
+## Future guidance
 
-- keep adding tests as new tools are introduced
-- move any future multi-step flow into a skill instead of growing `app.py`
-- keep docs aligned with the actual runtime behavior
+- add tests alongside new tools
+- move any new multi-step flow into a skill instead of growing `app.py`
+- keep docs aligned with runtime behavior
