@@ -673,6 +673,7 @@ class ChutesProvider(AIProvider):
             "zai-org/GLM-4.6-TEE",
             "zai-org/GLM-4.7-TEE",
             "deepseek-ai/DeepSeek-R1",
+            "Qwen/Qwen3-30B-A3B-Instruct",
         ]
     
     def _normalize_messages_for_chutes(self, messages: List[Dict]) -> List[Dict]:
@@ -1021,6 +1022,8 @@ class AIProviderManager:
     _PREFERRED_MODELS = {
         'chutes': [
             'Qwen/Qwen3-Next-80B-A3B-Instruct',
+            'Qwen/Qwen3-30B-A3B-Instruct',
+            'Qwen/Qwen3-30B-A3B',
             'moonshotai/Kimi-K2.5-TEE',
             'deepseek-ai/DeepSeek-V3-0324',
             'deepseek-ai/DeepSeek-V3.1',
