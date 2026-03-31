@@ -278,7 +278,7 @@ class CerebrasProvider(AIProvider):
 
         try:
             # Normalize messages (convert custom tool roles to assistant)
-            messages = self._normalize_messages_for_chutes(messages)
+            messages = self._normalize_messages(messages)
 
             if self.supports_vision(model) and messages:
                 last_user_message = self._get_last_user_message(messages)
@@ -343,7 +343,7 @@ class CerebrasProvider(AIProvider):
         
         try:
             # Normalize messages for Chutes API (system message must be first)
-            messages = self._normalize_messages_for_chutes(messages)
+            messages = self._normalize_messages(messages)
             
             if self.supports_vision(model) and messages:
                 last_user_message = self._get_last_user_message(messages)
@@ -485,7 +485,7 @@ class OpenRouterProvider(AIProvider):
 
         try:
             # Normalize messages (convert custom tool roles to assistant)
-            messages = self._normalize_messages_for_chutes(messages)
+            messages = self._normalize_messages(messages)
 
             if self.supports_vision(model) and messages:
                 last_user_message = self._get_last_user_message(messages)
@@ -732,7 +732,7 @@ class ChutesProvider(AIProvider):
         
         try:
             # Normalize messages for Chutes API (system message must be first)
-            messages = self._normalize_messages_for_chutes(messages)
+            messages = self._normalize_messages(messages)
             
             if self.supports_vision(model) and messages:
                 last_user_message = self._get_last_user_message(messages)
@@ -801,7 +801,7 @@ class ChutesProvider(AIProvider):
         
         try:
             # Normalize messages for Chutes API (system message must be first)
-            messages = self._normalize_messages_for_chutes(messages)
+            messages = self._normalize_messages(messages)
             
             if self.supports_vision(model) and messages:
                 last_user_message = self._get_last_user_message(messages)
