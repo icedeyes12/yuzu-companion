@@ -100,14 +100,16 @@ def execute(arguments: dict, **kwargs) -> dict:
                 partner_name,
             )
 
-        images_dir = "static/generated_images"
+        images_dir = os.path.abspath(os.path.normpath("static/generated_images"))
         os.makedirs(images_dir, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (" ", "-", "_")).rstrip()
         ext = "jpg" if image_model == "qwen_image" else "png"
         filename = f"{timestamp}_{safe_prompt}.{ext}"
-        filepath = os.path.join(images_dir, filename)
+        filepath = os.path.abspath(os.path.normpath(os.path.join(images_dir, filename)))
+        if not filepath.startswith(images_dir + os.sep):
+            raise Exception("Invalid image path")
 
         with open(filepath, "wb") as f:
             f.write(response.content)
