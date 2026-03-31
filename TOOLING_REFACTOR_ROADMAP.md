@@ -16,9 +16,7 @@ The tooling layer now follows a cleaner shape:
 - validation happens before execution
 - tool results are normalized
 - multimodal and summary workflows live in skills
-- legacy `/command` parsing has been removed from the app flow
-
-## Completed work
+- ## Completed work
 
 ### Tooling core
 - richer tool metadata in `ToolDefinition`
@@ -43,7 +41,6 @@ The tooling layer now follows a cleaner shape:
 - tools stay atomic; orchestration lives in skill helpers
 
 ### Verification
-- legacy `/command` parsing removed from the app flow
 - duplicate compatibility branches removed where possible
 - README updated to describe the current tool contract
 - smoke tests added for registry/tool-contract behavior

@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
   - Lazy-loaded `TOOL_DEFINITIONS` collected from each tool module on first access
   - `get_tool_definitions()` — returns list of all registered tool schemas
   - `get_tool_definition(name)` — returns schema for a specific tool
-  - Legacy compatibility results are normalized through a structured result contract
+  - Structured tool results are normalized through a structured result contract
 
 - **`app/tools/__init__.py`**: Re-exports new registry API
 
@@ -30,7 +30,6 @@ All notable changes to this project will be documented in this file.
   - `ToolCall` and `GenerateResult` dataclasses for typed tool call handling
   - `generate_ai_response()` sends tool schemas to providers so the LLM can request tools directly
   - Image tools remain terminal (no synthesis pass on success)
-  - Legacy `/command` parsing has been removed from the app flow
 
 ### Tool Schemas Registered
 
