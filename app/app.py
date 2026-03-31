@@ -723,7 +723,8 @@ When discussing code or technical topics:
 
 Tool usage:
 - Use structured `tool_calls` only when a tool is needed.
-- Never output slash commands as assistant text.
+- When an image is needed, request the `image_generate` tool via `tool_calls` only.
+- Do not emit slash commands as plain text.
 - Keep the response minimal and natural.
 
 Memory usage note:
@@ -780,10 +781,10 @@ def _handle_vision_processing(messages, user_message, current_provider, current_
 
 def _handle_image_generation(user_message, session_id):
     """Handle direct image generation requests"""
-    prompt = user_message.replace('/imagine', '').strip()
+    prompt = user_message.strip()
     
     if not prompt:
-        return "Please provide a prompt after /imagine command. Example: /imagine a cute anime cat"
+        return "Please provide a prompt for image generation. Example: a cute anime cat"
     
     Database.add_message('user', user_message, session_id=session_id)
     
@@ -797,7 +798,7 @@ def _handle_image_generation(user_message, session_id):
 
 def _handle_ai_image_generation(ai_response, session_id):
     """Handle AI responses that start with /imagine"""
-    prompt = ai_response.replace('/imagine', '').strip()
+    prompt = ai_response.strip()
     
     if prompt.strip():
         Database.add_message('assistant', ai_response, session_id=session_id)
