@@ -673,7 +673,6 @@ class ChutesProvider(AIProvider):
             "zai-org/GLM-4.6-TEE",
             "zai-org/GLM-4.7-TEE",
             "deepseek-ai/DeepSeek-R1",
-            "Qwen/Qwen3-30B-A3B-Instruct"
         ]
     
     def _normalize_messages_for_chutes(self, messages: List[Dict]) -> List[Dict]:
@@ -1022,9 +1021,9 @@ class AIProviderManager:
     _PREFERRED_MODELS = {
         'chutes': [
             'Qwen/Qwen3-Next-80B-A3B-Instruct',
-            'Qwen/Qwen3-30B-A3B-Instruct',
             'moonshotai/Kimi-K2.5-TEE',
             'deepseek-ai/DeepSeek-V3-0324',
+            'deepseek-ai/DeepSeek-V3.1',
         ],
         'openrouter': [
             'moonshotai/Kimi-K2.5',
@@ -1034,29 +1033,30 @@ class AIProviderManager:
         'cerebras': [],
     }
 
-    def _best_model(self, provider: str, exclude: Optional[str] = None) -> Optional[str]:
-        """Pick the best available model for internal LLM tasks.
-        
+    def _best_model(self, provider: str, tried: Optional[set[str]] = None) -> Optional[str]:
+        """Pick the best available model for internal LLM tasks, skipping tried models.
+
         Args:
             provider: provider name
-            exclude: skip this model (used for fallback when primary fails)
+            tried: set of model names already attempted (skip these)
         """
         if provider not in self.providers:
             return None
+        tried = tried or set()
         models = self.providers[provider].get_models()
         preferred = self._PREFERRED_MODELS.get(provider, [])
         for pmodel in preferred:
-            if pmodel != exclude and pmodel in models:
+            if pmodel not in tried and pmodel in models:
                 return pmodel
-        # Fallback: first available model not excluded
+        # Fallback: first available model not tried
         for m in models:
-            if m != exclude:
+            if m not in tried:
                 return m
         return None
 
     def auto_send_message(self, messages: List[Dict], **kwargs) -> Optional[str]:
         """Auto-select provider and model, then dispatch. Per-provider model fallback.
-        
+
         When a provider's primary model fails (503/422/etc), tries the next
         preferred model from the same provider before moving to the next provider.
         """
@@ -1066,22 +1066,31 @@ class AIProviderManager:
             if provider not in self.providers:
                 continue
 
-            model = None
+            # Track tried models for this provider to prevent cycles
+            tried: set[str] = set()
+
             while True:
+                # Pick the model to try: model_hint if valid, else next untried preferred
+                if model_hint and model_hint in self.providers[provider].get_models():
+                    model = model_hint
+                    model_hint = None  # only use as initial target once
+                else:
+                    model = self._best_model(provider, tried=tried)
+
+                if model is None:
+                    break  # no more models to try for this provider
+
+                tried.add(model)
+
                 try:
-                    result = self.providers[provider].send_message(messages, model or model_hint or self._best_model(provider), **kwargs)
+                    result = self.providers[provider].send_message(messages, model, **kwargs)
                     if result:
-                        print(f"[AIProviderManager] auto_send_message: {provider}/{model or model_hint or 'auto'} OK")
+                        print(f"[AIProviderManager] auto_send_message: {provider}/{model} OK")
                         return result
                 except Exception as e:
-                    print(f"[AIProviderManager] {provider}/{model or 'auto'} failed: {e}")
+                    print(f"[AIProviderManager] {provider}/{model} failed: {e}")
 
-                # Current model failed — try next fallback model in this provider
-                next_model = self._best_model(provider, exclude=model)
-                if next_model == model or next_model is None:
-                    break  # no more fallback models for this provider
-                print(f"[AIProviderManager] {provider}/{model or 'auto'} unavailable, trying {next_model} ...")
-                model = next_model
+                # Model failed — loop back to pick the next untried fallback
 
         print("[AIProviderManager] auto_send_message: all providers failed")
         return None
