@@ -21,6 +21,7 @@ debug_logs/
 *.log
 
 # Runtime generated assets
+app/static/
 static/uploads/
 static/generated_images/
 static/image_cache/
