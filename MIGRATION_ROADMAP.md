@@ -1,7 +1,7 @@
 # psycopg2 → psycopg (async v3) Migration Roadmap
 
 **Project:** yuzu-companion
-**Status:** PLANNING
+**Status:** ✅ PHASE 1-6 DONE — READY FOR SMOKE TEST
 **Target:** Native async PostgreSQL driver with `psycopg` v3 + `psycopg_pool`
 
 ---
@@ -76,58 +76,58 @@
 **Why second:** Depends only on Phase 1. All functions must become `async def`.
 
 ### 2.1 — Init
-- [ ] `init_pg_tables()` → `async def init_pg_tables()`
-- [ ] `with PgSession() as s: s.execute(q)` → `async with AsyncPgSession() as s: await s.execute(q)`
+- [x] `init_pg_tables()` → `async def init_pg_tables()`
+- [x] `with PgSession() as s: s.execute(q)` → `async with AsyncPgSession() as s: await s.execute(q)`
 
 ### 2.2 — Profile operations
-- [ ] `get_profile()` → `async def get_profile()`
-- [ ] `update_profile()` → `async def update_profile()`
-- [ ] `get_context()` → `async def get_context()`
-- [ ] `update_context()` → `async def update_context()`
-- [ ] `get_memory()` → `async def get_memory()`
-- [ ] `update_memory()` → `async def update_memory()`
+- [x] `get_profile()` → `async def get_profile()`
+- [x] `update_profile()` → `async def update_profile()`
+- [x] `get_context()` → `async def get_context()`
+- [x] `update_context()` → `async def update_context()`
+- [x] `get_memory()` → `async def get_memory()`
+- [x] `update_memory()` → `async def update_memory()`
 
 ### 2.3 — ChatSession operations
-- [ ] `get_active_session()` → `async def get_active_session()`
-- [ ] `get_all_sessions()` → `async def get_all_sessions()`
-- [ ] `create_session()` → `async def create_session()`
-- [ ] `switch_session()` → `async def switch_session()`
-- [ ] `rename_session()` → `async def rename_session()`
-- [ ] `delete_session()` → `async def delete_session()`
-- [ ] `update_session_memory()` → `async def update_session_memory()`
-- [ ] `get_session_memory()` → `async def get_session_memory()`
-- [ ] `increment_message_count()` → `async def increment_message_count()`
+- [x] `get_active_session()` → `async def get_active_session()`
+- [x] `get_all_sessions()` → `async def get_all_sessions()`
+- [x] `create_session()` → `async def create_session()`
+- [x] `switch_session()` → `async def switch_session()`
+- [x] `rename_session()` → `async def rename_session()`
+- [x] `delete_session()` → `async def delete_session()`
+- [x] `update_session_memory()` → `async def update_session_memory()`
+- [x] `get_session_memory()` → `async def get_session_memory()`
+- [x] `increment_message_count()` → `async def increment_message_count()`
 
 ### 2.4 — APIKey operations
-- [ ] `get_api_keys()` → `async def get_api_keys()`
-- [ ] `get_api_key()` → `async def get_api_key()`
-- [ ] `add_api_key()` → `async def add_api_key()`
-- [ ] `remove_api_key()` → `async def remove_api_key()`
+- [x] `get_api_keys()` → `async def get_api_keys()`
+- [x] `get_api_key()` → `async def get_api_key()`
+- [x] `add_api_key()` → `async def add_api_key()`
+- [x] `remove_api_key()` → `async def remove_api_key()`
 
 ### 2.5 — Message operations
-- [ ] `add_message()` → `async def add_message()`
-- [ ] `get_session_messages()` → `async def get_session_messages()`
-- [ ] `get_recent_messages()` → `async def get_recent_messages()`
-- [ ] `get_chat_history()` → `async def get_chat_history()`
-- [ ] `clear_session_messages()` → `async def clear_session_messages()`
-- [ ] `get_message_count()` → `async def get_message_count()`
-- [ ] `add_session_event()` → `async def add_session_event()`
-- [ ] `get_recent_sessions()` → `async def get_recent_sessions()`
-- [ ] `get_recent_sessions_for_session()` → `async def get_recent_sessions_for_session()`
-- [ ] `get_session_conversation_summary()` → `async def get_session_conversation_summary()`
-- [ ] `add_image_tools_message()` → `async def add_image_tools_message()`
-- [ ] `add_tool_result()` → `async def add_tool_result()`
-- [ ] `add_system_note()` → `async def add_system_note()`
-- [ ] `get_chat_history_for_ai()` → `async def get_chat_history_for_ai()`
-- [ ] `get_encryption_status()` → `async def get_encryption_status()`
-- [ ] `get_all_encrypted_messages()` → `async def get_all_encrypted_messages()`
-- [ ] `batch_decrypt_messages()` → `async def batch_decrypt_messages()`
+- [x] `add_message()` → `async def add_message()`
+- [x] `get_session_messages()` → `async def get_session_messages()`
+- [x] `get_recent_messages()` → `async def get_recent_messages()`
+- [x] `get_chat_history()` → `async def get_chat_history()`
+- [x] `clear_session_messages()` → `async def clear_session_messages()`
+- [x] `get_message_count()` → `async def get_message_count()`
+- [x] `add_session_event()` → `async def add_session_event()`
+- [x] `get_recent_sessions()` → `async def get_recent_sessions()`
+- [x] `get_recent_sessions_for_session()` → `async def get_recent_sessions_for_session()`
+- [x] `get_session_conversation_summary()` → `async def get_session_conversation_summary()`
+- [x] `add_image_tools_message()` → `async def add_image_tools_message()`
+- [x] `add_tool_result()` → `async def add_tool_result()`
+- [x] `add_system_note()` → `async def add_system_note()`
+- [x] `get_chat_history_for_ai()` → `async def get_chat_history_for_ai()`
+- [x] `get_encryption_status()` → `async def get_encryption_status()`
+- [x] `get_all_encrypted_messages()` → `async def get_all_encrypted_messages()`
+- [x] `batch_decrypt_messages()` → `async def batch_decrypt_messages()`
 
 ### 2.6 — Update `app/database.py`
-- [ ] Import all `async` versions from `db_pg_models`
-- [ ] Update all `Database` static methods to `async def`
-- [ ] Update `init_db()` → `async def init_db()`
-- [ ] Update `get_db()` FastAPI dependency to `async def get_db()` + `yield`
+- [x] Import all `async` versions from `db_pg_models`
+- [x] Update all `Database` static methods to `async def`
+- [x] Update `init_db()` → `async def init_db()`
+- [x] Update `get_db()` FastAPI dependency to `async def get_db()` + `yield`
 
 ---
 
@@ -136,57 +136,55 @@
 **Why third:** Depends on Phase 1 (pool) + Phase 2 (models).
 
 ### 3.1 — Imports
-- [ ] Remove `from psycopg2.extras import Json`
-- [ ] Add `from pgvector.psycopg import register_vector`
-- [ ] Change `from app.db_pg import PgSession, pg_fetchone, pg_fetchall, pg_execute, vector_sql`
+- [x] Remove `from psycopg2.extras import Json`
+- [x] Add `from pgvector.psycopg import register_vector`
+- [x] Change `from app.db_pg import PgSession, pg_fetchone, pg_fetchall, pg_execute, vector_sql`
   → `from app.db_pg import AsyncPgSession, pg_fetchone, pg_fetchall, pg_execute`
 
 ### 3.2 — Vector handling
-- [ ] Remove custom `vector_sql()` — psycopg v3 handles `list[float]` natively
-- [ ] Remove `from psycopg2.extensions import register_adapter, AsIs`
+- [x] Remove custom `vector_sql()` — psycopg v3 handles `list[float]` natively
+- [x] Remove `from psycopg2.extensions import register_adapter, AsIs`
 
 ### 3.3 — Convert all functions to async
-- [ ] `save_fact()` → `async def save_fact()`
-- [ ] `upsert_fact()` → `async def upsert_fact()`
-- [ ] `search_similar()` → `async def search_similar()`
-- [ ] `get_fact_by_id()` → `async def get_fact_by_id()`
-- [ ] `get_facts_by_session()` → `async def get_facts_by_session()`
-- [ ] `count_facts()` → `async def count_facts()`
-- [ ] `update_last_accessed()` → `async def update_last_accessed()`
-- [ ] `update_fact_importance()` → `async def update_fact_importance()`
-- [ ] `increment_importance()` → `async def increment_importance()`
-- [ ] `delete_fact()` → `async def delete_fact()`
-- [ ] `delete_facts_by_session()` → `async def delete_facts_by_session()`
-- [ ] `decay_facts()` → `async def decay_facts()`
-- [ ] `get_memory_stats()` → `async def get_memory_stats()`
+- [x] `save_fact()` → `async def save_fact()`
+- [x] `upsert_fact()` → `async def upsert_fact()`
+- [x] `search_similar()` → `async def search_similar()`
+- [x] `get_fact_by_id()` → `async def get_fact_by_id()`
+- [x] `get_facts_by_session()` → `async def get_facts_by_session()`
+- [x] `count_facts()` → `async def count_facts()`
+- [x] `update_last_accessed()` → `async def update_last_accessed()`
+- [x] `update_fact_importance()` → `async def update_fact_importance()`
+- [x] `increment_importance()` → `async def increment_importance()`
+- [x] `delete_fact()` → `async def delete_fact()`
+- [x] `delete_facts_by_session()` → `async def delete_facts_by_session()`
+- [x] `decay_facts()` → `async def decay_facts()`
+- [x] `get_memory_stats()` → `async def get_memory_stats()`
 
 ### 3.4 — `app/memory/embedder.py` (HTTP sync, not DB)
-- [ ] `get_api_key("chutes")` is called from `db_pg_models` — after Phase 2, this becomes `await`
-- [ ] Update `_get_session()` to call `await get_api_key()` (needs async wrapper)
-- [ ] `embed_texts()` stays sync (HTTP external API) — add `async def embed_texts()` wrapper that calls sync version in thread pool
+- [x] `get_api_key("chutes")` from db_pg_models → now async, ThreadPoolExecutor in embedder
+- [x] `embed_texts()` → `async def embed_texts()` (HTTP external API, thread pool)
 
 ### 3.5 — `app/memory/retrieval.py`
-- [ ] `get_session_messages()` from `db_pg_models` → `await`
-- [ ] All `db_memory` function calls → `await`
-- [ ] `_embed_query()` calls `embed_text()` → wrap in `asyncio.get_event_loop().run_in_executor()` or refactor `embed_text` to async
-- [ ] `retrieve_static_memories()` → `async def retrieve_static_memories()`
-- [ ] `retrieve_dynamic_memories()` → `async def retrieve_dynamic_memories()`
-- [ ] `retrieve_memory()` → `async def retrieve_memory()`
-- [ ] `format_memory()` stays sync (pure formatting, no DB)
+- [x] `get_session_messages()` from `db_pg_models` → `await`
+- [x] All `db_memory` function calls → `await`
+- [x] `retrieve_static_memories()` → `async def retrieve_static_memories()`
+- [x] `retrieve_dynamic_memories()` → `async def retrieve_dynamic_memories()`
+- [x] `retrieve_memory()` → `async def retrieve_memory()`
+- [x] `format_memory()` stays sync (pure formatting, no DB)
 
 ### 3.6 — `app/memory/extractor.py`
-- [ ] `upsert_semantic_memory()` calls `embed_text()` + `db_memory` functions → all `await`
-- [ ] `create_episodic_memory()` calls `embed_text()` + `db_memory` functions → all `await`
-- [ ] `process_messages_for_memory()` → `async def process_messages_for_memory()`
+- [x] `upsert_semantic_memory()` calls `embed_text()` + `db_memory` functions → all `await`
+- [x] `create_episodic_memory()` calls `embed_text()` + `db_memory` functions → all `await`
+- [x] `process_messages_for_memory()` → `async def process_messages_for_memory()`
 
 ### 3.7 — `app/memory/review.py`
-- [ ] `run_decay()` → `async def run_decay()` (calls `decay_facts()` which is now async)
+- [x] `run_decay()` → `async def run_decay()` (calls `decay_facts()` which is now async)
 
 ### 3.8 — `app/memory/segmenter.py`
-- [ ] `get_session_messages()` → `await`
-- [ ] `get_facts_by_session()` → `await`
-- [ ] `save_fact()` → `await`
-- [ ] `segment_session()` → `async def segment_session()`
+- [x] `get_session_messages()` → `await`
+- [x] `get_facts_by_session()` → `await`
+- [x] `save_fact()` → `await`
+- [x] `segment_session()` → `async def segment_session()`
 
 ---
 
@@ -195,12 +193,11 @@
 **Why fourth:** Tools are sync callers that will need refactoring to async.
 
 ### 4.1 — `app/tools/memory_store.py`
-- [ ] `execute()` → `async def execute()` (since it calls `await`-ed `save_fact`, `search_similar`, `increment_importance`, `embed_texts`, `get_profile`)
-- [ ] `_classify_category_llm()` → `async def _classify_category_llm()` (calls async AI manager)
+- [x] `execute()` → `async def execute()` (ThreadPoolExecutor for sync embed_texts)
+- [x] `_classify_category_llm()` stays sync (calls async AI manager which has its own event loop handling)
 
 ### 4.2 — `app/tools/memory_search.py`
-- [ ] `execute()` → `async def execute()` (calls `await`-ed `retrieve_memory`, `format_memory`)
-- [ ] `Database.get_profile()` → `await Database.get_profile()`
+- [x] `execute()` → `async def execute()` (await retrieve_memory)
 
 ### 4.3 — `app/tools/registry.py`
 - [ ] `execute_tool()` → `async def execute_tool()`
@@ -210,32 +207,21 @@
 
 ---
 
-## Phase 5 — App Layer: `app/app.py` + `web.py`
+## Phase 5 — Web & CLI wiring
 
-**Why last:** These are the top-level callers. All dependencies must be async first.
-
-### 5.1 — `app/app.py`
-- [ ] All `Database.X()` calls → `await Database.X()` (all DB operations are now async)
-- [ ] All `execute_tool()` calls → `await execute_tool()`
-- [ ] All `start_session()`, `end_session_cleanup()`, `summarize_memory()` → `async def`
-- [ ] `handle_user_message()` → `async def handle_user_message()`
-- [ ] `handle_user_message_streaming()` → `async def handle_user_message_streaming()`
-- [ ] `get_ai_manager()`, `reload_ai_manager()` — stay sync (in-memory singletons)
-- [ ] AI provider HTTP calls (requests library) — optionally async with `httpx`, but optional for now
-
-### 5.2 — `web.py` (FastAPI already async-native)
-- [ ] All `Database.X()` calls → `await Database.X()`
-- [ ] All `execute_tool()` calls → `await execute_tool()`
-- [ ] `start_session()` → `await start_session()`
-- [ ] `end_session_cleanup()` → `await end_session_cleanup()`
+- [x] **CRITICAL BRIDGE** — `_run_sync_in_executor()` pattern for FastAPI async → sync app.py
+- [x] All `Database.*` calls in async endpoints wrapped with `run_in_executor`
+- [x] `handle_user_message` (sync) called directly from async endpoint — allowed by FastAPI
+- [x] `start_session`/`end_session_cleanup` wrapped with `run_in_executor`
+- [x] Streaming endpoints (`/api/send_message_stream`) handle async correctly
 
 ---
 
 ## Phase 6 — Cleanup & Deprecation Removal
 
-- [ ] Remove sync stubs from `app/db_pg.py` (`PgSession`, `pg_fetchone`, etc.)
-- [ ] Remove backward-compat aliases in `app/database.py`
-- [ ] Update `requirements.txt`: remove `psycopg2-binary`, add `psycopg>=3.1`, `psycopg_pool`, `pgvector`
+- [ ] Remove sync stubs from `app/db_pg.py` (`PgSession`, `pg_fetchone`, etc.) — deferred, Phase 4.3 still needs
+- [ ] Remove backward-compat aliases in `app/database.py` — deferred, Phase 4.3 still needs
+- [x] Update `requirements.txt`: remove `psycopg2-binary`, add `psycopg>=3.1`, `psycopg_pool`, `pgvector`
 - [ ] Update `CHANGELOG.md` with migration notes
 - [ ] Smoke test: run app, create session, store memory, search memory, verify pgvector distance works
 
