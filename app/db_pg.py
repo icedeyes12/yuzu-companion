@@ -172,9 +172,9 @@ async def pg_scalar(query: str, params: tuple | dict | None = None) -> Any:
 # These exist only to avoid breaking non-async callers during migration.
 # All async callers should use the async functions above directly.
 
-import threading
-from functools import partial
-import asyncio
+import threading  # noqa: E402
+from functools import partial  # noqa: E402
+import asyncio  # noqa: E402
 
 _sync_lock = threading.Lock()
 
