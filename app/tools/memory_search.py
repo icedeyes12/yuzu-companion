@@ -23,7 +23,7 @@ TOOL_DEFINITION = ToolDefinition(
 )
 
 
-def execute(arguments, **kwargs):
+async def execute(arguments, **kwargs):
     session_id = kwargs.get("session_id")
     from app.database import Database
     from app.memory.retrieval import retrieve_memory, format_memory
@@ -43,7 +43,7 @@ def execute(arguments, **kwargs):
         )
 
     try:
-        memory_bundle = retrieve_memory(session_id=session_id, query=query)
+        memory_bundle = await retrieve_memory(session_id=session_id, query=query)
     except Exception as e:
         print(f"[memory_search] Retrieval failed: {e}")
         return error_result(

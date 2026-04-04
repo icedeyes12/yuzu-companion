@@ -80,12 +80,12 @@ Respond with ONLY the category name, nothing else."""
     return "Identity"
 
 
-def execute(arguments, **kwargs):
+async def execute(arguments, **kwargs):
     session_id = kwargs.get("session_id")
-    from app.db_pg_models import get_profile
-    from app.memory.embedder import embed_texts
+    from app.db_pg_models import get_profile as _sync_get_profile
+    from app.memory.embedder import embed_texts as _sync_embed_texts
 
-    profile = get_profile() or {}
+    profile = _sync_get_profile() or {}
     partner_name = profile.get("partner_name", "Yuzu")
 
     fact = arguments.get("fact", "").strip()
@@ -121,7 +121,9 @@ def execute(arguments, **kwargs):
     # Embed the fact text
     fact_embed_text = f"[{category}] {fact}"
     try:
-        vecs = embed_texts([fact_embed_text])
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as ex:
+            vecs = ex.submit(_sync_embed_texts, [fact_embed_text]).result()
         if not vecs or len(vecs) == 0:
             return error_result(
                 "Embedding service unavailable",
@@ -147,7 +149,7 @@ def execute(arguments, **kwargs):
         )
 
     # Check for duplicate using vector distance
-    existing = search_similar(
+    existing = await search_similar(
         embedding=vector,
         session_id=session_id,
         fact_type=FACT_TYPE_STATIC,
@@ -169,7 +171,7 @@ def execute(arguments, **kwargs):
         )
 
     # Insert new fact into semantic_facts
-    fact_id = save_fact(
+    fact_id = await save_fact(
         session_id=session_id,
         content=f"{category} {fact}",  # Store as "category fact" for searchability
         embedding=vector,
