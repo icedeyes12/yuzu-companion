@@ -1,18 +1,22 @@
 # FILE: app/db_pg.py
 # DESCRIPTION: PostgreSQL connection pool and raw SQL helpers.
-#             Uses psycopg2 (NOT psycopg2-binary). ThreadedConnectionPool
-#             for thread-safe reuse in CLI and web contexts.
+#             Uses psycopg (v3) native async driver + psycopg_pool.
+#             All operations are async — must be called with await.
 #
-# TERMUX NOTE: psycopg2 is installed as a regular package. No compilation needed.
+# MIGRATED: psycopg2 → psycopg async v3
+# - ThreadedConnectionPool → AsyncConnectionPool
+# - RealDictCursor → row_factory = dict_row
+# - register_adapter(list) → pgvector.psycopg.register_vector
 
 from __future__ import annotations
 
 import os
 from typing import Any
 
-from psycopg2 import pool
-from psycopg2.extras import RealDictCursor
-from psycopg2.extensions import register_adapter, AsIs
+import psycopg
+from psycopg import rows
+from psycopg_pool import AsyncConnectionPool
+from pgvector.psycopg import register_vector
 
 # ── Env defaults (Termux/local dev) ──────────────────────────────────────────
 _PG_HOST     = os.getenv("PGHOST", os.getenv("PG_HOST", "127.0.0.1"))
@@ -24,24 +28,8 @@ _MIN_CONN    = 1
 _MAX_CONN    = 10
 
 # ── Global pool (lazy singleton) ──────────────────────────────────────────────
-_pool: pool.ThreadedConnectionPool | None = None
+_pool: AsyncConnectionPool | None = None
 
-class Vector:
-    """Wrapper for pgvector list[float] that psycopg2 can serialize."""
-    def __init__(self, data):
-        self.data = data
-    
-    def __repr__(self):
-        return "{" + ",".join(str(x) for x in self.data) + "}"
-
-def vector_sql(val):
-    """Convert list[float] to Vector wrapper for psycopg2."""
-    if val is None:
-        return None
-    return Vector(val)
-
-# Register adapter for list type (when passing list to VECTOR column)
-register_adapter(list, lambda v: AsIs(vector_sql(v)))
 
 def _build_dsn() -> str:
     return (
@@ -50,123 +38,177 @@ def _build_dsn() -> str:
     )
 
 
-def get_pool() -> pool.ThreadedConnectionPool:
+def get_pool() -> AsyncConnectionPool:
     global _pool
     if _pool is None:
-        _pool = pool.ThreadedConnectionPool(
-            _MIN_CONN, _MAX_CONN,
-            dsn=_build_dsn(),
-            cursor_factory=RealDictCursor,
+        _pool = AsyncConnectionPool(
+            _build_dsn(),
+            min_size=_MIN_CONN,
+            max_size=_MAX_CONN,
+            kwargs={"row_factory": rows.dict_row},
         )
-        print(f"[db_pg] Pool created: {_PG_HOST}:{_PG_PORT}/{_PG_DBNAME}")
+        print(f"[db_pg] Async pool created: {_PG_HOST}:{_PG_PORT}/{_PG_DBNAME}")
     return _pool
 
 
-def close_pool():
+async def close_pool():
     global _pool
     if _pool is not None:
-        _pool.closeall()
+        _pool.close()
+        await _pool.wait_closed()
         _pool = None
         print("[db_pg] Pool closed")
 
 
-# ── Session context manager ──────────────────────────────────────────────────
-class PgSession:
+# ── Async session context manager ─────────────────────────────────────────────
+class AsyncPgSession:
     """
-    Context manager for one-off queries.
-    Commits on success, rolls back on exception.
+    Async context manager for one-off queries.
+    Acquires a connection from the async pool, commits on success,
+    rolls back on exception.
 
     Usage:
-        with PgSession() as s:
-            row = s.fetchone("SELECT * FROM profiles LIMIT 1")
-            s.execute("INSERT INTO ...")
+        async with AsyncPgSession() as s:
+            row = await s.fetchone("SELECT * FROM profiles LIMIT 1")
+            await s.execute("INSERT INTO ...")
     """
     __slots__ = ('conn', 'autocommit')
 
     def __init__(self, autocommit: bool = False):
         self.autocommit = autocommit
-        self.conn = None
+        self.conn: psycopg.AsyncConnection | None = None
 
-    def __enter__(self) -> PgSession:
-        p = get_pool()
-        self.conn = p.getconn()
+    async def __aenter__(self) -> "AsyncPgSession":
+        pool = get_pool()
+        self.conn = await pool.getconn()
+        # pgvector registration per connection (idempotent)
+        register_vector(self.conn)
         self.conn.autocommit = self.autocommit
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.conn is None:
             return
         try:
             if exc_type is not None:
-                self.conn.rollback()
+                await self.conn.rollback()
             elif not self.autocommit:
-                self.conn.commit()
+                await self.conn.commit()
         except Exception:
-            self.conn.rollback()
+            await self.conn.rollback()
         finally:
             get_pool().putconn(self.conn)
             self.conn = None
 
-    # ── Core query methods ───────────────────────────────────────────────────
-    def fetchone(self, query: str, params: tuple | dict | None = None) -> dict | None:
+    # ── Core async query methods ───────────────────────────────────────────────
+    async def fetchone(self, query: str, params: tuple | dict | None = None) -> dict | None:
         """Return first row or None."""
-        cur = self.conn.cursor()
-        cur.execute(query, params)
-        result = cur.fetchone()
-        return dict(result) if result else None
+        async with self.conn.cursor() as cur:
+            await cur.execute(query, params)
+            result = await cur.fetchone()
+            return dict(result) if result else None
 
-    def fetchall(self, query: str, params: tuple | dict | None = None) -> list[dict]:
+    async def fetchall(self, query: str, params: tuple | dict | None = None) -> list[dict]:
         """Return all rows as list of dicts."""
-        cur = self.conn.cursor()
-        cur.execute(query, params)
-        return [dict(row) for row in cur.fetchall()]
+        async with self.conn.cursor() as cur:
+            await cur.execute(query, params)
+            rows = await cur.fetchall()
+            return [dict(row) for row in rows]
 
-    def execute(self, query: str, params: tuple | dict | None = None) -> None:
+    async def execute(self, query: str, params: tuple | dict | None = None) -> None:
         """Execute a query (INSERT/UPDATE/DELETE)."""
-        cur = self.conn.cursor()
-        cur.execute(query, params)
+        async with self.conn.cursor() as cur:
+            await cur.execute(query, params)
 
-    def execute_scalar(self, query: str, params: tuple | dict | None = None) -> Any:
+    async def execute_scalar(self, query: str, params: tuple | dict | None = None) -> Any:
         """Return first column of first row (e.g. COUNT, SUM)."""
-        cur = self.conn.cursor()
-        cur.execute(query, params)
-        row = cur.fetchone()
-        return row[0] if row else None
+        async with self.conn.cursor() as cur:
+            await cur.execute(query, params)
+            row = await cur.fetchone()
+            return row[0] if row else None
 
-    def execute_returning(self, query: str, params: tuple | dict | None = None) -> dict | None:
+    async def execute_returning(self, query: str, params: tuple | dict | None = None) -> dict | None:
         """Execute INSERT ... RETURNING * and return the row dict."""
-        cur = self.conn.cursor()
-        cur.execute(query, params)
-        result = cur.fetchone()
-        return dict(result) if result else None
+        async with self.conn.cursor() as cur:
+            await cur.execute(query, params)
+            result = await cur.fetchone()
+            return dict(result) if result else None
 
-    def execute_batch(self, query: str, params_list: list[tuple]) -> int:
-        """Execute many rows (executemany). Returns rowcount."""
-        cur = self.conn.cursor()
-        cur.executemany(query, params_list)
-        return cur.rowcount
-
-
-# ── Module-level convenience functions ────────────────────────────────────────
-def pg_fetchone(query: str, params: tuple | dict | None = None) -> dict | None:
-    with PgSession() as s:
-        return s.fetchone(query, params)
+    async def execute_many(self, query: str, params_list: list[tuple]) -> int:
+        """Execute many rows. Returns rowcount."""
+        async with self.conn.cursor() as cur:
+            await cur.executemany(query, params_list)
+            return cur.rowcount
 
 
-def pg_fetchall(query: str, params: tuple | dict | None = None) -> list[dict]:
-    with PgSession() as s:
-        return s.fetchall(query, params)
+# ── Module-level async convenience functions ────────────────────────────────────
+
+async def pg_fetchone(query: str, params: tuple | dict | None = None) -> dict | None:
+    async with AsyncPgSession() as s:
+        return await s.fetchone(query, params)
 
 
-def pg_execute(query: str, params: tuple | dict | None = None) -> None:
-    with PgSession() as s:
-        s.execute(query, params)
+async def pg_fetchall(query: str, params: tuple | dict | None = None) -> list[dict]:
+    async with AsyncPgSession() as s:
+        return await s.fetchall(query, params)
 
 
-def pg_exists(query: str, params: tuple | dict | None = None) -> bool:
+async def pg_execute(query: str, params: tuple | dict | None = None) -> None:
+    async with AsyncPgSession() as s:
+        await s.execute(query, params)
+
+
+async def pg_exists(query: str, params: tuple | dict | None = None) -> bool:
     """Return True if query returns at least one row."""
-    return pg_fetchone(query, params) is not None
+    row = await pg_fetchone(query, params)
+    return row is not None
 
 
-def pg_scalar(query: str, params: tuple | dict | None = None) -> Any:
-    return pg_fetchone(query, params)
+async def pg_scalar(query: str, params: tuple | dict | None = None) -> Any:
+    return await pg_fetchone(query, params)
+
+
+# ── Backward-compat sync wrappers (DEPRECATED) ────────────────────────────────
+# These exist only to avoid breaking non-async callers during migration.
+# All async callers should use the async functions above directly.
+
+import threading
+from functools import partial
+import asyncio
+
+_sync_lock = threading.Lock()
+
+
+def _run_async(coro):
+    """Run an async coroutine from sync context using a new event loop."""
+    try:
+        loop = asyncio.get_running_loop()
+        # Already in async context — shouldn't happen in sync wrappers, but guard:
+        raise RuntimeError("Cannot call _run_async from within an async context")
+    except RuntimeError:
+        # No running loop — create one
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+
+def _sync_wrapper(async_func):
+    """Wrap an async function with a sync interface using a thread pool."""
+    def wrapper(*args, **kwargs):
+        coro = async_func(*args, **kwargs)
+        return _run_async(coro)
+    return wrapper
+
+
+# Deprecated sync variants — prefer migrating callers to async instead
+pg_fetchone_sync       = _sync_wrapper(pg_fetchone)
+pg_fetchall_sync       = _sync_wrapper(pg_fetchall)
+pg_execute_sync        = _sync_wrapper(pg_execute)
+pg_exists_sync         = _sync_wrapper(pg_exists)
+pg_scalar_sync         = _sync_wrapper(pg_scalar)
+
+# Backward compat: keep PgSession name as alias to AsyncPgSession
+# (but callers must migrate to AsyncPgSession + await)
+PgSession = AsyncPgSession
