@@ -173,7 +173,6 @@ async def pg_scalar(query: str, params: tuple | dict | None = None) -> Any:
 # All async callers should use the async functions above directly.
 
 import threading  # noqa: E402
-from functools import partial  # noqa: E402
 import asyncio  # noqa: E402
 
 _sync_lock = threading.Lock()
