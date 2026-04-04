@@ -1,30 +1,37 @@
 # FILE: web.py
 # DESCRIPTION: FastAPI web interface for AI companion system
 
-from fastapi import FastAPI, Request, HTTPException, Form, File, UploadFile
-from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
+import asyncio
+import json
+import os
+from datetime import datetime
+from typing import Dict, List, Optional
+
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
-from datetime import datetime
-import json
-import os
-import asyncio
 
 from app.app import (
-    handle_user_message, handle_user_message_streaming, start_session,
-    end_session_cleanup, summarize_memory, summarize_global_player_profile,
-    set_preferred_provider, get_vision_capabilities
+    end_session_cleanup,
+    get_vision_capabilities,
+    handle_user_message,
+    handle_user_message_streaming,
+    set_preferred_provider,
+    start_session,
+    summarize_global_player_profile,
+    summarize_memory,
 )
 from app.database import Database
 from app.providers import get_ai_manager
 
+
 # ── Thread pool for sync-async bridge ────────────────────────────────────────
-def _run_sync_in_executor(func, *args):
+def _run_sync_in_executor(func, *args, **kwargs):
     """Run a sync function in a thread pool executor from async context."""
     loop = asyncio.get_event_loop()
-    return loop.run_in_executor(None, lambda: func(*args))
+    return loop.run_in_executor(None, lambda: func(*args, **kwargs))
 
 
 
@@ -134,7 +141,7 @@ class GlobalKnowledgeUpdateRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    profile = await _run_sync_in_executor(Database.get_profile)
+    profile = await Database.get_profile()
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -152,7 +159,7 @@ async def chat_page(request: Request):
         _web_session_tracker[session_id] = True
         print("Web session started and flagged.")
     
-    profile = await _run_sync_in_executor(Database.get_profile)
+    profile = await Database.get_profile()
     return templates.TemplateResponse(
         request=request,
         name="chat.html",
@@ -162,7 +169,7 @@ async def chat_page(request: Request):
 
 @app.get("/config", response_class=HTMLResponse)
 async def config_page(request: Request):
-    profile = await _run_sync_in_executor(Database.get_profile)
+    profile = await Database.get_profile()
     return templates.TemplateResponse(
         request=request,
         name="config.html",
@@ -172,7 +179,7 @@ async def config_page(request: Request):
 
 @app.get("/about", response_class=HTMLResponse)
 async def about_page(request: Request):
-    profile = await _run_sync_in_executor(Database.get_profile)
+    profile = await Database.get_profile()
     return templates.TemplateResponse(
         request=request,
         name="about.html",
@@ -206,10 +213,10 @@ async def serve_sidebar():
 @app.get("/api/get_profile")
 async def api_get_profile():
     try:
-        profile = await _run_sync_in_executor(Database.get_profile)
-        active_session = await _run_sync_in_executor(Database.get_active_session)
-        chat_history = await _run_sync_in_executor(Database.get_chat_history,session_id=active_session["id"], limit=None)
-        session_memory = await _run_sync_in_executor(Database.get_session_memory,active_session["id"])
+        profile = await Database.get_profile()
+        active_session = await Database.get_active_session()
+        chat_history = await Database.get_chat_history( session_id=active_session["id"], limit=None)
+        session_memory = await Database.get_session_memory(active_session["id"])
         
         ai_manager = get_ai_manager()
         available_providers = ai_manager.get_available_providers()
@@ -219,7 +226,7 @@ async def api_get_profile():
         current_provider = providers_config.get("preferred_provider", "ollama")
         current_model = providers_config.get("preferred_model", "glm-4.6:cloud")
         
-        api_keys = await _run_sync_in_executor(Database.get_api_keys)
+        api_keys = await Database.get_api_keys()
         vision_capabilities = get_vision_capabilities()
         
         # Convert datetime objects to strings for JSON serialization
@@ -269,7 +276,7 @@ async def api_send_message(request: MessageRequest):
         
         print(f"Web message: {user_message[:200]}...")
         
-        active_session = await _run_sync_in_executor(Database.get_active_session)
+        active_session = await Database.get_active_session()
         _ = active_session["id"]
         
         ai_reply = handle_user_message(user_message, interface="web")
@@ -338,7 +345,7 @@ async def api_send_message_with_images(
         
         print(f"Processing message with {len(images)} images")
         
-        active_session = await _run_sync_in_executor(Database.get_active_session)
+        active_session = await Database.get_active_session()
         _ = active_session["id"]
         
         saved_images = []
@@ -456,7 +463,7 @@ async def api_get_vision_capabilities():
 async def api_update_profile(request: Request):
     try:
         updates = await request.json()
-        await _run_sync_in_executor(Database.update_profile, updates)
+        await Database.update_profile( updates)
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -465,10 +472,10 @@ async def api_update_profile(request: Request):
 @app.post("/api/clear_chat")
 async def api_clear_chat(request: Request):
     try:
-        active_session = await _run_sync_in_executor(Database.get_active_session)
+        active_session = await Database.get_active_session()
         session_id = active_session["id"]
         
-        await _run_sync_in_executor(Database.clear_chat_history,session_id)
+        await Database.clear_chat_history(session_id)
         
         # Reset session flag
         client_id = _get_session_id(request)
@@ -487,7 +494,7 @@ async def api_end_session(request: Request):
         _web_session_tracker.pop(client_id, None)
         
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-        profile = await _run_sync_in_executor(Database.get_profile)
+        profile = await Database.get_profile()
         
         session_history = profile.get("session_history", {})
         current_session = session_history.get("current_session", {})
@@ -506,7 +513,7 @@ async def api_end_session(request: Request):
             f"Session duration: {duration:.1f} minutes*"
         )
         
-        await _run_sync_in_executor(Database.add_message, "system", disconnect_msg)
+        await Database.add_message( "system", disconnect_msg)
         await _run_sync_in_executor(end_session_cleanup, profile, interface="web", unexpected_exit=False)
         return {"status": "session ended"}
     except Exception as e:
@@ -522,7 +529,7 @@ async def api_add_api_key(request: ApiKeyRequest):
     if not request.api_key or not request.key_name:
         return {"status": "error", "message": "Key name and API key required"}
     
-    if await _run_sync_in_executor(Database.add_api_key, request.key_name, request.api_key):
+    if await Database.add_api_key( request.key_name, request.api_key):
         return {"status": "success", "message": f"{request.key_name} API key added"}
     else:
         return {"status": "error", "message": "API key already exists or failed to save"}
@@ -536,7 +543,7 @@ async def api_add_chutes_key(request: ChutesKeyRequest):
         if not api_key:
             return {"status": "error", "message": "Chutes API key required"}
         
-        if await _run_sync_in_executor(Database.add_api_key, "chutes", api_key):
+        if await Database.add_api_key( "chutes", api_key):
             return {"status": "success", "message": "Chutes API key added successfully!"}
         else:
             return {"status": "error", "message": "Failed to save Chutes API key"}
@@ -554,7 +561,7 @@ async def api_remove_api_key(request: Request):
         if not key_name:
             return {"status": "error", "message": "Key name required"}
         
-        if await _run_sync_in_executor(Database.remove_api_key, key_name):
+        if await Database.remove_api_key( key_name):
             return {"status": "success", "message": f"{key_name} API key removed"}
         else:
             return {"status": "error", "message": "API key not found"}
@@ -569,11 +576,11 @@ async def api_remove_api_key(request: Request):
 @app.post("/api/update_session_context")
 async def api_update_session_context():
     try:
-        active_session = await _run_sync_in_executor(Database.get_active_session)
+        active_session = await Database.get_active_session()
         session_id = active_session["id"]
-        profile = await _run_sync_in_executor(Database.get_profile)
+        profile = await Database.get_profile()
         
-        chat_history = await _run_sync_in_executor(Database.get_chat_history,session_id=session_id)
+        chat_history = await Database.get_chat_history(session_id=session_id)
         
         if len(chat_history) < 5:
             return {"status": "error", "message": "Need at least 5 conversation messages"}
@@ -585,7 +592,7 @@ async def api_update_session_context():
             success = summarize_memory(profile, last_user_msg["content"], last_ai_reply["content"], session_id)
             
             if success:
-                session_memory = await _run_sync_in_executor(Database.get_session_memory,session_id)
+                session_memory = await Database.get_session_memory(session_id)
                 return {
                     "status": "success",
                     "message": "Session context updated!",
@@ -607,7 +614,7 @@ async def api_update_global_profile():
         success = summarize_global_player_profile()
         
         if success:
-            profile = await _run_sync_in_executor(Database.get_profile)
+            profile = await Database.get_profile()
             print(f"Returning updated profile with memory: {profile.get('memory', {})}")
             
             return {
@@ -626,14 +633,14 @@ async def api_update_global_profile():
 async def api_rebuild_structured_memory():
     """Rebuild structured memory from current session messages."""
     try:
-        active_session = await _run_sync_in_executor(Database.get_active_session)
+        active_session = await Database.get_active_session()
         session_id = active_session["id"]
 
         from app.memory.extractor import process_messages_for_memory
         from app.memory.segmenter import segment_session
 
         # Extract semantic + episodic memories from recent messages
-        recent = await _run_sync_in_executor(Database.get_chat_history, session_id=session_id, limit=50, recent=True)
+        recent = await Database.get_chat_history( session_id=session_id, limit=50, recent=True)
         if len(recent) < 3:
             return {
                 "status": "error",
@@ -646,7 +653,11 @@ async def api_rebuild_structured_memory():
         segment_session(session_id)
 
         # Get current memory stats using db_memory
-        from app.memory.db_memory import count_facts, FACT_TYPE_STATIC, FACT_TYPE_DYNAMIC
+        from app.memory.db_memory import (
+            FACT_TYPE_DYNAMIC,
+            FACT_TYPE_STATIC,
+            count_facts,
+        )
         semantic_count = count_facts(fact_type=FACT_TYPE_STATIC, session_id=session_id)
         episodic_count = count_facts(fact_type=FACT_TYPE_DYNAMIC, session_id=session_id)
 
@@ -668,7 +679,7 @@ async def api_rebuild_structured_memory():
 async def api_run_memory_decay():
     """Run FSRS memory decay on current session."""
     try:
-        active_session = await _run_sync_in_executor(Database.get_active_session)
+        active_session = await Database.get_active_session()
         session_id = active_session["id"]
 
         from app.memory.review import run_decay
@@ -687,11 +698,16 @@ async def api_run_memory_decay():
 async def api_memory_stats():
     """Get structured memory statistics for the current session."""
     try:
-        active_session = await _run_sync_in_executor(Database.get_active_session)
+        active_session = await Database.get_active_session()
         session_id = active_session["id"]
 
         # Get current memory stats using db_memory
-        from app.memory.db_memory import count_facts, FACT_TYPE_STATIC, FACT_TYPE_DYNAMIC, get_facts_by_session
+        from app.memory.db_memory import (
+            FACT_TYPE_DYNAMIC,
+            FACT_TYPE_STATIC,
+            count_facts,
+            get_facts_by_session,
+        )
         semantic_count = count_facts(fact_type=FACT_TYPE_STATIC, session_id=session_id)
         episodic_count = count_facts(fact_type=FACT_TYPE_DYNAMIC, session_id=session_id)
 
@@ -733,7 +749,7 @@ async def api_list_providers():
         available_providers = ai_manager.get_available_providers()
         all_models = ai_manager.get_all_models()
         
-        profile = await _run_sync_in_executor(Database.get_profile)
+        profile = await Database.get_profile()
         providers_config = profile.get("providers_config", {})
         current_provider = providers_config.get("preferred_provider", "ollama")
         current_model = providers_config.get("preferred_model", "glm-4.6:cloud")
@@ -805,7 +821,7 @@ async def api_browser_unload(request: Request):
         print("Web page closed or refreshed - session cleared")
         
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-        profile = await _run_sync_in_executor(Database.get_profile)
+        profile = await Database.get_profile()
         
         session_history = profile.get("session_history", {})
         current_session = session_history.get("current_session", {})
@@ -824,7 +840,7 @@ async def api_browser_unload(request: Request):
             f"Session duration: {duration:.1f} minutes*"
         )
         
-        await _run_sync_in_executor(Database.add_message, "system", disconnect_msg)
+        await Database.add_message( "system", disconnect_msg)
         await _run_sync_in_executor(end_session_cleanup, profile, interface="web", unexpected_exit=True)
         
         return {"status": "page closed"}
@@ -839,7 +855,7 @@ async def api_browser_unload(request: Request):
 @app.get("/api/sessions/list")
 async def api_list_sessions():
     try:
-        sessions = await _run_sync_in_executor(Database.get_all_sessions)
+        sessions = await Database.get_all_sessions()
         return {"sessions": sessions}
     except Exception as e:
         print(f"Error listing sessions: {e}")
@@ -849,8 +865,8 @@ async def api_list_sessions():
 @app.post("/api/sessions/create")
 async def api_create_session(http_request: Request, request: SessionCreateRequest):
     try:
-        session_id = await _run_sync_in_executor(Database.create_session, request.name)
-        await _run_sync_in_executor(Database.switch_session, session_id)
+        session_id = await Database.create_session( request.name)
+        await Database.switch_session( session_id)
         
         # Reset session flag
         client_id = _get_session_id(http_request)
@@ -868,16 +884,16 @@ async def api_switch_session(request: SessionSwitchRequest, http_request: Reques
         if not request.session_id:
             raise HTTPException(status_code=400, detail="session_id required")
         
-        await _run_sync_in_executor(Database.switch_session, request.session_id)
+        await Database.switch_session( request.session_id)
         
         # Reset session flag
         client_id = _get_session_id(http_request)
         _web_session_tracker.pop(client_id, None)
         
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-        profile = await _run_sync_in_executor(Database.get_profile)
+        profile = await Database.get_profile()
         
-        all_sessions = await _run_sync_in_executor(Database.get_all_sessions)
+        all_sessions = await Database.get_all_sessions()
         session_count = len(all_sessions)
         
         connection_msg = (
@@ -885,13 +901,13 @@ async def api_switch_session(request: SessionSwitchRequest, http_request: Reques
             f"Switched to session #{[s['id'] for s in all_sessions].index(request.session_id) + 1} of {session_count}*"
         )
         
-        await _run_sync_in_executor(Database.add_message, "system", connection_msg, session_id=request.session_id)
+        await Database.add_message( "system", connection_msg, session_id=request.session_id)
         
         # Set session flag for the new session
         _web_session_tracker[client_id] = True
         
-        chat_history = await _run_sync_in_executor(Database.get_chat_history,session_id=request.session_id)
-        session_memory = await _run_sync_in_executor(Database.get_session_memory,session_id=request.session_id)
+        chat_history = await Database.get_chat_history(session_id=request.session_id)
+        session_memory = await Database.get_session_memory(session_id=request.session_id)
         
         return {
             "status": "success",
@@ -910,7 +926,7 @@ async def api_rename_session(request: SessionRenameRequest):
         if not request.session_id or not request.name:
             raise HTTPException(status_code=400, detail="session_id and name required")
         
-        success = await _run_sync_in_executor(Database.rename_session,request.session_id, request.name)
+        success = await Database.rename_session(request.session_id, request.name)
         
         if success:
             return {"status": "success"}
@@ -929,12 +945,12 @@ async def api_delete_session(request: SessionDeleteRequest):
         if not request.session_id:
             raise HTTPException(status_code=400, detail="session_id required")
         
-        success = await _run_sync_in_executor(Database.delete_session,request.session_id)
+        success = await Database.delete_session(request.session_id)
         
         if success:
-            active_session = await _run_sync_in_executor(Database.get_active_session)
-            chat_history = await _run_sync_in_executor(Database.get_chat_history,)
-            session_memory = await _run_sync_in_executor(Database.get_session_memory,active_session["id"])
+            active_session = await Database.get_active_session()
+            chat_history = await Database.get_chat_history()
+            session_memory = await Database.get_session_memory(active_session["id"])
             
             return {
                 "status": "success",
@@ -954,7 +970,7 @@ async def api_delete_session(request: SessionDeleteRequest):
 @app.get("/api/sessions/{session_id}/memory")
 async def api_get_session_memory(session_id: int):
     try:
-        session_memory = await _run_sync_in_executor(Database.get_session_memory,session_id)
+        session_memory = await Database.get_session_memory(session_id)
         return {
             "status": "success",
             "session_id": session_id,
@@ -973,9 +989,9 @@ async def api_get_session_memory(session_id: int):
 @app.post("/api/update_location")
 async def api_update_location(request: LocationUpdateRequest):
     try:
-        context = await _run_sync_in_executor(Database.get_context)
+        context = await Database.get_context()
         context["location"] = {"lat": request.lat, "lon": request.lon}
-        await _run_sync_in_executor(Database.update_context, context)
+        await Database.update_context( context)
         return {"status": "ok"}
     except Exception as e:
         print(f"Error updating location: {e}")
@@ -985,9 +1001,9 @@ async def api_update_location(request: LocationUpdateRequest):
 @app.post("/api/update_weather_location")
 async def api_update_weather_location(request: LocationUpdateRequest):
     try:
-        context = await _run_sync_in_executor(Database.get_context)
+        context = await Database.get_context()
         context["location"] = {"lat": request.lat, "lon": request.lon}
-        await _run_sync_in_executor(Database.update_context, context)
+        await Database.update_context( context)
         return {"status": "success", "message": "Weather location updated"}
     except Exception as e:
         print(f"Error updating weather location: {e}")
@@ -998,7 +1014,7 @@ async def api_update_weather_location(request: LocationUpdateRequest):
 async def api_update_global_knowledge(request: GlobalKnowledgeUpdateRequest):
     try:
         global_knowledge = {"facts": request.facts}
-        await _run_sync_in_executor(Database.update_profile, {"global_knowledge": global_knowledge})
+        await Database.update_profile( {"global_knowledge": global_knowledge})
         return {"status": "success", "message": "Global knowledge updated"}
     except Exception as e:
         print(f"Error updating global knowledge: {e}")
