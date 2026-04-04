@@ -65,7 +65,7 @@ from app.db_pg_models import (
 # Database Initialization
 # ---------------------------------------------------------------------------
 
-def init_db():
+async def init_db():
     """
     Initialize database.
     
@@ -73,7 +73,7 @@ def init_db():
     """
     print("[DB INIT] Initializing PostgreSQL tables...")
     try:
-        _init_pg_tables()
+        await _init_pg_tables()
         print("[DB INIT] PostgreSQL tables initialized successfully")
     except Exception as e:
         print(f"[DB INIT] PostgreSQL initialization failed: {e}")
@@ -84,7 +84,7 @@ def init_db():
 # FastAPI Dependency Injection (kept for backward compat)
 # ---------------------------------------------------------------------------
 
-def get_db():
+async def get_db():
     """
     FastAPI dependency stub. No longer needed but kept for backward compat.
     """
@@ -123,210 +123,210 @@ class Database:
     # ── Profile Operations ───────────────────────────────────────────────────
     
     @staticmethod
-    def get_profile() -> dict:
+    async def get_profile() -> dict:
         """Get the user profile."""
-        return _pg_get_profile()
+        return await _pg_get_profile()
     
     @staticmethod
-    def update_profile(updates: dict) -> bool:
+    async def update_profile(updates: dict) -> bool:
         """Update the user profile."""
-        return _pg_update_profile(updates)
+        return await _pg_update_profile(updates)
     
     @staticmethod
-    def get_context() -> dict:
+    async def get_context() -> dict:
         """Get the user context."""
-        return _pg_get_context()
+        return await _pg_get_context()
     
     @staticmethod
-    def update_context(context_dict: dict) -> bool:
+    async def update_context(context_dict: dict) -> bool:
         """Update the user context."""
-        return _pg_update_context(context_dict)
+        return await _pg_update_context(context_dict)
     
     # ── APIKey Operations ────────────────────────────────────────────────────
     
     @staticmethod
-    def get_api_keys(key_name: str | None = None) -> dict[str, str]:
+    async def get_api_keys(key_name: str | None = None) -> dict[str, str]:
         """Get API keys (decrypted)."""
-        return _pg_get_api_keys(key_name)
+        return await _pg_get_api_keys(key_name)
     
     @staticmethod
-    def get_api_key(key_name: str) -> str | None:
+    async def get_api_key(key_name: str) -> str | None:
         """Get a single API key."""
-        return _pg_get_api_key(key_name)
+        return await _pg_get_api_key(key_name)
     
     @staticmethod
-    def add_api_key(key_name: str, key_value: str) -> bool:
+    async def add_api_key(key_name: str, key_value: str) -> bool:
         """Add or update an API key."""
-        return _pg_add_api_key(key_name, key_value)
+        return await _pg_add_api_key(key_name, key_value)
     
     @staticmethod
-    def remove_api_key(key_name: str) -> bool:
+    async def remove_api_key(key_name: str) -> bool:
         """Remove an API key."""
-        return _pg_remove_api_key(key_name)
+        return await _pg_remove_api_key(key_name)
 
     # ── ChatSession Operations ───────────────────────────────────────────────
 
     @staticmethod
-    def create_session(name: str = "New Chat") -> int | None:
+    async def create_session(name: str = "New Chat") -> int | None:
         """Create a new chat session."""
-        return _pg_create_session(name)
+        return await _pg_create_session(name)
 
     @staticmethod
-    def get_active_session() -> dict:
+    async def get_active_session() -> dict:
         """Get the currently active session."""
-        return _pg_get_active_session()
+        return await _pg_get_active_session()
 
     @staticmethod
-    def get_all_sessions() -> list[dict]:
+    async def get_all_sessions() -> list[dict]:
         """Get all sessions ordered by updated_at."""
-        return _pg_get_all_sessions()
+        return await _pg_get_all_sessions()
 
     @staticmethod
-    def switch_session(session_id: int) -> bool:
+    async def switch_session(session_id: int) -> bool:
         """Switch to a different session."""
-        return _pg_switch_session(session_id)
+        return await _pg_switch_session(session_id)
 
     @staticmethod
-    def rename_session(session_id: int, new_name: str) -> bool:
+    async def rename_session(session_id: int, new_name: str) -> bool:
         """Rename a session."""
-        return _pg_rename_session(session_id, new_name)
+        return await _pg_rename_session(session_id, new_name)
 
     @staticmethod
-    def delete_session(session_id: int) -> bool:
+    async def delete_session(session_id: int) -> bool:
         """Delete a session."""
-        return _pg_delete_session(session_id)
+        return await _pg_delete_session(session_id)
 
     @staticmethod
-    def get_session_memory(session_id: int) -> dict:
+    async def get_session_memory(session_id: int) -> dict:
         """Get session memory."""
-        return _pg_get_session_memory(session_id)
+        return await _pg_get_session_memory(session_id)
 
     @staticmethod
-    def update_session_memory(session_id: int, memory: dict) -> bool:
+    async def update_session_memory(session_id: int, memory: dict) -> bool:
         """Update session memory."""
-        return _pg_update_session_memory(session_id, memory)
+        return await _pg_update_session_memory(session_id, memory)
 
     @staticmethod
-    def increment_message_count(session_id: int) -> bool:
+    async def increment_message_count(session_id: int) -> bool:
         """Increment the message count for a session."""
-        return _pg_increment_message_count(session_id)
+        return await _pg_increment_message_count(session_id)
 
     # ── Message Operations ──────────────────────────────────────────────────
 
     @staticmethod
-    def add_message(role: str, content: str, session_id: int | None = None, image_paths: str | None = None) -> int | None:
+    async def add_message(role: str, content: str, session_id: int | None = None, image_paths: str | None = None) -> int | None:
         """Add a message to a session."""
         if session_id is None:
-            active_session = Database.get_active_session()
+            active_session = await Database.get_active_session()
             session_id = active_session['id']
-        return _pg_add_message(session_id, role, content, image_paths)
+        return await _pg_add_message(session_id, role, content, image_paths)
 
     @staticmethod
-    def get_messages(session_id: int | None = None, limit: int | None = None) -> list[dict]:
+    async def get_messages(session_id: int | None = None, limit: int | None = None) -> list[dict]:
         """Get messages for a session."""
         if session_id is None:
-            active_session = Database.get_active_session()
+            active_session = await Database.get_active_session()
             session_id = active_session['id']
-        return _pg_get_session_messages(session_id, limit or 100)
+        return await _pg_get_session_messages(session_id, limit or 100)
 
     @staticmethod
-    def get_chat_history(session_id: int | None = None, limit: int | None = None, recent: bool = False) -> list[dict]:
+    async def get_chat_history(session_id: int | None = None, limit: int | None = None, recent: bool = False) -> list[dict]:
         """Get chat history for a session."""
         if session_id is None:
-            active_session = Database.get_active_session()
+            active_session = await Database.get_active_session()
             session_id = active_session['id']
-        return _pg_get_chat_history(session_id, limit, recent)
+        return await _pg_get_chat_history(session_id, limit, recent)
 
     @staticmethod
-    def clear_session(session_id: int | None = None) -> bool:
+    async def clear_session(session_id: int | None = None) -> bool:
         """Clear all messages for a session."""
         if session_id is None:
-            active_session = Database.get_active_session()
+            active_session = await Database.get_active_session()
             session_id = active_session['id']
-        return _pg_clear_session_messages(session_id)
+        return await _pg_clear_session_messages(session_id)
 
     @staticmethod
-    def clear_chat_history(session_id: int | None = None) -> bool:
+    async def clear_chat_history(session_id: int | None = None) -> bool:
         """Clear chat history (alias for clear_session)."""
-        return Database.clear_session(session_id)
+        return await Database.clear_session(session_id)
 
     @staticmethod
-    def add_session_event(content: str, interface: str = "terminal") -> int | None:
+    async def add_session_event(content: str, interface: str = "terminal") -> int | None:
         """Add a session event message."""
-        active_session = Database.get_active_session()
-        return _pg_add_session_event(active_session['id'], content, interface)
+        active_session = await Database.get_active_session()
+        return await _pg_add_session_event(active_session['id'], content, interface)
 
     @staticmethod
-    def get_recent_sessions(limit: int = 20) -> list[dict]:
+    async def get_recent_sessions(limit: int = 20) -> list[dict]:
         """Get recent session events across all sessions."""
-        return _pg_get_recent_sessions(limit)
+        return await _pg_get_recent_sessions(limit)
 
     @staticmethod
-    def get_recent_sessions_for_session(session_id: int, limit: int = 20) -> list[dict]:
+    async def get_recent_sessions_for_session(session_id: int, limit: int = 20) -> list[dict]:
         """Get recent session events for a specific session."""
-        return _pg_get_recent_sessions_for_session(session_id, limit)
+        return await _pg_get_recent_sessions_for_session(session_id, limit)
 
     @staticmethod
-    def get_session_messages_count(session_id: int) -> int:
+    async def get_session_messages_count(session_id: int) -> int:
         """Get message count for a session."""
-        return _pg_get_message_count(session_id)
+        return await _pg_get_message_count(session_id)
 
     @staticmethod
-    def get_session_conversation_summary(session_id: int, limit: int = 20) -> str:
+    async def get_session_conversation_summary(session_id: int, limit: int = 20) -> str:
         """Get a summary of recent conversation."""
-        return _pg_get_session_conversation_summary(session_id, limit)
+        return await _pg_get_session_conversation_summary(session_id, limit)
 
     @staticmethod
-    def get_encryption_status() -> dict:
+    async def get_encryption_status() -> dict:
         """Get encryption status summary."""
-        return _pg_get_encryption_status()
+        return await _pg_get_encryption_status()
 
     @staticmethod
-    def get_all_encrypted_messages() -> list[dict]:
+    async def get_all_encrypted_messages() -> list[dict]:
         """Get all encrypted messages (for migration)."""
-        return _pg_get_all_encrypted_messages()
+        return await _pg_get_all_encrypted_messages()
 
     @staticmethod
-    def batch_decrypt_messages(message_ids: list[int]) -> dict:
+    async def batch_decrypt_messages(message_ids: list[int]) -> dict:
         """Batch decrypt messages."""
-        return _pg_batch_decrypt_messages(message_ids)
+        return await _pg_batch_decrypt_messages(message_ids)
 
     @staticmethod
-    def get_chat_history_for_ai(session_id: int | None = None, limit: int | None = None, recent: bool = False) -> list[dict]:
+    async def get_chat_history_for_ai(session_id: int | None = None, limit: int | None = None, recent: bool = False) -> list[dict]:
         """Build message context for AI provider."""
         if session_id is None:
-            active_session = Database.get_active_session()
+            active_session = await Database.get_active_session()
             session_id = active_session['id']
-        return _pg_get_chat_history_for_ai(session_id, limit, recent)
+        return await _pg_get_chat_history_for_ai(session_id, limit, recent)
 
     @staticmethod
-    def add_image_tools_message(image_url: str, session_id: int | None = None) -> int | None:
+    async def add_image_tools_message(image_url: str, session_id: int | None = None) -> int | None:
         """Add an image tools message."""
         if session_id is None:
-            active_session = Database.get_active_session()
+            active_session = await Database.get_active_session()
             session_id = active_session['id']
-        return _pg_add_image_tools_message(session_id, image_url)
+        return await _pg_add_image_tools_message(session_id, image_url)
 
     @staticmethod
-    def add_tool_result(tool_name: str, result_content: str, session_id: int | None = None) -> int | None:
+    async def add_tool_result(tool_name: str, result_content: str, session_id: int | None = None) -> int | None:
         """Store tool result in database with tool-specific role."""
         if session_id is None:
-            active_session = Database.get_active_session()
+            active_session = await Database.get_active_session()
             session_id = active_session['id']
-        return _pg_add_tool_result(session_id, tool_name, result_content)
+        return await _pg_add_tool_result(session_id, tool_name, result_content)
 
     @staticmethod
-    def add_system_note(content: str, session_id: int | None = None) -> int | None:
+    async def add_system_note(content: str, session_id: int | None = None) -> int | None:
         """Add a system note message."""
         if session_id is None:
-            active_session = Database.get_active_session()
+            active_session = await Database.get_active_session()
             session_id = active_session['id']
-        return _pg_add_system_note(session_id, content)
+        return await _pg_add_system_note(session_id, content)
 
     @staticmethod
-    def add_memory_note(content: str, session_id: int | None = None) -> int | None:
+    async def add_memory_note(content: str, session_id: int | None = None) -> int | None:
         """Add a memory note (alias for add_system_note)."""
-        return Database.add_system_note(content, session_id)
+        return await Database.add_system_note(content, session_id)
 
 
 # ---------------------------------------------------------------------------
