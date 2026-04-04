@@ -17,7 +17,9 @@ _thread_local = threading.local()
 def _get_session():
     """Get or create a thread-local requests session."""
     if not hasattr(_thread_local, "session") or _thread_local.session is None:
-        api_key = get_api_key("chutes")
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            api_key = executor.submit(get_api_key, "chutes").result()
         if not api_key:
             return None
         _thread_local.session = __import__("requests").Session()
@@ -28,7 +30,7 @@ def _get_session():
     return _thread_local.session
 
 
-def embed_texts(texts, model=None, dimensions=None, encoding_format="float"):
+async def embed_texts(texts, model=None, dimensions=None, encoding_format="float"):
     """Embed a list of strings via Chutes API. Returns list of embedding lists."""
     session = _get_session()
     if session is None:
@@ -46,12 +48,12 @@ def embed_texts(texts, model=None, dimensions=None, encoding_format="float"):
         payload["dimensions"] = dimensions
     payload["encoding_format"] = encoding_format
 
-    resp = session.post(CHUTES_EMBED_ENDPOINT, json=payload, timeout=60)
+    resp = await session.post(CHUTES_EMBED_ENDPOINT, json=payload, timeout=60)
     resp.raise_for_status()
     return [item["embedding"] for item in resp.json()["data"]]
 
 
-def embed_text(text, **kwargs):
+async def embed_text(text, **kwargs):
     """Embed a single string. Returns None if embedding fails."""
     try:
         results = embed_texts([text], **kwargs)

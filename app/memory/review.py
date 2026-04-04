@@ -30,7 +30,7 @@ def _set_last_decay_time():
         print(f"[WARNING] Could not write decay state: {e}")
 
 
-def run_decay(session_id=None, force=False):
+async def run_decay(session_id=None, force=False):
     """Run full decay cycle on all memory types.
 
     Skips if decay ran within the last 6 hours unless force=True.
@@ -55,14 +55,14 @@ def run_decay(session_id=None, force=False):
     
     try:
         # Decay semantic memories (static facts)
-        count_semantic = decay_facts(session_id=session_id, fact_type=FACT_TYPE_STATIC)
+        count_semantic = await decay_facts(session_id=session_id, fact_type=FACT_TYPE_STATIC)
         print(f"[decay] Decayed {count_semantic} semantic memories")
     except Exception as e:
         print(f"[WARNING] Semantic decay failed: {e}")
     
     try:
         # Decay episodic memories (dynamic facts from episodic_memories)
-        count_episodic = decay_facts(session_id=session_id, fact_type=FACT_TYPE_DYNAMIC)
+        count_episodic = await decay_facts(session_id=session_id, fact_type=FACT_TYPE_DYNAMIC)
         print(f"[decay] Decayed {count_episodic} episodic memories")
     except Exception as e:
         print(f"[WARNING] Episodic decay failed: {e}")
@@ -71,11 +71,11 @@ def run_decay(session_id=None, force=False):
     print("[decay] Done.")
 
 
-def reinforce_memory(memory_id, memory_type='semantic'):
+async def reinforce_memory(memory_id, memory_type='semantic'):
     """Increase importance when a memory is retrieved.
 
     Args:
         memory_id: ID of the memory to reinforce.
         memory_type: 'semantic' or 'episodic' (ignored, all use same table)
     """
-    increment_importance(memory_id, delta=0.05, cap=1.0)
+    await increment_importance(memory_id, delta=0.05, cap=1.0)

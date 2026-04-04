@@ -5,6 +5,7 @@
 # No more semantic/episodic/segments - just static and dynamic.
 
 import math
+import asyncio
 from datetime import datetime, timedelta
 from app.memory.db_memory import (
     search_similar,
@@ -67,7 +68,7 @@ def _detect_time_window(query):
     return None
 
 
-def _search_temporal_messages(session_id, start, end, limit=200):
+async def _search_temporal_messages(session_id, start, end, limit=200):
     """Search messages within a time window using PostgreSQL."""
     results = []
     try:
@@ -159,21 +160,21 @@ def _parse_fact_content(r: dict) -> dict:
 
 # ── Retrieval functions ──────────────────────────────────────────────────────
 
-def retrieve_static_memories(query=None, limit=15):
+async def retrieve_static_memories(query=None, limit=15):
     """
     Retrieve static (global) memories - no session filter.
     Returns list of parsed facts sorted by score.
     """
-    query_vec = _embed_query(query) if query else None
+    query_vec = await asyncio.get_event_loop().run_in_executor(None, _embed_query, query) if query else None
 
     if query_vec:
-        results = search_similar(
+        results = await search_similar(
             embedding=query_vec,
             fact_type=FACT_TYPE_STATIC,
             limit=limit,
         )
     else:
-        results = get_facts_by_session(session_id=None, fact_type=FACT_TYPE_STATIC, limit=limit)
+        results = await get_facts_by_session(session_id=None, fact_type=FACT_TYPE_STATIC, limit=limit)
 
     if not results:
         return []
@@ -187,22 +188,22 @@ def retrieve_static_memories(query=None, limit=15):
     return parsed
 
 
-def retrieve_dynamic_memories(session_id: int, query=None, limit=10):
+async def retrieve_dynamic_memories(session_id: int, query=None, limit=10):
     """
     Retrieve dynamic (per-session) memories.
     Returns list of parsed facts sorted by score.
     """
-    query_vec = _embed_query(query) if query else None
+    query_vec = await asyncio.get_event_loop().run_in_executor(None, _embed_query, query) if query else None
 
     if query_vec:
-        results = search_similar(
+        results = await search_similar(
             embedding=query_vec,
             session_id=session_id,
             fact_type=FACT_TYPE_DYNAMIC,
             limit=limit,
         )
     else:
-        results = get_facts_by_session(session_id=session_id, fact_type=FACT_TYPE_DYNAMIC, limit=limit)
+        results = await get_facts_by_session(session_id=session_id, fact_type=FACT_TYPE_DYNAMIC, limit=limit)
 
     if not results:
         return []
@@ -222,7 +223,7 @@ retrieve_episodic_memories = retrieve_dynamic_memories
 retrieve_segments = retrieve_dynamic_memories
 
 
-def retrieve_memory(session_id: int, query=None):
+async def retrieve_memory(session_id: int, query=None):
     """
     Main retrieval entry point.
 

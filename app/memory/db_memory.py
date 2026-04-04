@@ -1,7 +1,13 @@
 # FILE: app/memory/db_memory.py
 # DESCRIPTION: Unified memory CRUD layer over PostgreSQL semantic_facts table.
-#             All memory operations (semantic, episodic, segment) go through here.
-#             No SQLAlchemy ORM — pure psycopg2 raw SQL for vector friendliness.
+#              All memory operations (semantic, episodic, segment) go through here.
+#              No SQLAlchemy ORM — pure psycopg v3 async raw SQL for vector friendliness.
+#
+# MIGRATED: psycopg2 → psycopg async v3
+# - All functions: sync def → async def
+# - PgSession → AsyncPgSession
+# - vector_sql() custom wrapper → pgvector native list[float]
+# - Json wrapper → native Python dict
 #
 # Schema:
 #   semantic_facts (
@@ -14,27 +20,19 @@
 #     created_at     TIMESTAMP DEFAULT NOW(),
 #     last_accessed  TIMESTAMP DEFAULT NOW()
 #   )
-#
-# metadata carries per-type data:
-#   - static (semantic): { confidence, importance, entity, relation, target,
-#                          source_table, access_count }
-#   - dynamic (episodic): { importance, emotional_weight, summary, source_table,
-#                          access_count }
-#   - dynamic (segment): { importance, start_message_id, end_message_id,
-#                          source_table, access_count }
 
 from __future__ import annotations
 
 import math
 from datetime import datetime
 
-from app.db_pg import PgSession, pg_fetchone, pg_fetchall, pg_execute, vector_sql
-from psycopg2.extras import Json
+from app.db_pg import AsyncPgSession, pg_fetchone, pg_fetchall, pg_execute
 
 
 # ── Enums ─────────────────────────────────────────────────────────────────────
 FACT_TYPE_STATIC  = "static"
 FACT_TYPE_DYNAMIC = "dynamic"
+
 
 # ── Embedding helpers ─────────────────────────────────────────────────────────
 def _normalize(vec) -> list[float]:
@@ -61,7 +59,7 @@ def _embed_text(text: str) -> list[float] | None:
 
 
 # ── Save / Insert ─────────────────────────────────────────────────────────────
-def save_fact(
+async def save_fact(
     session_id: int | None,
     content: str,
     embedding: list[float] | None,
@@ -70,7 +68,6 @@ def save_fact(
 ) -> int | None:
     """
     Insert a new fact into semantic_facts.
-
     Returns the new row id, or None on failure.
     """
     meta = metadata or {}
@@ -86,69 +83,68 @@ def save_fact(
         VALUES (%s, %s, %s, %s, %s, %s)
         RETURNING id
     """
-    vec_sql = vector_sql(norm_vec) if norm_vec is not None else None
+    # psycopg v3: list[float] passed directly, pgvector handles it
+    params = (
+        fact_type,
+        content,
+        norm_vec,
+        meta,  # native dict → JSONB
+        now,
+        now,
+    )
 
     try:
-        with PgSession() as s:
-            row = s.execute_returning(query, (
-                fact_type,
-                content,
-                vec_sql,
-                Json(meta),
-                now,
-                now,
-            ))
+        async with AsyncPgSession() as s:
+            row = await s.execute_returning(query, params)
             return row["id"] if row else None
     except Exception as e:
         print(f"[db_memory] save_fact failed: {e}")
         return None
 
 
-def upsert_fact(
+async def upsert_fact(
     session_id: int | None,
     content: str,
     embedding: list[float] | None,
     fact_type: str = FACT_TYPE_STATIC,
     metadata: dict | None = None,
-) -> int | None:
+) -> tuple[int, bool] | None:
     """
     Insert a fact, but first check for near-duplicate using vector distance.
     If a row with cosine distance < 0.05 exists, reinforce it instead of inserting.
-    Returns: (existing_id, reinforced=True) or (new_id, reinforced=False)
+    Returns: (id, reinforced) or None on failure.
     """
     if embedding:
         try:
-            existing = search_similar(
+            existing = await search_similar(
                 embedding=embedding,
                 session_id=session_id,
                 fact_type=fact_type,
                 limit=1,
-                max_distance=0.05,  # cosine similarity threshold
+                max_distance=0.05,
             )
         except Exception as e:
             print(f"[db_memory] upsert_fact search_similar error: {e}")
             existing = []
-        if not existing or len(existing) == 0:
-            return None, False
-        e = existing[0]
-        # Reinforce existing
-        meta = e.get("metadata") or {}
-        new_confidence = min((meta.get("confidence") or 0.5) + 0.1, 1.0)
-        new_access_count = (meta.get("access_count") or 0) + 1
-        meta["confidence"] = new_confidence
-        meta["access_count"] = new_access_count
-        pg_execute(
-            "UPDATE semantic_facts SET last_accessed=%s, metadata=%s WHERE id=%s",
-            (datetime.now(), Json(meta), e["id"]),
-        )
-        return e["id"], True
+        if existing:
+            e = existing[0]
+            meta = e.get("metadata") or {}
+            new_confidence = min((meta.get("confidence") or 0.5) + 0.1, 1.0)
+            new_access_count = (meta.get("access_count") or 0) + 1
+            meta["confidence"] = new_confidence
+            meta["access_count"] = new_access_count
+            await pg_execute(
+                "UPDATE semantic_facts SET last_accessed=%s, metadata=%s WHERE id=%s",
+                (datetime.now(), meta, e["id"]),
+            )
+            return e["id"], True
 
-    new_id = save_fact(session_id, content, embedding, fact_type, metadata)
-    return new_id, False
+    new_id = await save_fact(session_id, content, embedding, fact_type, metadata)
+    return (new_id, False) if new_id else None
 
 
 # ── Vector Search ─────────────────────────────────────────────────────────────
-def search_similar(
+async def search_similar(
     embedding: list[float],
     session_id: int | None = None,
     fact_type: str | None = None,
@@ -166,11 +162,7 @@ def search_similar(
             print("[db_memory] search_similar: normalized vector is empty")
             return []
 
-        vec_str = "[" + ",".join(str(x) for x in norm_vec) + "]"
-        vec_str2 = "[" + ",".join(str(x) for x in norm_vec) + "]"
-        vec_str3 = "[" + ",".join(str(x) for x in norm_vec) + "]"
-        
-        params = [vec_str]  # For SELECT distance calculation
+        params = [norm_vec]  # For SELECT distance calculation
         conditions = ["embedding IS NOT NULL"]
 
         if session_id is not None:
@@ -187,14 +179,13 @@ def search_similar(
                 params.append(key)
                 params.append(val)
 
-        # Distance filter
-        conditions.append("(embedding <=> %s::vector) < %s")
-        params.append(vec_str2)  # For WHERE distance filter
-        params.append(max_distance)
+        # Distance filter (vector for WHERE)
+        params.append(norm_vec)       # For WHERE distance filter
+        params.append(max_distance)   # Threshold
+        params.append(norm_vec)       # For ORDER BY
+        params.append(limit)          # LIMIT
 
         where_clause = "WHERE " + " AND ".join(conditions)
-        params.append(vec_str3)  # For ORDER BY
-        params.append(limit)
 
         query = f"""
             SELECT id, fact_type, content, metadata,
@@ -205,10 +196,10 @@ def search_similar(
             ORDER BY embedding <=> %s::vector
             LIMIT %s
         """
-        
-        results = pg_fetchall(query, params)
+
+        results = await pg_fetchall(query, params)
         return results if results else []
-        
+
     except Exception as e:
         import traceback
         print(f"[db_memory] search_similar EXCEPTION: {type(e).__name__}: {e}")
@@ -217,20 +208,20 @@ def search_similar(
 
 
 # ── Retrieval ─────────────────────────────────────────────────────────────────
-def get_fact_by_id(id: int) -> dict | None:
-    return pg_fetchone(
+async def get_fact_by_id(id: int) -> dict | None:
+    return await pg_fetchone(
         "SELECT * FROM semantic_facts WHERE id=%s", (id,)
     )
 
 
-def get_facts_by_session(
+async def get_facts_by_session(
     session_id: int,
     fact_type: str | None = None,
     limit: int = 100,
 ) -> list[dict]:
     # Static facts are GLOBAL - no session_id filter
     if fact_type == "static":
-        return pg_fetchall(
+        return await pg_fetchall(
             "SELECT * FROM semantic_facts WHERE fact_type=%s LIMIT %s",
             (fact_type, limit),
         )
@@ -241,13 +232,13 @@ def get_facts_by_session(
         extra = " AND fact_type = %s"
         params.append(fact_type)
     params.append(limit)
-    return pg_fetchall(
+    return await pg_fetchall(
         f"SELECT * FROM semantic_facts WHERE (metadata->>'session_id')::int=%s{extra} LIMIT %s",
         params,
     )
 
 
-def count_facts(fact_type: str | None = None, session_id: int | None = None) -> int:
+async def count_facts(fact_type: str | None = None, session_id: int | None = None) -> int:
     conditions = []
     params = []
     if fact_type:
@@ -258,20 +249,20 @@ def count_facts(fact_type: str | None = None, session_id: int | None = None) -> 
         params.append(session_id)
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
-    row = pg_fetchone(f"SELECT COUNT(*) AS cnt FROM semantic_facts {where}", params)
+    row = await pg_fetchone(f"SELECT COUNT(*) AS cnt FROM semantic_facts {where}", params)
     return row["cnt"] if row else 0
 
 
 # ── Update / Access Tracking ───────────────────────────────────────────────────
-def update_last_accessed(ids: list[int]) -> int:
+async def update_last_accessed(ids: list[int]) -> int:
     """Batch update last_accessed timestamp. Returns rows updated."""
     if not ids:
         return 0
     now = datetime.now()
     ph = ",".join(["%s"] * len(ids))
     try:
-        with PgSession() as s:
-            s.execute(
+        async with AsyncPgSession() as s:
+            await s.execute(
                 f"UPDATE semantic_facts SET last_accessed=%s WHERE id IN ({ph})",
                 (now,) + tuple(ids),
             )
@@ -281,17 +272,17 @@ def update_last_accessed(ids: list[int]) -> int:
         return 0
 
 
-def update_fact_importance(id: int, importance: float) -> bool:
+async def update_fact_importance(id: int, importance: float) -> bool:
     """Update importance in metadata JSONB."""
     try:
-        meta_row = pg_fetchone("SELECT metadata FROM semantic_facts WHERE id=%s", (id,))
+        meta_row = await pg_fetchone("SELECT metadata FROM semantic_facts WHERE id=%s", (id,))
         if not meta_row:
             return False
         meta = meta_row["metadata"] or {}
         meta["importance"] = importance
-        pg_execute(
+        await pg_execute(
             "UPDATE semantic_facts SET metadata=%s WHERE id=%s",
-            (Json(meta), id),
+            (meta, id),
         )
         return True
     except Exception as e:
@@ -299,19 +290,19 @@ def update_fact_importance(id: int, importance: float) -> bool:
         return False
 
 
-def increment_importance(id: int, delta: float = 0.05, cap: float = 1.0) -> bool:
+async def increment_importance(id: int, delta: float = 0.05, cap: float = 1.0) -> bool:
     """Increment importance, capped at `cap`."""
     try:
-        meta_row = pg_fetchone("SELECT metadata FROM semantic_facts WHERE id=%s", (id,))
+        meta_row = await pg_fetchone("SELECT metadata FROM semantic_facts WHERE id=%s", (id,))
         if not meta_row:
             return False
         meta = meta_row["metadata"] or {}
         current = meta.get("importance") or 0.5
         meta["importance"] = min(current + delta, cap)
         meta["access_count"] = (meta.get("access_count") or 0) + 1
-        pg_execute(
+        await pg_execute(
             "UPDATE semantic_facts SET last_accessed=%s, metadata=%s WHERE id=%s",
-            (datetime.now(), Json(meta), id),
+            (datetime.now(), meta, id),
         )
         return True
     except Exception as e:
@@ -320,17 +311,17 @@ def increment_importance(id: int, delta: float = 0.05, cap: float = 1.0) -> bool
 
 
 # ── Delete ────────────────────────────────────────────────────────────────────
-def delete_fact(id: int) -> bool:
+async def delete_fact(id: int) -> bool:
     """Delete a single fact by id. Returns True if deleted."""
     try:
-        pg_execute("DELETE FROM semantic_facts WHERE id=%s", (id,))
+        await pg_execute("DELETE FROM semantic_facts WHERE id=%s", (id,))
         return True
     except Exception as e:
         print(f"[db_memory] delete_fact failed: {e}")
         return False
 
 
-def delete_facts_by_session(session_id: int, fact_type: str | None = None) -> int:
+async def delete_facts_by_session(session_id: int, fact_type: str | None = None) -> int:
     """Delete all facts for a session. Returns count deleted."""
     params = [session_id]
     extra = ""
@@ -338,15 +329,18 @@ def delete_facts_by_session(session_id: int, fact_type: str | None = None) -> in
         extra = " AND fact_type = %s"
         params.append(fact_type)
     try:
-        with PgSession() as s:
-            s.execute(f"DELETE FROM semantic_facts WHERE (metadata->>'session_id')::int=%s{extra}", params)
-            return s.conn.affected_rows if hasattr(s.conn, "affected_rows") else 0
+        async with AsyncPgSession() as s:
+            await s.execute(
+                f"DELETE FROM semantic_facts WHERE (metadata->>'session_id')::int=%s{extra}",
+                params,
+            )
+            return 0  # rowcount not reliably available in async
     except Exception:
         return 0
 
 
 # ── Decay (FSRS-style) ─────────────────────────────────────────────────────────
-def decay_facts(session_id: int | None = None, fact_type: str | None = None) -> int:
+async def decay_facts(session_id: int | None = None, fact_type: str | None = None) -> int:
     """
     Apply importance decay to facts.
     importance *= exp(-hours_since_last_access / stability)
@@ -364,8 +358,10 @@ def decay_facts(session_id: int | None = None, fact_type: str | None = None) -> 
     where = "WHERE " + " AND ".join(conditions) if conditions else ""
     where_metadata = "AND metadata->>'source_table' = 'episodic_memories'" if fact_type == FACT_TYPE_DYNAMIC else ""
 
-    # Get all facts to decay
-    facts = pg_fetchall(f"SELECT id, metadata FROM semantic_facts {where} {where_metadata}", params)
+    facts = await pg_fetchall(
+        f"SELECT id, metadata FROM semantic_facts {where} {where_metadata}",
+        params,
+    )
     updated = 0
     now = datetime.now()
 
@@ -395,9 +391,9 @@ def decay_facts(session_id: int | None = None, fact_type: str | None = None) -> 
         meta["importance"] = new_importance
 
         try:
-            pg_execute(
+            await pg_execute(
                 "UPDATE semantic_facts SET metadata=%s, last_accessed=%s WHERE id=%s",
-                (Json(meta), now, fact["id"]),
+                (meta, now, fact["id"]),
             )
             updated += 1
         except Exception as e:
@@ -407,13 +403,13 @@ def decay_facts(session_id: int | None = None, fact_type: str | None = None) -> 
 
 
 # ── Stats ─────────────────────────────────────────────────────────────────────
-def get_memory_stats(session_id: int | None = None) -> dict:
+async def get_memory_stats(session_id: int | None = None) -> dict:
     """Return memory statistics."""
-    total = count_facts(session_id=session_id)
+    total = await count_facts(session_id=session_id)
     # Static facts are GLOBAL - don't filter by session_id
-    static_count = count_facts(fact_type=FACT_TYPE_STATIC)
+    static_count = await count_facts(fact_type=FACT_TYPE_STATIC)
     # Dynamic facts are session-scoped
-    dynamic_count = count_facts(fact_type=FACT_TYPE_DYNAMIC, session_id=session_id)
+    dynamic_count = await count_facts(fact_type=FACT_TYPE_DYNAMIC, session_id=session_id)
 
     return {
         "total": total,
