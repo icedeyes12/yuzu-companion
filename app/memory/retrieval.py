@@ -109,11 +109,61 @@ def _recency_factor(last_accessed) -> float:
     now = datetime.now()
     if isinstance(last_accessed, str):
         try:
-            last_accessed = datetime.strptime(last_accessed, '%Y-%m-%d %H:%M:%S')
-        except (ValueError, TypeError):
-            return 0.1
+            last_accessed = datetime.strptime(last_accessed, '%Y-%m-%d %H:%M:%S.%f')
+        except ValueError:
+            try:
+                last_accessed = datetime.strptime(last_accessed, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                return 0.1
     delta_hours = (now - last_accessed).total_seconds() / 3600.0
     return math.exp(-delta_hours / 24.0)
+
+
+def _fsrs_retrievability(r: dict) -> float:
+    """
+    FSRS retrievability for episodic facts.
+    retrievability = exp(-hours_since_last_access / stability)
+    - freshly accessed (0h ago) → retrievability = 1.0
+    - 1 stability period ago → retrievability = 0.368
+    - 2 stability periods ago → retrievability = 0.135
+    Only applies to episodic facts (source_table='episodic_memories').
+    """
+    meta = r.get("metadata", {}) or {}
+    source_table = meta.get("source_table", "")
+    if source_table != "episodic_memories":
+        return 1.0  # no FSRS re-rank for non-episodic facts
+
+    last_accessed = r.get("last_accessed")
+    if not last_accessed:
+        return 0.1  # never accessed → low retrievability
+
+    now = datetime.now()
+    if isinstance(last_accessed, str):
+        try:
+            last_accessed = datetime.strptime(last_accessed, '%Y-%m-%d %H:%M:%S.%f')
+        except ValueError:
+            try:
+                last_accessed = datetime.strptime(last_accessed, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                return 0.1
+
+    delta_hours = (now - last_accessed).total_seconds() / 3600.0
+    stability = meta.get("stability", 24.0)  # hours; default half-life 24h
+    stability = max(stability, 0.1)  # prevent div-by-zero
+
+    retrievability = math.exp(-delta_hours / stability)
+    return retrievability
+
+
+def _episodic_score_adjustment(r: dict) -> float:
+    """
+    Compute FSRS re-rank multiplier for episodic facts.
+    final = base_score * (0.5 + 0.5 * retrievability)
+    - freshly accessed (retrievability ~1): multiplier = 1.0 → no change
+    - decayed (retrievability ~0): multiplier = 0.5 → score halved
+    """
+    retrievability = _fsrs_retrievability(r)
+    return 0.5 + 0.5 * retrievability
 
 
 def _embed_query(text: str) -> list[float] | None:
