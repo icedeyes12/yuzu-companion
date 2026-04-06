@@ -468,14 +468,11 @@ def retrieve_memory(session_id: int, query=None):
         print(f"[WARNING] Dynamic memory retrieval failed: {e}")
         dynamic = []
 
-    # Wire Phase 8.4: mark retrieved facts as pending review
-    retrieved_ids = [m["id"] for m in static] + [m["id"] for m in dynamic]
-    if retrieved_ids:
-        try:
-            from app.memory.memory_review import mark_retrieved_as_pending_review
-            mark_retrieved_as_pending_review(retrieved_ids, session_id)
-        except Exception:
-            pass  # non-critical — don't fail retrieval on review errors
+    # NOTE: pending_review is NO LONGER recorded here.
+    # Tool-call path (retrieve_memory) does NOT mark pending review.
+    # retrieve_memory() is now the tool path (hybrid 3-channel, FSRS re-rank).
+    # Use retrieve_for_context() for system-prompt injection (semantic-only, no pending_review).
+    # Pending review is handled by memory_review.review_memory() called explicitly.
 
     temporal_messages = []
     if query:
@@ -492,6 +489,39 @@ def retrieve_memory(session_id: int, query=None):
         "dynamic": dynamic,
         "temporal_messages": temporal_messages,
     }
+
+
+
+def _format_static_context(static: list[dict]) -> str:
+    """
+    Format static (semantic) memories for system prompt injection.
+    Clean output — no pending_review markers, no section headers.
+    Returns empty string if no facts.
+    """
+    if not static:
+        return ""
+    parts = []
+    for mem in static[:10]:
+        entity = mem.get("entity", "User")
+        relation = mem.get("relation", "unknown")
+        target = mem.get("target", mem.get("content", ""))
+        parts.append(f"- {entity} {relation} {target}")
+    return "\n".join(parts)
+
+
+def retrieve_for_context(session_id: int, query: str | None = None, limit: int = 10) -> str:
+    """
+    Retrieve ONLY static semantic memories for pre-LLM system prompt injection.
+    Does NOT mark facts as pending_review — this is the "clean" path
+    for context building, not tool-use retrieval.
+    plast-mem equivalent: POST /api/v0/context_pre_retrieve
+    """
+    try:
+        static = retrieve_static_memories(query=query, limit=limit)
+    except Exception as e:
+        print(f"[WARNING] retrieve_for_context failed: {e}")
+        return ""
+    return _format_static_context(static)
 
 
 def format_memory(memory_bundle):

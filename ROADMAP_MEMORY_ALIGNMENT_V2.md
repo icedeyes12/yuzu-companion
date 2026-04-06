@@ -251,7 +251,7 @@ for item in r:
 
 ## Phase 6: Fix Retrieval — `context_pre_retrieve` (Semantic-Only)
 
-### 6.1 — Add dedicated semantic-only retrieval
+### 6.1 — Add dedicated semantic-only retrieval [DONE]
 
 In `plast-mem`, `POST /api/v0/context_pre_retrieve` returns only semantic (static) facts for pre-LLM system prompt injection — without recording pending review.
 
@@ -269,12 +269,12 @@ def retrieve_for_context(session_id: int, query: str | None = None, limit: int =
     return _format_static_context(static)
 ```
 
-### 6.2 — Update `format_memory` to have two modes
+### 6.2 — Update `format_memory` to have two modes [DONE]
 
 - `format_memory()` — full context with pending review markers (existing)
 - `_format_static_context()` — clean context for system prompt injection (new)
 
-### 6.3 — Update callers in `app.py`
+### 6.3 — Update callers in `app.py` [DONE]
 
 Find all places where memory is injected into the system prompt. Confirm they use the semantic-only path when appropriate.
 
@@ -337,7 +337,7 @@ ALTER TABLE semantic_facts ADD COLUMN invalid_at TIMESTAMP NULL;
 - [ ] Confirm `get_active_facts` filters correctly
 - [ ] Run: `SELECT column_name FROM information_schema.columns WHERE table_name='semantic_facts' AND column_name='invalid_at';`
 
-### Phase 6.4 — Remove MIN_MESSAGES_PER_SEGMENT assertion
+### Phase 6.4 — Remove MIN_MESSAGES_PER_SEGMENT assertion [DONE]
 
 - [ ] Verify final flush group is NOT subject to `MIN_MESSAGES_PER_SEGMENT` threshold
 
