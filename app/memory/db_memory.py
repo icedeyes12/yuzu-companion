@@ -450,7 +450,7 @@ def get_fact_by_id(id: int) -> dict | None:
 
 
 def get_facts_by_session(
-    session_id: int,
+    session_id: int | None,
     fact_type: str | None = None,
     limit: int = 100,
 ) -> list[dict]:
@@ -460,15 +460,18 @@ def get_facts_by_session(
             "SELECT * FROM semantic_facts WHERE fact_type=%s LIMIT %s",
             (fact_type, limit),
         )
-    # Dynamic facts - filter by session_id
-    params = [session_id]
-    extra = ""
+    # Dynamic facts: only filter by session_id when it is not None
+    conditions, params = [], []
+    if session_id is not None:
+        conditions.append("(metadata->>'session_id')::int = %s")
+        params.append(session_id)
     if fact_type:
-        extra = " AND fact_type = %s"
+        conditions.append("fact_type = %s")
         params.append(fact_type)
     params.append(limit)
+    where = "WHERE " + " AND ".join(conditions) if conditions else "WHERE fact_type = 'dynamic'"
     return pg_fetchall(
-        f"SELECT * FROM semantic_facts WHERE (metadata->>'session_id')::int=%s{extra} LIMIT %s",
+        f"SELECT * FROM semantic_facts {where} LIMIT %s",
         params,
     )
 

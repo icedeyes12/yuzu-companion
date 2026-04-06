@@ -8,6 +8,9 @@ import math
 from datetime import datetime, timedelta
 from app.memory.db_memory import (
     search_similar,
+    search_trgm,
+
+    search_tsv,
     get_facts_by_session,
     update_last_accessed,
     FACT_TYPE_STATIC,
@@ -123,38 +126,37 @@ def _embed_query(text: str) -> list[float] | None:
         return None
 
 
-def _rrf_merge(list_a: list[dict], list_b: list[dict], k: int = 60) -> list[dict]:
+def _hybrid_rrf_merge(channel_results: dict[str, list[dict]], k: int = 60) -> list[dict]:
     """
-    Reciprocal Rank Fusion — merges two ranked lists into one.
-    
-    RRF score = Σ 1.0 / (k + rank)  per list
-    Results sorted by fused score descending.
-    
-    Each input dict must have an 'id' key. Ties broken by the higher individual score.
-    """
-    if not list_a and not list_b:
-        return []
-    if not list_a:
-        return list_b
-    if not list_b:
-        return list_a
+    N-channel Reciprocal Rank Fusion — merges ranked lists from multiple search channels.
 
-    # Build a map of id -> original item
+    RRF score = Σ 1.0 / (k + rank)  per channel
+    Results sorted by fused score descending.
+
+    Args:
+        channel_results: {channel_name: [(id, score, rank), ...], ...}
+                         Each channel's list should be pre-sorted by rank (1 = best).
+    """
+    if not channel_results:
+        return []
+
     item_map: dict[int, dict] = {}
     rrf_scores: dict[int, float] = {}
 
-    for lst, offset in [(list_a, 0), (list_b, len(list_a))]:
-        for rank, item in enumerate(lst, start=1):
+    for channel_name, results in channel_results.items():
+        if not results:
+            continue
+        for rank, item in enumerate(results, start=1):
             item_id = item.get("id")
             if item_id is None:
                 continue
             # Keep the richer item dict
             if item_id not in item_map:
                 item_map[item_id] = item
-            # Accumulate RRF score
+            # Accumulate RRF score from this channel
             rrf_scores[item_id] = rrf_scores.get(item_id, 0.0) + 1.0 / (k + rank)
 
-    # Tie-break by original score (higher first), then by id
+    # Tie-break: higher score first, then lower id
     fused = [
         (item_id, rrf_scores[item_id], item_map[item_id].get("score", 0.0))
         for item_id in item_map
@@ -200,27 +202,73 @@ def _parse_fact_content(r: dict) -> dict:
 
 # ── Retrieval functions ──────────────────────────────────────────────────────
 
+def _enrich_with_trgm_score(results: list[dict], keyword: str) -> list[dict]:
+    """Add trigram similarity score to results for hybrid scoring."""
+    if not results or not keyword:
+        return results
+    trgm_scores = {r["id"]: r.get("similarity", 0.0) for r in results}
+    for r in results:
+        r["trgm_score"] = trgm_scores.get(r["id"], 0.0)
+    return results
+
+
 def retrieve_static_memories(query=None, limit=15):
     """
-    Retrieve static (global) memories - no session filter.
-    Returns list of parsed facts sorted by score.
+    Retrieve static (global) memories — no session filter.
+    3-channel hybrid: vector + trigram + tsvector, merged via RRF.
     """
-    query_vec = _embed_query(query) if query else None
-
-    if query_vec:
-        results = search_similar(
-            embedding=query_vec,
-            fact_type=FACT_TYPE_STATIC,
-            limit=limit,
-        )
-    else:
+    if not query:
         results = get_facts_by_session(session_id=None, fact_type=FACT_TYPE_STATIC, limit=limit)
+        parsed = [_parse_fact_content(r) for r in results]
+        parsed = sorted(parsed, key=lambda x: x["score"], reverse=True)[:limit]
+        if parsed:
+            update_last_accessed([m["id"] for m in parsed])
+        return parsed
 
-    if not results:
+    query_vec = _embed_query(query)
+    keyword = query.strip()
+
+    # Channel 1: vector (pgvector)
+    vec_results = search_similar(
+        embedding=query_vec,
+        fact_type=FACT_TYPE_STATIC,
+        limit=limit,
+    ) if query_vec else []
+
+    # Channel 2: trigram fuzzy (pg_trgm)
+    trgm_results = search_trgm(
+        query=keyword,
+        fact_type=FACT_TYPE_STATIC,
+        limit=limit,
+    )
+
+    # Channel 3: tsvector full-text (pg_trgm tsvector)
+    tsv_results = search_tsv(
+        query=keyword,
+        fact_type=FACT_TYPE_STATIC,
+        limit=limit,
+    )
+
+    # Merge via RRF
+    channels = {
+        "vector": vec_results,
+        "trigram": trgm_results,
+        "tsvector": tsv_results,
+    }
+    merged = _hybrid_rrf_merge(channels, k=60)
+
+    if not merged:
         return []
 
-    parsed = [_parse_fact_content(r) for r in results]
-    parsed = sorted(parsed, key=lambda x: x["score"], reverse=True)[:limit]
+    # Deduplicate: keep first occurrence by id
+    seen, parsed = set(), []
+    for r in merged:
+        if r["id"] in seen:
+            continue
+        seen.add(r["id"])
+        parsed.append(_parse_fact_content(r))
+
+    parsed = parsed[:limit]
 
     if parsed:
         update_last_accessed([m["id"] for m in parsed])
@@ -230,31 +278,69 @@ def retrieve_static_memories(query=None, limit=15):
 
 def retrieve_dynamic_memories(session_id: int, query=None, limit=10):
     """
-    Retrieve dynamic (per-session) memories.
-    Returns list of parsed facts sorted by score.
+    Retrieve dynamic (per-session) episodic memories.
+    3-channel hybrid: vector + trigram + tsvector, merged via RRF.
     """
-    query_vec = _embed_query(query) if query else None
-
-    if query_vec:
-        results = search_similar(
-            embedding=query_vec,
-            session_id=session_id,
-            fact_type=FACT_TYPE_DYNAMIC,
-            metadata_filter={"source_table": "episodic_memories"},
-            limit=limit,
-        )
-    else:
+    if not query:
         all_dynamic = get_facts_by_session(session_id=session_id, fact_type=FACT_TYPE_DYNAMIC, limit=limit * 3)
         results = [
             r for r in all_dynamic
             if r.get("metadata", {}).get("source_table") == "episodic_memories"
         ][:limit]
+        parsed = [_parse_fact_content(r) for r in results]
+        parsed = sorted(parsed, key=lambda x: x["score"], reverse=True)[:limit]
+        if parsed:
+            update_last_accessed([m["id"] for m in parsed])
+        return parsed
 
-    if not results:
+    query_vec = _embed_query(query)
+    keyword = query.strip()
+
+    # Channel 1: vector (pgvector)
+    vec_results = search_similar(
+        embedding=query_vec,
+        session_id=session_id,
+        fact_type=FACT_TYPE_DYNAMIC,
+        metadata_filter={"source_table": "episodic_memories"},
+        limit=limit,
+    ) if query_vec else []
+
+    # Channel 2: trigram fuzzy (pg_trgm)
+    trgm_results = search_trgm(
+        query=keyword,
+        session_id=session_id,
+        fact_type=FACT_TYPE_DYNAMIC,
+        limit=limit,
+    )
+
+    # Channel 3: tsvector full-text (pg_trgm tsvector)
+    tsv_results = search_tsv(
+        query=keyword,
+        session_id=session_id,
+        fact_type=FACT_TYPE_DYNAMIC,
+        limit=limit,
+    )
+
+    # Merge via RRF
+    channels = {
+        "vector": vec_results,
+        "trigram": trgm_results,
+        "tsvector": tsv_results,
+    }
+    merged = _hybrid_rrf_merge(channels, k=60)
+
+    if not merged:
         return []
 
-    parsed = [_parse_fact_content(r) for r in results]
-    parsed = sorted(parsed, key=lambda x: x["score"], reverse=True)[:limit]
+    # Deduplicate: keep first occurrence by id
+    seen, parsed = set(), []
+    for r in merged:
+        if r["id"] in seen:
+            continue
+        seen.add(r["id"])
+        parsed.append(_parse_fact_content(r))
+
+    parsed = parsed[:limit]
 
     if parsed:
         update_last_accessed([m["id"] for m in parsed])
