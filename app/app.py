@@ -770,6 +770,17 @@ def _build_generation_context(profile, session_id, interface="terminal", user_me
     except Exception as e:
         print(f"[WARNING] Structured memory retrieval failed: {e}")
 
+    # --- Mark retrieved facts as pending review (Phase 8.4) ---
+    # Only mark static facts — episodic facts use FSRS retrievability, not review
+    try:
+        if memory_bundle:
+            from app.memory.memory_review import mark_retrieved_as_pending_review
+            pending_ids = [m["id"] for m in memory_bundle.get("static", [])]
+            if pending_ids:
+                mark_retrieved_as_pending_review(pending_ids, session_id)
+    except Exception as e:
+        print(f"[WARNING] Pending review marking failed: {e}")
+
     # --- Legacy memory sources (backward compatibility fallback) ---
     session_memory = Database.get_session_memory(session_id)
     if session_memory and session_memory.get('session_context'):
