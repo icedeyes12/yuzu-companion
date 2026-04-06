@@ -509,19 +509,23 @@ def _format_static_context(static: list[dict]) -> str:
     return "\n".join(parts)
 
 
-def retrieve_for_context(session_id: int, query: str | None = None, limit: int = 10) -> str:
+def retrieve_for_context(session_id: int, query: str | None = None, limit: int = 10) -> tuple[list[int], str]:
     """
     Retrieve ONLY static semantic memories for pre-LLM system prompt injection.
     Does NOT mark facts as pending_review — this is the "clean" path
     for context building, not tool-use retrieval.
     plast-mem equivalent: POST /api/v0/context_pre_retrieve
+
+    Returns:
+        (static_ids, context_text) — IDs for caller to mark as pending_review if desired
     """
     try:
         static = retrieve_static_memories(query=query, limit=limit)
     except Exception as e:
         print(f"[WARNING] retrieve_for_context failed: {e}")
-        return ""
-    return _format_static_context(static)
+        return [], ""
+    ids = [m["id"] for m in static]
+    return ids, _format_static_context(static)
 
 
 def format_memory(memory_bundle):

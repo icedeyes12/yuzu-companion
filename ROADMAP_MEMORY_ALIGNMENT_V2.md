@@ -333,25 +333,25 @@ CREATE INDEX IF NOT EXISTS semantic_facts_pending_review_idx
 ALTER TABLE semantic_facts ADD COLUMN invalid_at TIMESTAMP NULL;
 ```
 
-- [ ] Verify `invalid_at` column exists
-- [ ] Confirm `get_active_facts` filters correctly
+- [x] Verify `invalid_at` column exists
+- [x] Confirm `get_active_facts` filters correctly
 - [ ] Run: `SELECT column_name FROM information_schema.columns WHERE table_name='semantic_facts' AND column_name='invalid_at';`
 
 ### Phase 6.4 — Remove MIN_MESSAGES_PER_SEGMENT assertion [DONE]
 
-- [ ] Verify final flush group is NOT subject to `MIN_MESSAGES_PER_SEGMENT` threshold
+- [x] Verify final flush group is NOT subject to `MIN_MESSAGES_PER_SEGMENT` threshold
 
 ### Phase 8.4 — Verify session start wiring
 
-- [ ] Confirm `mark_retrieved_as_pending_review` fires on session start
+- [x] Confirm `mark_retrieved_as_pending_review` fires on session start
 
 ---
 
 ## Phase 10: Final Verification
 
 ### 10.1 — Lint & compile
-- [ ] `ruff check app/memory/ app/tools/memory_store.py app/db_pg.py`
-- [ ] `python3 -m py_compile` on all modified files
+ - [x] `ruff check app/memory/ app/tools/memory_store.py app/db_pg.py`
+- [x] `python3 -m py_compile` on all modified files
 
 ### 10.2 — Retrieval tests
 ```bash
