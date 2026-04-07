@@ -65,3 +65,4 @@ MEMORY.md
 **/indexes/
 **/.decay_state.json
 
+*.sql
