@@ -1135,15 +1135,13 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
                 llm_schemas = []
 
         start = time.time()
-        
-        # Use send_message (not send_message_full) for 2nd pass
-        # send_message properly handles vision models and has retry logic
         ai_response = ai_manager.send_message(
             preferred_provider,
             preferred_model,
             messages,
             timeout=180,
-            max_tokens=2048,
+            max_tokens=4096,
+            tools=llm_schemas,
         )
         duration = time.time() - start
 
@@ -1153,12 +1151,18 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
                 f"tools={len(llm_schemas)} | result=text | "
                 f"{duration:.1f}s"
             )
-            
-            # ai_response is already the text string from send_message
-            natural_text = ai_response.strip() if isinstance(ai_response, str) else ""
-            if natural_text:
-                return natural_text, None
-            return "No response generated.", None
+            if isinstance(ai_response, str) and ai_response.strip():
+                return ai_response.strip(), None
+            print("[WARNING] Empty response, retrying without tools...")
+            # Retry once without tools
+            ai_response = ai_manager.send_message(
+                preferred_provider, preferred_model, messages,
+                timeout=180, max_tokens=4096,
+            )
+            if isinstance(ai_response, str) and ai_response.strip():
+                return ai_response.strip(), None
+            print("[WARNING] AI service returned empty response after retry")
+            return "I'm having trouble responding right now. Please try again.", None
 
         print(f"[LLM] {preferred_provider}/{preferred_model} failed after {duration:.1f}s")
         return "Failed to generate response.", None
