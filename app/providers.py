@@ -725,9 +725,9 @@ class ChutesProvider(AIProvider):
             if status not in retryable_codes:
                 return None
 
-            print(f"[Chutes] {current_model} failed ({status}), retrying with another model...")
+            print(f"[CHAT] {current_model} failed ({status}), retrying with another model...")
 
-        print(f"[Chutes] All models exhausted, last error: {last_error}")
+        print(f"[CHAT] All models exhausted, last error: {last_error}")
         return None
 
     def _chutes_raw(self, model: str, messages: List[Dict], kwargs) -> tuple:
@@ -764,7 +764,7 @@ class ChutesProvider(AIProvider):
         if tools:
             payload["tools"] = tools
 
-        print(f"[Chutes] {model} | max_tokens={max_tokens}")
+        print(f"[CHAT] {model} | max_tokens={max_tokens}")
 
         try:
             response = requests.post(

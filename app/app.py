@@ -1145,22 +1145,16 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
         )
         duration = time.time() - start
 
-        if ai_response is not None:
-            if isinstance(ai_response, str) and ai_response.strip():
-                return ai_response.strip(), None
-            print("[WARNING] Empty response, retrying without tools...")
-            # Retry once without tools
-            ai_response = ai_manager.send_message(
-                preferred_provider, preferred_model, messages,
-                timeout=180, max_tokens=4096,
+        if ai_response and ai_response.strip():
+            print(
+                f"[CHAT] {preferred_provider}/{preferred_model} | "
+                f"tools={len(llm_schemas)} | "
+                f"duration={duration:.1f}s | ok=True"
             )
-            if isinstance(ai_response, str) and ai_response.strip():
-                return ai_response.strip(), None
-            print("[WARNING] AI service returned empty response after retry")
-            return "I'm having trouble responding right now. Please try again.", None
+            return ai_response.strip(), None
 
-        print(f"[LLM] {preferred_provider}/{preferred_model} failed after {duration:.1f}s")
-        return "Failed to generate response.", None
+        print("[WARNING] AI service returned empty response")
+        return None, None
 
     except Exception as e:
         error_msg = f"AI service error: {str(e)}"
@@ -1257,7 +1251,7 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
 
         if ai_response and ai_response.strip():
             print(
-                f"[LLM] {preferred_provider}/{preferred_model} | "
+                f"[CHAT] {preferred_provider}/{preferred_model} | "
                 f"tools={len(llm_schemas)} | "
                 f"duration={duration:.1f}s | ok=True"
             )
