@@ -1248,9 +1248,9 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
                 unique_schemas.append(s)
         llm_schemas = unique_schemas
 
-        # --- Try send_message to get tool_calls from API ---
+        # --- Try send_message ---
         start = time.time()
-        full_resp = ai_manager.send_message(
+        ai_response = ai_manager.send_message(
             preferred_provider,
             preferred_model,
             messages,
@@ -1260,97 +1260,16 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
         )
         duration = time.time() - start
 
-        if full_resp is not None:
-            provider = ai_manager.providers.get(preferred_provider)
-            tool_calls = provider.parse_tool_calls(full_resp) if provider else []
-            message_content = (
-                full_resp.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "") or ""
-            )
-            natural_text = message_content.strip() if message_content else ""
+        if ai_response and ai_response.strip():
             print(
                 f"[LLM] {preferred_provider}/{preferred_model} | "
                 f"tools={len(llm_schemas)} | "
-                f"result={'tool_call+' + str(len(tool_calls)) if tool_calls else 'text'} | "
-                f"{duration:.1f}s"
+                f"duration={duration:.1f}s | ok=True"
             )
+            return ai_response.strip(), None
 
-            if tool_calls:
-                # Native tool call detected
-                tc = tool_calls[0]
-                name = tc.get("name", "")
-                args = tc.get("arguments", {})
-                print(f"[TOOL] name={name} | duration={duration:.1f}s | ok=True")
-
-                tool_result = execute_tool(name, args, session_id=session_id)
-                tool_md = tool_result.get("markdown", str(tool_result))
-
-                # Load generated image for vision synthesis
-                img_path = _parse_image_result_from_formatted(tool_md)
-                img_context = None
-                if img_path:
-                    img_b64, mime = _load_generated_image_base64(img_path)
-                    if img_b64:
-                        img_context = [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}}]
-
-                # Check is_terminal from tool definition
-                tool_def = next((t for t in tools if t.name == name), None)
-                is_terminal = tool_def.is_terminal if tool_def else False
-
-                if not is_terminal:
-                    # Synthesis pass — second LLM call with tool result
-                    synthesis_text, _ = generate_ai_response(
-                        profile, "", interface, session_id,
-                        image_content_for_context=img_context,
-                    )
-                    synthesis_text = re.sub(
-                        r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '',
-                        synthesis_text or ""
-                    ).strip()
-                    if synthesis_text:
-                        print(f"[TOOL] Synthesis: {synthesis_text[:80]}...")
-                        return synthesis_text, {"name": name, "result": tool_md}
-
-                # Terminal or no synthesis: return natural text or stripped tool result
-                if natural_text:
-                    return natural_text, None
-                return tool_md.split("</details>")[-1].strip() if "</details>" in tool_md else tool_md, {"name": name, "result": tool_md}
-
-            # No tool call — plain text response
-            if natural_text:
-                return natural_text, None
-            # Empty response — retry once without tools
-            print("[WARNING] Empty response, retrying without tools...")
-            ai_response = ai_manager.send_message(
-                preferred_provider, preferred_model, messages,
-                timeout=180, max_tokens=4096,
-            )
-            if isinstance(ai_response, str) and ai_response.strip():
-                return ai_response, None
-            print("[WARNING] AI service returned empty response after retry")
-            return "I'm having trouble responding right now. Please try again.", None
-
-        # send_message_full failed — fall back to plain send_message
-        print(f"[LLM] {preferred_provider}/{preferred_model} | tools={len(llm_schemas)} | result=text | {duration:.1f}s (fallback)")
-
-        ai_response = ai_manager.send_message(
-            preferred_provider,
-            preferred_model,
-            messages,
-            timeout=180,
-            max_tokens=4096,
-            tools=llm_schemas,
-        )
-
-        if ai_response is None:
-            return "I'm having trouble responding right now. Please try again.", None
-
-        if isinstance(ai_response, str) and ai_response.strip():
-            return ai_response, None
-
-        print("[WARNING] AI service returned empty response after retry")
-        return "I'm having trouble responding right now. Please try again.", None
+        print("[WARNING] AI service returned empty response")
+        return None, None
 
     except Exception as e:
         error_msg = f"AI service error: {str(e)}"
