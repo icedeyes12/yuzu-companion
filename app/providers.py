@@ -920,48 +920,6 @@ class AIProviderManager:
         except Exception as e:
             yield f"Streaming error: {str(e)}"
 
-    def send_message_full(self, provider_name: str, model: str, messages: List[Dict], **kwargs) -> Optional[Dict]:
-        """Send a message and return the full API response dict.
-        
-        Lets caller inspect tool_calls. Returns None on failure.
-        """
-        if provider_name not in self.providers:
-            return None
-        provider = self.providers[provider_name]
-        try:
-            import requests as _req
-            headers = {
-                "Authorization": f"Bearer {provider.api_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/icedeyes12/yuzu-companion",
-                "X-Title": "Yuzu-Companion"
-            }
-            temperature = kwargs.get('temperature', 0.73)
-            max_tokens = kwargs.get('max_tokens', 4096)
-            payload = {
-                "model": model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "stream": False
-            }
-            tools = kwargs.get('tools')
-            if tools:
-                payload["tools"] = tools
-            resp = _req.post(
-                provider.base_url,
-                headers=headers,
-                json=payload,
-                timeout=kwargs.get('timeout', 180),
-            )
-            if resp.status_code == 200:
-                return resp.json()
-            print(f"[send_message_full] {provider_name} error {resp.status_code}")
-            return None
-        except Exception as e:
-            print(f"[send_message_full] {provider_name} exception: {e}")
-            return None
-
     # Preferred models for internal (non-chat) LLM calls
     _PREFERRED_MODELS = [
         "Qwen/Qwen3-Next-80B-A3B-Instruct",
