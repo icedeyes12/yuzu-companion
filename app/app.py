@@ -1244,9 +1244,9 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
                 unique_schemas.append(s)
         llm_schemas = unique_schemas
 
-        # --- Try send_message_full to get tool_calls from API ---
+        # --- Try send_message to get tool_calls from API ---
         start = time.time()
-        full_resp = ai_manager.send_message_full(
+        full_resp = ai_manager.send_message(
             preferred_provider,
             preferred_model,
             messages,
