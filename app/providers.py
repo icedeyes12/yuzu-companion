@@ -774,13 +774,10 @@ class ChutesProvider(AIProvider):
                 timeout=kwargs.get('timeout', 120),
             )
             if response.status_code == 200:
-                print(f"[Chutes] OK {response.status_code}")
                 return (200, response.json()['choices'][0]['message']['content'].strip())
             else:
-                print(f"[Chutes] Error {response.status_code}: {response.text[:200]}")
                 return (response.status_code, None, response.text[:200])
         except Exception as e:
-            print(f"[Chutes] Exception: {e}")
             return (0, None, str(e))
     
     def send_message_streaming(self, messages: List[Dict], model: str, **kwargs) -> Generator[str, None, None]:
