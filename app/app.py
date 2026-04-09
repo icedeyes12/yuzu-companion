@@ -1091,49 +1091,128 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
         print("[IMAGE TOOL] Injected base64 image context for second pass")
     
     try:
-        kwargs = {"timeout": 180, "max_tokens": 4096}
-        
+        import time
+        from app.tools.registry import execute_tool, get_tool_definitions
+
+        tools = get_tool_definitions()
+        llm_schemas = [t.to_llm_schema() for t in tools]
+        seen_names = set()
+        unique_schemas = []
+        for s in llm_schemas:
+            name = s.get("function", {}).get("name", "")
+            if name and name not in seen_names:
+                seen_names.add(name)
+                unique_schemas.append(s)
+        llm_schemas = unique_schemas
+
         # --- Single LLM call (no agentic loop) ---
+        start_time = time.time()
         ai_response = ai_manager.send_message(
             preferred_provider,
             preferred_model,
             messages,
-            **kwargs
+            timeout=180,
+            max_tokens=4096,
+            tools=llm_schemas,
         )
-        
-        # Handle None — retry once before giving up
-        if ai_response is None:
-            print("[WARNING] AI returned None, retrying...")
-            ai_response = ai_manager.send_message(
-                preferred_provider, preferred_model, messages, **kwargs
+        duration = time.time() - start_time
+
+        if ai_response is not None:
+            provider = ai_manager.providers.get(preferred_provider)
+            tool_calls = provider.parse_tool_calls(ai_response) if provider else []
+            message_content = (
+                ai_response.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "") or ""
             )
-        
-        # Case: plain text response
-        if isinstance(ai_response, str) and ai_response.strip():
-            cmd_info = _detect_command(ai_response)
-            if cmd_info:
-                exec_tool_name, tool_result = _execute_command_tool(cmd_info, session_id=session_id)
-                yield tool_result
-                return
-            yield ai_response
-            return
-        
-        # Empty response — retry once
-        print("[WARNING] Empty response, retrying...")
+            natural_text = message_content.strip() if message_content else ""
+            print(
+                f"[LLM] {preferred_provider}/{preferred_model} | "
+                f"tools={len(llm_schemas)} | "
+                f"result={'tool_call+' + str(len(tool_calls)) if tool_calls else 'text'} | "
+                f"{duration:.1f}s"
+            )
+
+            if tool_calls:
+                # Native tool call detected
+                tc = tool_calls[0]
+                name = tc.get("name", "")
+                args = tc.get("arguments", {})
+                print(f"[TOOL] name={name} | duration={duration:.1f}s | ok=True")
+
+                tool_result = execute_tool(name, args, session_id=session_id)
+                tool_md = tool_result.get("markdown", str(tool_result))
+
+                # Load generated image for vision synthesis
+                img_path = _parse_image_result_from_formatted(tool_md)
+                img_context = None
+                if img_path:
+                    img_b64, mime = _load_generated_image_base64(img_path)
+                    if img_b64:
+                        img_context = [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{img_b64}"}}]
+
+                # Check is_terminal from tool definition
+                tool_def = next((t for t in tools if t.name == name), None)
+                is_terminal = tool_def.is_terminal if tool_def else False
+
+                if not is_terminal:
+                    # Synthesis pass — second LLM call with tool result
+                    synthesis_text, _ = generate_ai_response(
+                        profile, "", interface, session_id,
+                        image_content_for_context=img_context,
+                    )
+                    synthesis_text = re.sub(
+                        r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '',
+                        synthesis_text or ""
+                    ).strip()
+                    if synthesis_text:
+                        print(f"[TOOL] Synthesis: {synthesis_text[:80]}...")
+                        return synthesis_text, {"name": name, "result": tool_md}
+
+                # Terminal or no synthesis: return natural text or stripped tool result
+                if natural_text:
+                    return natural_text, None
+                return tool_md.split("</details>")[-1].strip() if "</details>" in tool_md else tool_md, {"name": name, "result": tool_md}
+
+            # No tool call — plain text response
+            if natural_text:
+                return natural_text, None
+            # Empty response — retry once without tools
+            print("[WARNING] Empty response, retrying without tools...")
+            ai_response = ai_manager.send_message(
+                preferred_provider, preferred_model, messages,
+                timeout=180, max_tokens=4096,
+            )
+            if isinstance(ai_response, str) and ai_response.strip():
+                return ai_response, None
+            print("[WARNING] AI service returned empty response after retry")
+            return "I'm having trouble responding right now. Please try again.", None
+
+        # send_message_full failed — fall back to plain send_message
+        print(f"[LLM] {preferred_provider}/{preferred_model} | tools={len(llm_schemas)} | result=text | {duration:.1f}s (fallback)")
+
         ai_response = ai_manager.send_message(
-            preferred_provider, preferred_model, messages, **kwargs
+            preferred_provider,
+            preferred_model,
+            messages,
+            timeout=180,
+            max_tokens=4096,
+            tools=llm_schemas,
         )
+
+        if ai_response is None:
+            return "I'm having trouble responding right now. Please try again.", None
+
         if isinstance(ai_response, str) and ai_response.strip():
-            yield ai_response
-            return
-        
-        yield "AI service failed to generate a response."
-        return
-        
+            return ai_response, None
+
+        print("[WARNING] AI service returned empty response after retry")
+        return "I'm having trouble responding right now. Please try again.", None
+
     except Exception as e:
         error_msg = f"AI service error: {str(e)}"
-        print(f"[ERROR] Streaming response failed: {error_msg}")
-        yield error_msg
+        print(f"[ERROR] AI response generation failed: {error_msg}")
+        return "Sorry, I couldn't process that. Please try again.", None
 
 def generate_ai_response(profile, user_message, interface="terminal", session_id=None, image_content_for_context=None):
     """Generate a single AI response.
@@ -1274,7 +1353,7 @@ def generate_ai_response(profile, user_message, interface="terminal", session_id
 
                 # Terminal or no synthesis: return natural text or stripped tool result
                 if natural_text:
-                    return natural_text, {"name": name, "result": tool_md}
+                    return natural_text, None
                 return tool_md.split("</details>")[-1].strip() if "</details>" in tool_md else tool_md, {"name": name, "result": tool_md}
 
             # No tool call — plain text response
@@ -2352,7 +2431,6 @@ def get_all_models():
 def set_preferred_provider(provider_name, model_name=None):
     profile = Database.get_profile()
     providers_config = profile.get('providers_config', {})
-
     providers_config['preferred_provider'] = provider_name
     if model_name:
         providers_config['preferred_model'] = model_name
@@ -2363,6 +2441,24 @@ def set_preferred_provider(provider_name, model_name=None):
     reload_ai_manager()
 
     return f"Preferred provider set to: {provider_name}" + (f" with model: {model_name}" if model_name else "")
+
+
+def set_vision_model(provider, model):
+    """Save user's vision model preference to profile.
+    
+    Args:
+        provider: Vision provider (e.g., 'chutes', 'openrouter')
+        model: Vision model name (e.g., 'Qwen/Qwen3.5-397B-A17B-TEE')
+    
+    Returns:
+        str: Confirmation message
+    """
+    profile = Database.get_profile()
+    providers_config = profile.get('providers_config', {})
+    providers_config['vision_model_preferences'] = {'provider': provider, 'model': model}
+    Database.update_profile({'providers_config': providers_config})
+    
+    return f"Vision model set to: {provider}/{model}"
 
 
 def get_provider_models(provider_name):
