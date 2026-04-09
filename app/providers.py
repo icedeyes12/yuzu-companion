@@ -771,6 +771,7 @@ class ChutesProvider(AIProvider):
         if tools:
             payload["tools"] = tools
 
+        log_prefix = kwargs.pop('log_prefix', '[CHAT]')
         print(f"{log_prefix} {model} | max_tokens={max_tokens}")
 
         try:
