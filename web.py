@@ -237,6 +237,7 @@ async def api_get_profile():
             "context": profile["context"],
             "image_model": profile["image_model"],
             "vision_model": profile["vision_model"],
+            "vision_model_preferences": profile.get("providers_config", {}).get("vision_model_preferences", {}),
             "created_at": profile["created_at"].isoformat() if profile["created_at"] else None,
             "updated_at": profile["updated_at"].isoformat() if profile["updated_at"] else None,
         }
