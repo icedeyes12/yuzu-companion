@@ -668,8 +668,15 @@ class ChutesProvider(AIProvider):
         return self.available_models
     
     def send_message(self, messages: List[Dict], model: str, **kwargs) -> Optional[str]:
-        if not self.api_key:
+        """Send a message.
+        
+        log_prefix: defaults to "[CHAT]" for user-facing calls.
+                    Callers that want "[INT]" should pass log_prefix="[INT]".
+        """
+        if not self.api_key or model not in self.available_models:
             return None
+
+        log_prefix = kwargs.pop("log_prefix", "[CHAT]")
 
         # Prevent duplicate 'model' kwarg if caller passed it
         kwargs.pop('model', None)
@@ -725,9 +732,9 @@ class ChutesProvider(AIProvider):
             if status not in retryable_codes:
                 return None
 
-            print(f"[CHAT] {current_model} failed ({status}), retrying with another model...")
+            print(f"{log_prefix} {current_model} failed ({status}), retrying with another model...")
 
-        print(f"[CHAT] All models exhausted, last error: {last_error}")
+        print(f"{log_prefix} All models exhausted, last error: {last_error}")
         return None
 
     def _chutes_raw(self, model: str, messages: List[Dict], kwargs) -> tuple:
@@ -764,7 +771,7 @@ class ChutesProvider(AIProvider):
         if tools:
             payload["tools"] = tools
 
-        print(f"[CHAT] {model} | max_tokens={max_tokens}")
+        print(f"{log_prefix} {model} | max_tokens={max_tokens}")
 
         try:
             response = requests.post(
@@ -953,9 +960,9 @@ class AIProviderManager:
         for candidate in preference:
             if candidate in provider.available_models and candidate not in tried:
                 tried.add(candidate)
-                result = provider.send_message(messages, candidate, **kwargs)
+                result = provider.send_message(messages, candidate, log_prefix="[INT]", **kwargs)
                 if result:
-                    print(f"[internal] chutes/{candidate} OK")
+                    print(f"[INT] chutes/{candidate} OK")
                     return result
                 print(f"[internal] chutes/{candidate} FAILED")
         
@@ -984,27 +991,27 @@ class AIProviderManager:
         # First try explicitly requested model
         if model_hint and model_hint in all_models:
             tried.add(model_hint)
-            result = provider_obj.send_message(messages, model_hint, **kwargs)
+            result = provider_obj.send_message(messages, model_hint, log_prefix="[INT]", **kwargs)
             if result:
-                print(f"[AIProviderManager] auto_send_message: chutes/{model_hint} OK")
+                print(f"[INT] auto: chutes/{model_hint} OK")
                 return result
 
         # Then try preferred models in order
         for candidate in preferred:
             if candidate in all_models and candidate not in tried:
                 tried.add(candidate)
-                result = provider_obj.send_message(messages, candidate, **kwargs)
+                result = provider_obj.send_message(messages, candidate, log_prefix="[INT]", **kwargs)
                 if result:
-                    print(f"[AIProviderManager] auto_send_message: chutes/{candidate} OK")
+                    print(f"[INT] auto: chutes/{candidate} OK")
                     return result
 
         # Then try remaining available models
         for candidate in all_models:
             if candidate not in tried:
                 tried.add(candidate)
-                result = provider_obj.send_message(messages, candidate, **kwargs)
+                result = provider_obj.send_message(messages, candidate, log_prefix="[INT]", **kwargs)
                 if result:
-                    print(f"[AIProviderManager] auto_send_message: chutes/{candidate} OK")
+                    print(f"[INT] auto: chutes/{candidate} OK")
                     return result
 
         print("[AIProviderManager] auto_send_message: all Chutes models failed")
