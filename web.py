@@ -36,6 +36,11 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), na
 app.mount("/uploads", StaticFiles(directory=os.path.join(BASE_DIR, "static/uploads")), name="uploads")
 app.mount("/generated_images", StaticFiles(directory=os.path.join(BASE_DIR, "static/generated_images")), name="generated_images")
 
+# Serve favicon.ico from static folder
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(os.path.join(BASE_DIR, "static", "favicon.ico"))
+
 # Jinja2 templates
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
