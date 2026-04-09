@@ -894,13 +894,10 @@ class AIProviderManager:
         start_time = time.time()
         response = provider.send_message(messages, model, **kwargs)
         response_time = time.time() - start_time
-        
         if response:
-            print(f"Response time: {response_time:.1f}s")
             return response
-        else:
-            print(f"AI service failed after {response_time:.1f}s")
-            return None
+        print(f"[ProviderManager] {provider_name} failed after {response_time:.1f}s")
+        return None
     
     def send_message_streaming(self, provider_name: str, model: str, messages: List[Dict], **kwargs) -> Generator[str, None, None]:
         if provider_name not in self.providers:

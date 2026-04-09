@@ -1146,11 +1146,6 @@ def generate_ai_response_streaming(profile, user_message, interface="terminal", 
         duration = time.time() - start
 
         if ai_response is not None:
-            print(
-                f"[LLM] {preferred_provider}/{preferred_model} | "
-                f"tools={len(llm_schemas)} | result=text | "
-                f"{duration:.1f}s"
-            )
             if isinstance(ai_response, str) and ai_response.strip():
                 return ai_response.strip(), None
             print("[WARNING] Empty response, retrying without tools...")
