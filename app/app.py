@@ -387,6 +387,10 @@ def handle_user_message(user_message, interface="terminal"):
             tool_role = get_tool_role(tool_name)
             Database.add_message(tool_role, tool_md, session_id=session_id)
             
+            # Skip if no response (Chutes failed)
+            if raw_ai_response is None:
+                return "Maaf, aku sedang mengalami masalah teknis. Silakan coba lagi."
+
             raw_ai_response = re.sub(
                 r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', raw_ai_response
             ).strip()
