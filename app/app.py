@@ -222,6 +222,13 @@ def _execute_command_tool(command_info, session_id=None):
             args = json.loads(args_str) if args_str else {}
         except json.JSONDecodeError:
             args = {"query": args_str} if args_str else {}
+    elif tool_name == "memory_store":
+        exec_tool_name = "memory_store"
+        # memory_store needs "fact" argument
+        try:
+            args = json.loads(args_str) if args_str else {}
+        except json.JSONDecodeError:
+            args = {"fact": args_str} if args_str else {}
     else:
         # Generic argument handling
         exec_tool_name = tool_name
