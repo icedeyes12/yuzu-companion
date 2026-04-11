@@ -393,6 +393,10 @@ def handle_user_message(user_message, interface="terminal"):
             return raw_ai_response
         
         # CASE 2: No native tool call — use legacy /command detection
+        # Skip if no response (Chutes failed)
+        if raw_ai_response is None:
+            return "Maaf, aku sedang mengalami masalah teknis. Silakan coba lagi."
+
         # Clean timestamp suffix from response
         raw_ai_response = re.sub(
             r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', raw_ai_response
