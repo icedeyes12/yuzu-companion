@@ -17,14 +17,6 @@ from app.visual_context import (
     consume_visual_context as _consume_visual_context,
     has_visual_reference as _has_visual_reference,
 )
-def _generate_tool_call_id(tool_name, loop_count):
-    """Generate a unique tool call ID for command-based tool execution."""
-    return f"cmd_{tool_name}_{loop_count}"
-
-def _is_image_generation_tool(command_name):
-    """Check if the command is for image generation."""
-    return command_name in ("imagine", "image_generate")
-
 def _parse_image_result_from_formatted(formatted_result):
     """
     Parse image path from formatted tool result.
@@ -95,13 +87,6 @@ def _detect_command(response_text):
         "full_command": first_line
     }
 
-def _is_tool_markdown(response_text):
-    """True when response is a formatted tool markdown contract."""
-    if not response_text:
-        return False
-    stripped = response_text.strip()
-    return stripped.startswith("<details>")
-
 # ----------------------------------------------------------------------
 # Guard: detect when model tries to shortcut image generation by
 # directly outputting a markdown image instead of calling /imagine.
@@ -122,14 +107,6 @@ def _extract_prompt_from_markdown_image(response_text):
     """If model outputs a markdown image shortcut, extract the path for logging."""
     import re
     m = re.search(r'!\[[^\]]*\]\(([^)]+)\)', response_text)
-    return m.group(1) if m else None
-
-def _extract_tool_role(response_text):
-    """Extract tool role from <summary>🔧 role</summary> in a markdown contract."""
-    if not response_text:
-        return None
-    import re
-    m = re.search(r'<summary>🔧\s*(\S+)</summary>', response_text)
     return m.group(1) if m else None
 
 def _extract_command_from_markdown(content):
