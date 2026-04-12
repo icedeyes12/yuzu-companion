@@ -109,27 +109,6 @@ def _extract_prompt_from_markdown_image(response_text):
     m = re.search(r'!\[[^\]]*\]\(([^)]+)\)', response_text)
     return m.group(1) if m else None
 
-def _extract_command_from_markdown(content):
-    """Extract the original /command line from a tool markdown contract.
-
-    The contract format (from build_markdown_contract) stores the command
-    inside a bash code block with the executor prompt:
-        ```bash
-        Yuzu$ /command args
-        ```
-
-    The regex matches ``<prompt>$ /command ...`` up to the closing
-    code fence.  Returns the command string (e.g. "/request https://example.com")
-    or the original content unchanged when extraction fails.
-    """
-    if not content:
-        return content
-    # Match: ```bash\n<executor>$ /<command line>\n``` — single-line command
-    m = re.search(r'```bash\n\S+\$\s*(/[^\n]+)\n```', content)
-    if m:
-        return m.group(1).strip()
-    return content
-
 def _execute_command_tool(command_info, session_id=None):
     """
     Execute a tool based on command detection.
@@ -673,26 +652,6 @@ def extract_recent_images(session_id, limit=3):
     return result_paths
 
 
-def build_visual_context(session_id):
-    """Build context enriched with recent images for vision-capable models.
-    Uses base64-encoded cached images."""
-    profile = Database.get_profile()
-    interface = "web"
-    base_messages = _build_generation_context(profile, session_id, interface)
-    image_file_paths = extract_recent_images(session_id, limit=3)
-
-    image_contents = []
-    for fp in image_file_paths:
-        encoded = multimodal_tools.encode_image_to_base64(fp)
-        if encoded:
-            image_contents.append(encoded)
-            print(f"[Vision] Encoded cached image → {fp}")
-        else:
-            print(f"[Vision] Failed to encode image: {fp}")
-
-    return {"messages": base_messages, "images": image_file_paths, "image_contents": image_contents}
-
-
 def _build_generation_context(profile, session_id, interface="terminal", user_message=None):
     """Shared context building logic for both streaming and non-streaming responses"""
     from datetime import datetime
@@ -987,23 +946,6 @@ def _handle_image_generation(user_message, session_id):
         return f"Image generated successfully! Here's your creation:\n\n![Generated Image]({image_url})"
     else:
         return f"Sorry, I couldn't generate an image: {error}"
-
-def _handle_ai_image_generation(ai_response, session_id):
-    """Handle AI responses that start with /imagine"""
-    prompt = ai_response.replace('/imagine', '').strip()
-    
-    if prompt.strip():
-        Database.add_message('assistant', ai_response, session_id=session_id)
-        
-        image_url, error = multimodal_tools.generate_image(prompt)
-        
-        if image_url:
-            Database.add_image_tools_message(image_url, session_id=session_id)
-            return f"I've created that image for you!\n\n![Generated Image]({image_url})"
-        else:
-            return f"{ai_response}\n\n*[Image generation failed: {error}]*"
-    
-    return ai_response
 
 def generate_ai_response_streaming(profile, user_message, interface="terminal", session_id=None, provider=None, model=None, image_content_for_context=None):
     """Generate a single AI response (streaming variant) — no agentic looping.
@@ -2223,24 +2165,6 @@ def parse_global_profile_summary(summary_text: str) -> Dict:
           f"personality_traits={len(profile_data['key_facts']['personality_traits'])}")
     
     return profile_data
-
-
-def save_section_content(profile_data, section_key, content):
-    if section_key == 'player_summary':
-        if not profile_data["player_summary"]:
-            profile_data["player_summary"] = content
-        else:
-            profile_data["player_summary"] += " " + content
-            
-    elif section_key == 'relationship_dynamics':
-        if not profile_data["relationship_dynamics"]:
-            profile_data["relationship_dynamics"] = content
-        else:
-            profile_data["relationship_dynamics"] += " " + content
-            
-    elif section_key in ['likes', 'dislikes', 'personality_traits', 'important_memories']:
-        items = [item.strip() for item in content.split(',') if item.strip()]
-        profile_data["key_facts"][section_key] = items
 
 
 def get_available_providers():
