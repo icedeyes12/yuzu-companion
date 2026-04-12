@@ -207,29 +207,6 @@ class CerebrasProvider(AIProvider):
         except Exception:
             return None
 
-    def _normalize_messages(self, messages: List[Dict]) -> List[Dict]:
-        """Normalize messages: convert custom tool roles to standard 'assistant' role."""
-        if not messages:
-            return messages
-
-        standard_roles = {'system', 'user', 'assistant', 'tool'}
-        normalized = []
-
-        for msg in messages:
-            role = msg.get('role', '')
-            if role not in standard_roles:
-                # Custom tool role - convert to assistant
-                content = msg.get('content', '')
-                normalized_content = f"[{role}]\n{content}"
-                normalized.append({
-                    'role': 'assistant',
-                    'content': normalized_content
-                })
-            else:
-                normalized.append(msg)
-
-        return normalized
-
     def get_models(self) -> List[str]:
         return self.available_models
 

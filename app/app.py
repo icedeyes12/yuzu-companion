@@ -3,7 +3,6 @@
 
 import requests
 import os
-import threading
 import re
 import json
 import traceback
@@ -13,48 +12,11 @@ from app.database import Database
 from app.providers import get_ai_manager, reload_ai_manager
 from app.tools import multimodal_tools
 from app.tools.registry import execute_tool, get_tool_role, get_tool_definitions, TOOL_ROLE_MAP
-# ---------------------------------------------------------------------------
-# Persistent visual context buffer (per-session, runtime-only)
-# Stores the last processed image as base64 for N follow-up turns so the
-# model can compare or reference it without a new tool call.
-# ---------------------------------------------------------------------------
-_visual_context_buffer = {}  # session_id -> {"base64": str, "mime": str, "turns_left": int}
-_visual_context_lock = threading.Lock()
-_VISUAL_CONTEXT_TURNS = 3
-
-def _store_visual_context(session_id, image_base64, mime):
-    """Store a visual context snapshot for follow-up turns. Thread-safe."""
-    with _visual_context_lock:
-        _visual_context_buffer[session_id] = {
-            "base64": image_base64,
-            "mime": mime,
-            "turns_left": _VISUAL_CONTEXT_TURNS,
-        }
-
-def _consume_visual_context(session_id):
-    """Return stored visual context if available and decrement turn counter.
-    Returns (base64, mime) or (None, None). Thread-safe."""
-    with _visual_context_lock:
-        ctx = _visual_context_buffer.get(session_id)
-        if not ctx or ctx["turns_left"] <= 0:
-            _visual_context_buffer.pop(session_id, None)
-            return None, None
-        ctx["turns_left"] -= 1
-        if ctx["turns_left"] <= 0:
-            _visual_context_buffer.pop(session_id, None)
-        return ctx["base64"], ctx["mime"]
-
-_VISUAL_REF_PATTERNS = re.compile(
-    r'(?:yang tadi|yang sebelumnya|tadi|bedanya|beda apa|compare|'
-    r'bandingin|foto tadi|gambar tadi|image before|the previous|earlier image|'
-    r'dari tadi|yang barusan)',
-    re.IGNORECASE,
+from app.visual_context import (
+    store_visual_context as _store_visual_context,
+    consume_visual_context as _consume_visual_context,
+    has_visual_reference as _has_visual_reference,
 )
-
-def _has_visual_reference(text):
-    """Detect if the user message references a previous image."""
-    return bool(_VISUAL_REF_PATTERNS.search(text))
-
 def _generate_tool_call_id(tool_name, loop_count):
     """Generate a unique tool call ID for command-based tool execution."""
     return f"cmd_{tool_name}_{loop_count}"
