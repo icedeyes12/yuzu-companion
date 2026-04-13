@@ -664,7 +664,7 @@ class ChutesProvider(AIProvider):
         explicit_model = model_hint and model_hint in self.available_models
 
         # Retryable error codes — try another Chutes model before giving up
-        retryable_codes = {400, 429, 500, 502, 503, 504}
+        retryable_codes = {0, 400, 429, 500, 502, 503, 504}
 
         attempt = 0
         last_error = None
