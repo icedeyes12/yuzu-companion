@@ -29,7 +29,6 @@ import math
 from datetime import datetime
 
 from app.db_pg import PgSession, pg_fetchone, pg_fetchall, pg_execute
-from psycopg2.extras import Json
 
 
 # ── Enums ─────────────────────────────────────────────────────────────────────
@@ -113,7 +112,7 @@ def save_fact(
                 fact_type,
                 content,
                 vec_literal,
-                Json(meta),
+                meta,
                 datetime.now(),
                 datetime.now(),
             ))
@@ -158,7 +157,7 @@ def upsert_fact(
         meta["access_count"] = new_access_count
         pg_execute(
             "UPDATE semantic_facts SET last_accessed=%s, metadata=%s WHERE id=%s",
-            (datetime.now(), Json(meta), e["id"]),
+            (datetime.now(), meta, e["id"]),
         )
         return e["id"], True
 
@@ -520,7 +519,7 @@ def update_fact_importance(id: int, importance: float) -> bool:
         meta["importance"] = importance
         pg_execute(
             "UPDATE semantic_facts SET metadata=%s WHERE id=%s",
-            (Json(meta), id),
+            (meta, id),
         )
         return True
     except Exception as e:
@@ -540,7 +539,7 @@ def increment_importance(id: int, delta: float = 0.05, cap: float = 1.0) -> bool
         meta["access_count"] = (meta.get("access_count") or 0) + 1
         pg_execute(
             "UPDATE semantic_facts SET last_accessed=%s, metadata=%s WHERE id=%s",
-            (datetime.now(), Json(meta), id),
+            (datetime.now(), meta, id),
         )
         return True
     except Exception as e:
@@ -674,7 +673,7 @@ def decay_facts(session_id: int | None = None, fact_type: str | None = None) -> 
         try:
             pg_execute(
                 "UPDATE semantic_facts SET metadata=%s, last_accessed=%s WHERE id=%s",
-                (Json(meta), now, fact["id"]),
+                (meta, now, fact["id"]),
             )
             updated += 1
         except Exception as e:

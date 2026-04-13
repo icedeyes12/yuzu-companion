@@ -22,7 +22,6 @@ from app.memory.db_memory import (
     get_fact_by_id,
     pg_execute,
 )
-from psycopg2.extras import Json
 
 
 # ── Rating → FSRS parameter mappings ─────────────────────────────────────────
@@ -77,7 +76,7 @@ def mark_retrieved_as_pending_review(fact_ids: list[int], session_id: int | None
             meta["last_reviewed_at"] = now.isoformat()
             pg_execute(
                 "UPDATE semantic_facts SET pending_review=TRUE, metadata=%s, last_accessed=%s WHERE id=%s",
-                (Json(meta), now, fid),
+                (meta, now, fid),
             )
             return 1
         except Exception as e:
@@ -206,7 +205,7 @@ def _update_fsrs_params(fact_id: int, rating: str) -> bool:
 
         pg_execute(
             "UPDATE semantic_facts SET metadata=%s, last_accessed=%s WHERE id=%s",
-            (Json(meta), now, fact_id),
+            (meta, now, fact_id),
         )
         return True
     except Exception as e:

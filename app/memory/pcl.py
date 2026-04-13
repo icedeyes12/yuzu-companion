@@ -26,7 +26,6 @@ from app.memory.db_memory import (
     FACT_TYPE_STATIC,
 )
 from app.memory.extractor import upsert_semantic_memory
-from psycopg2.extras import Json
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -339,7 +338,7 @@ def consolidate_facts(extracted: list[dict], session_id: int, episode_id=None) -
                     meta["confidence"] = min((meta.get("confidence", 0.7) + 0.1), 1.0)
                     pg_execute(
                         "UPDATE semantic_facts SET last_accessed=%s, metadata=%s WHERE id=%s",
-                        (datetime.now(), Json(meta), source_id),
+                        (datetime.now(), meta, source_id),
                     )
                     counts["reinforced"] += 1
             except Exception as e:
@@ -399,7 +398,7 @@ def run_predict_calibrate(
                     meta["consolidated_at"] = datetime.now().isoformat()
                     pg_execute(
                         "UPDATE semantic_facts SET metadata=%s, last_accessed=%s WHERE id=%s",
-                        (Json(meta), datetime.now(), episode_id),
+                        (meta, datetime.now(), episode_id),
                     )
             except Exception as e:
                 print(f"[PCL] Failed to mark episode {episode_id} consolidated: {e}")
