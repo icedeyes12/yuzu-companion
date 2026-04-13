@@ -720,9 +720,12 @@ class ChutesProvider(AIProvider):
 
         if self.supports_vision(model) and messages:
             last_user_message = self._get_last_user_message(messages)
-            if last_user_message and multimodal_tools.has_images(last_user_message):
-                vision_messages = self.format_vision_message(last_user_message)
-                messages = self._replace_last_user_message(messages, last_user_message, vision_messages)
+            if last_user_message:
+                has_img = multimodal_tools.has_images(last_user_message)
+                if has_img:
+                    print(f"[Vision] Triggered for message: {last_user_message[:100]}...")
+                    vision_messages = self.format_vision_message(last_user_message)
+                    messages = self._replace_last_user_message(messages, last_user_message, vision_messages)
 
         temperature = kwargs.get('temperature', 0.73)
         max_tokens = kwargs.get('max_tokens', 4096)
