@@ -565,7 +565,7 @@ def extract_recent_images(session_id, limit=3):
     image file paths.  Prefers the ``image_paths`` column stored in the DB;
     falls back to extracting markdown image URLs and downloading them to
     the local cache via ``multimodal_tools.download_image_to_cache``."""
-    chat_history = Database.get_chat_history(session_id, limit=20, recent=True)
+    chat_history = Database.get_chat_history(session_id=session_id, limit=20, recent=True)
     result_paths = []
     md_pattern = re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
     for msg in reversed(chat_history):  # Newest first to prioritize recent images
@@ -2150,3 +2150,38 @@ def get_vision_capabilities():
         capabilities['image_generation_provider'] = 'openrouter'
     
     return capabilities
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# ASYNC FUNCTIONS (for FastAPI web routes)
+# ═════════════════════════════════════════════════════════════════════════════
+
+async def retrieve_memory_context_async(session_id: int, user_message: str | None = None) -> tuple[list[int], str]:
+    """Async version of memory context retrieval for web routes.
+    
+    Uses async memory functions for non-blocking operation in FastAPI.
+    
+    Returns:
+        (static_ids, memory_context_text)
+    """
+    from app.memory.retrieval import retrieve_for_context_async
+    
+    try:
+        static_ids, memory_context_text = await retrieve_for_context_async(session_id, query=user_message)
+        return static_ids, memory_context_text
+    except Exception as e:
+        print(f"[WARNING] Async memory retrieval failed: {e}")
+        return [], ""
+
+
+async def mark_pending_review_async(static_ids: list[int], session_id: int) -> None:
+    """Async wrapper for marking facts as pending review."""
+    # This is still sync internally, but we run it in executor for non-blocking
+    import asyncio
+    from app.memory.memory_review import mark_retrieved_as_pending_review
+    
+    if not static_ids:
+        return
+    
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, mark_retrieved_as_pending_review, static_ids, session_id)
