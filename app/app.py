@@ -1273,15 +1273,15 @@ def start_session(interface="terminal"):
 
         # --- Memory system initialization ---
         try:
-            from app.memory.segmenter import segment_session_init
             from app.memory.review import run_decay
+            from app.memory.pipeline import enqueue_memory_pipeline
 
             # Apply FSRS decay to existing memories
             run_decay(session_id)
 
-            # Segment unsegmented messages — fast-path, NO LLM calls
-            # (LLM boundary detection has no useful prior context during init)
-            segment_session_init(session_id)
+            # Queue background pipeline for unsegmented messages
+            # This will run segmentation + episode creation + PCL
+            enqueue_memory_pipeline(session_id)
         except Exception as e:
             print(f"[WARNING] Memory system init failed: {e}")
 
