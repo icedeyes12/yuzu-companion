@@ -464,7 +464,7 @@ class MultimodalTools:
                       model: str = None, size: str = "1024x1024") -> Tuple[Optional[str], Optional[str]]:
         # Image generation logic moved to tools/image_generate.py
         # This method delegates to the single source of truth.
-        from tools.image_generate import execute as _img_execute
+        from app.tools.image_generate import execute as _img_execute
         import re as _re
         result_str = _img_execute({"prompt": prompt})
         try:
