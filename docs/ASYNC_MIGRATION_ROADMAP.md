@@ -96,7 +96,7 @@ Ensure PCL enforces 8-category taxonomy:
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 1 | ✅ DONE | psycopg v3 foundation - db_pg.py async pool + sync wrappers |
-| Phase 2 | 🔲 TODO | Schema migration |
+| Phase 2 | ✅ DONE | Schema migration - valid_at column added to save_fact |
 | Phase 3 | 🔲 TODO | Async DB layer |
 | Phase 4 | 🔲 TODO | Async memory layer |
 | Phase 5 | 🔲 TODO | Web layer bridge |

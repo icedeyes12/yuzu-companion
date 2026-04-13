@@ -1,16 +1,15 @@
 # FILE: app/db_pg.py
 # DESCRIPTION: PostgreSQL connection pool and raw SQL helpers.
-#             psycopg v3 async pool (AsyncConnectionPool).
-#             Sync wrappers provided for backward compatibility during migration.
+#             psycopg v3 with both sync (ConnectionPool) and async (AsyncConnectionPool).
+#             Use async versions in FastAPI routes, sync for legacy code.
 
 from __future__ import annotations
 
-import asyncio
 import atexit
 import os
 from typing import Any
 
-from psycopg_pool import AsyncConnectionPool
+from psycopg_pool import AsyncConnectionPool, ConnectionPool
 from psycopg.rows import dict_row
 
 # ── Env defaults ────────────────────────────────────────────────────────────
@@ -39,8 +38,23 @@ def _build_dsn() -> str:
     )
 
 
-# ── Global async pool (lazy singleton) ───────────────────────────────────────
+# ── Global pools (lazy singletons) ───────────────────────────────────────────
+_sync_pool: ConnectionPool | None = None
 _async_pool: AsyncConnectionPool | None = None
+
+
+def get_sync_pool() -> ConnectionPool:
+    """Get or create the sync connection pool."""
+    global _sync_pool
+    if _sync_pool is None:
+        _sync_pool = ConnectionPool(
+            conninfo=_build_dsn(),
+            min_size=_MIN_CONN,
+            max_size=_MAX_CONN,
+            kwargs={"row_factory": dict_row},
+        )
+        print(f"[db_pg] Sync pool created: {_PG_HOST}:{_PG_PORT}/{_PG_DBNAME}")
+    return _sync_pool
 
 
 async def get_async_pool() -> AsyncConnectionPool:
@@ -58,6 +72,15 @@ async def get_async_pool() -> AsyncConnectionPool:
     return _async_pool
 
 
+def close_sync_pool() -> None:
+    """Close the sync connection pool."""
+    global _sync_pool
+    if _sync_pool is not None:
+        _sync_pool.close()
+        _sync_pool = None
+        print("[db_pg] Sync pool closed")
+
+
 async def close_async_pool() -> None:
     """Close the async connection pool."""
     global _async_pool
@@ -68,10 +91,91 @@ async def close_async_pool() -> None:
 
 
 # Register cleanup on exit
-atexit.register(lambda: asyncio.run(close_async_pool()) if _async_pool else None)
+atexit.register(close_sync_pool)
 
 
-# ── Async Session Context Manager ────────────────────────────────────────────
+# ── SYNC Session Context Manager ─────────────────────────────────────────────
+class PgSession:
+    """
+    Sync context manager for database sessions.
+    Commits on success, rolls back on exception.
+
+    Usage:
+        with PgSession() as s:
+            row = s.fetchone("SELECT * FROM profiles LIMIT 1")
+            s.execute("INSERT INTO ...")
+    """
+
+    __slots__ = ("conn", "autocommit", "_pool")
+
+    def __init__(self, autocommit: bool = False):
+        self.autocommit = autocommit
+        self.conn = None
+        self._pool = None
+
+    def __enter__(self) -> PgSession:
+        self._pool = get_sync_pool()
+        self.conn = self._pool.getconn()
+        if self.autocommit:
+            self.conn.autocommit = True
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.conn is None:
+            return
+        try:
+            if exc_type is not None:
+                self.conn.rollback()
+            elif not self.autocommit:
+                self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+        finally:
+            self._pool.putconn(self.conn)
+            self.conn = None
+
+    # ── Core query methods ─────────────────────────────────────────────────
+    def fetchone(self, query: str, params: tuple | dict | None = None) -> dict | None:
+        """Return first row or None."""
+        with self.conn.cursor() as cur:
+            cur.execute(query, params)
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def fetchall(self, query: str, params: tuple | dict | None = None) -> list[dict]:
+        """Return all rows as list of dicts."""
+        with self.conn.cursor() as cur:
+            cur.execute(query, params)
+            rows = cur.fetchall()
+            return [dict(row) for row in rows]
+
+    def execute(self, query: str, params: tuple | dict | None = None) -> None:
+        """Execute a query (INSERT/UPDATE/DELETE)."""
+        with self.conn.cursor() as cur:
+            cur.execute(query, params)
+
+    def execute_scalar(self, query: str, params: tuple | dict | None = None) -> Any:
+        """Return first column of first row (e.g. COUNT, SUM)."""
+        with self.conn.cursor() as cur:
+            cur.execute(query, params)
+            row = cur.fetchone()
+            return row[0] if row else None
+
+    def execute_returning(self, query: str, params: tuple | dict | None = None) -> dict | None:
+        """Execute INSERT ... RETURNING * and return the row dict."""
+        with self.conn.cursor() as cur:
+            cur.execute(query, params)
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def execute_batch(self, query: str, params_list: list[tuple]) -> int:
+        """Execute many rows. Returns rowcount."""
+        with self.conn.cursor() as cur:
+            cur.executemany(query, params_list)
+            return cur.rowcount or 0
+
+
+# ── ASYNC Session Context Manager ────────────────────────────────────────────
 class AsyncPgSession:
     """
     Async context manager for database sessions.
@@ -90,9 +194,9 @@ class AsyncPgSession:
         self.conn = None
         self._pool = None
 
-    async def __aenter__(self) -> "AsyncPgSession":
+    async def __aenter__(self) -> AsyncPgSession:
         self._pool = await get_async_pool()
-        self.conn = await self._pool.get_connection()
+        self.conn = await self._pool.getconn()
         if self.autocommit:
             await self.conn.set_autocommit(True)
         return self
@@ -108,7 +212,7 @@ class AsyncPgSession:
         except Exception:
             await self.conn.rollback()
         finally:
-            await self._pool.put_connection(self.conn)
+            await self._pool.putconn(self.conn)
             self.conn = None
 
     # ── Core query methods ─────────────────────────────────────────────────
@@ -152,7 +256,31 @@ class AsyncPgSession:
             return cur.rowcount or 0
 
 
-# ── Module-level async convenience functions ──────────────────────────────────
+# ── Module-level SYNC convenience functions ───────────────────────────────────
+def pg_fetchone(query: str, params: tuple | dict | None = None) -> dict | None:
+    with PgSession() as s:
+        return s.fetchone(query, params)
+
+
+def pg_fetchall(query: str, params: tuple | dict | None = None) -> list[dict]:
+    with PgSession() as s:
+        return s.fetchall(query, params)
+
+
+def pg_execute(query: str, params: tuple | dict | None = None) -> None:
+    with PgSession() as s:
+        s.execute(query, params)
+
+
+def pg_exists(query: str, params: tuple | dict | None = None) -> bool:
+    return pg_fetchone(query, params) is not None
+
+
+def pg_scalar(query: str, params: tuple | dict | None = None) -> Any:
+    return pg_fetchone(query, params)
+
+
+# ── Module-level ASYNC convenience functions ──────────────────────────────────
 async def pg_fetchone_async(query: str, params: tuple | dict | None = None) -> dict | None:
     async with AsyncPgSession() as s:
         return await s.fetchone(query, params)
@@ -176,119 +304,6 @@ async def pg_scalar_async(query: str, params: tuple | dict | None = None) -> Any
     return await pg_fetchone_async(query, params)
 
 
-# ── SYNC WRAPPERS (for backward compatibility during migration) ──────────────
-# These run async functions in a sync context using asyncio.run()
-# WARNING: Only use in non-async contexts. Prefer async versions in async code.
-
-
-def _run_async(coro):
-    """Run async coroutine in sync context."""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    if loop and loop.is_running():
-        # We're in an async context but called sync function
-        # This is a common mistake during migration
-        raise RuntimeError(
-            "Sync DB function called from async context. "
-            "Use the _async version instead (e.g., pg_fetchone_async)."
-        )
-    return asyncio.run(coro)
-
-
-def pg_fetchone(query: str, params: tuple | dict | None = None) -> dict | None:
-    return _run_async(pg_fetchone_async(query, params))
-
-
-def pg_fetchall(query: str, params: tuple | dict | None = None) -> list[dict]:
-    return _run_async(pg_fetchall_async(query, params))
-
-
-def pg_execute(query: str, params: tuple | dict | None = None) -> None:
-    _run_async(pg_execute_async(query, params))
-
-
-def pg_exists(query: str, params: tuple | dict | None = None) -> bool:
-    return _run_async(pg_exists_async(query, params))
-
-
-def pg_scalar(query: str, params: tuple | dict | None = None) -> Any:
-    return _run_async(pg_scalar_async(query, params))
-
-
-# ── Legacy sync context manager (DEPRECATED) ─────────────────────────────────
-class PgSession:
-    """
-    DEPRECATED: Sync context manager for backward compatibility.
-    Use AsyncPgSession in async code.
-
-    This is a thin wrapper that runs async operations synchronously.
-    """
-
-    __slots__ = ("autocommit", "_session")
-
-    def __init__(self, autocommit: bool = False):
-        self.autocommit = autocommit
-        self._session = None
-
-    def __enter__(self) -> "PgSession":
-        # Create async session and run its __aenter__
-        self._session = AsyncPgSession(autocommit=self.autocommit)
-        # Can't use context manager in sync context, so we create a new event loop
-        loop = asyncio.new_event_loop()
-        try:
-            self._session.conn = loop.run_until_complete(
-                (asyncio.get_event_loop_policy()
-                 .get_event_loop()
-                 .run_until_complete(get_async_pool()))
-                .get_connection()
-            )
-            if self.autocommit:
-                loop.run_until_complete(self._session.conn.set_autocommit(True))
-        finally:
-            loop.close()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self._session is None or self._session.conn is None:
-            return
-        loop = asyncio.new_event_loop()
-        try:
-            if exc_type is not None:
-                loop.run_until_complete(self._session.conn.rollback())
-            elif not self.autocommit:
-                loop.run_until_complete(self._session.conn.commit())
-        finally:
-            loop.close()
-
-    def fetchone(self, query: str, params: tuple | dict | None = None) -> dict | None:
-        return _run_async(self._session.fetchone(query, params)) if self._session else None
-
-    def fetchall(self, query: str, params: tuple | dict | None = None) -> list[dict]:
-        return _run_async(self._session.fetchall(query, params)) if self._session else []
-
-    def execute(self, query: str, params: tuple | dict | None = None) -> None:
-        if self._session:
-            _run_async(self._session.execute(query, params))
-
-    def execute_scalar(self, query: str, params: tuple | dict | None = None) -> Any:
-        return _run_async(self._session.execute_scalar(query, params)) if self._session else None
-
-    def execute_returning(self, query: str, params: tuple | dict | None = None) -> dict | None:
-        return _run_async(self._session.execute_returning(query, params)) if self._session else None
-
-    def execute_batch(self, query: str, params_list: list[tuple]) -> int:
-        return _run_async(self._session.execute_batch(query, params_list)) if self._session else 0
-
-
-# ── Pool management (for compatibility) ──────────────────────────────────────
-def get_pool():
-    """DEPRECATED: Use get_async_pool() instead."""
-    return _run_async(get_async_pool())
-
-
-def close_pool():
-    """DEPRECATED: Use close_async_pool() instead."""
-    _run_async(close_async_pool())
+# ── Legacy aliases (for backward compat) ─────────────────────────────────────
+get_pool = get_sync_pool
+close_pool = close_sync_pool
