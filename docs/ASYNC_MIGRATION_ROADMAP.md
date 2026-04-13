@@ -89,6 +89,12 @@ Ensure PCL enforces 8-category taxonomy:
 - Semantic facts: temporal validity (no decay)
 - Episodic facts: FSRS decay
 
+### Validation
+- ✅ Category enforcement: PCL uses 8-category taxonomy
+- ✅ Temporal validity: valid_at set in save_fact, invalid_at for soft delete
+- ✅ FSRS scope: decay_facts only applies to FACT_TYPE_DYNAMIC
+- ✅ FSRS scope: memory_review._update_fsrs_params checks source_table
+
 ---
 
 ## Progress
@@ -100,7 +106,7 @@ Ensure PCL enforces 8-category taxonomy:
 | Phase 3 | ✅ DONE | Async DB layer - sync+async pools, AsyncPgSession ready |
 | Phase 4 | ✅ DONE | Async memory layer - db_memory.py + retrieval.py async functions |
 | Phase 5 | ✅ DONE | Web layer bridge - async memory context functions in app.py |
-| Phase 6 | 🔲 TODO | plast-mem re-adapt |
+| Phase 6 | ✅ DONE | plast-mem re-adapt - FSRS scope, category enforcement, temporal validity |
 
 ---
 

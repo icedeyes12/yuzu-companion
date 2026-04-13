@@ -173,6 +173,9 @@ def _update_fsrs_params(fact_id: int, rating: str) -> bool:
     """Apply FSRS parameter update based on rating.
 
     Updates metadata with new stability and difficulty values.
+    
+    NOTE: FSRS only applies to episodic facts (source_table='episodic_memories').
+    Semantic facts use temporal validity instead and should NOT have FSRS updates.
     """
     effects = _RATING_MULTIPLIERS.get(rating)
     if not effects:
@@ -184,6 +187,15 @@ def _update_fsrs_params(fact_id: int, rating: str) -> bool:
             return False
 
         meta = row.get("metadata") or {}
+        
+        # FSRS scope check: only episodic facts get FSRS updates
+        source_table = meta.get("source_table", "")
+        fact_type = row.get("fact_type", "")
+        if source_table != "episodic_memories" and fact_type != "dynamic":
+            # Semantic/static facts don't use FSRS — skip update
+            print(f"[review] Skipping FSRS update for non-episodic fact id={fact_id} (source={source_table})")
+            return False
+        
         now = datetime.now()
 
         # Current values or defaults
