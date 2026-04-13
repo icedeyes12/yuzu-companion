@@ -329,6 +329,7 @@ def search_trgm(
         return []
 
 
+# DEPRECATED: Not used. Retrieval now uses search_similar + search_trgm + search_tsv (RRF merge).
 def search_trgm_keywords(
     keyword: str,
     session_id: int | None = None,
@@ -527,6 +528,7 @@ def update_last_accessed(ids: list[int]) -> int:
 
 
 def update_fact_importance(id: int, importance: float) -> bool:
+# DEPRECATED: Not used. All callers use increment_importance instead.
     """Update importance in metadata JSONB."""
     try:
         meta_row = pg_fetchone("SELECT metadata FROM semantic_facts WHERE id=%s", (id,))
