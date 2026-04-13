@@ -177,8 +177,6 @@ class MultimodalTools:
                 image_urls.append(url)
             elif re.search(r'\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$', url.lower()):
                 image_urls.append(url)
-            elif re.search(r'/[a-z0-9]{7,}', url.lower()):
-                image_urls.append(url)
         
         return image_urls
 
