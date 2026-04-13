@@ -12,6 +12,8 @@ from app.database import Database
 from app.providers import get_ai_manager, reload_ai_manager
 from app.tools import multimodal_tools
 from app.tools.registry import execute_tool, get_tool_role, get_tool_definitions, TOOL_ROLE_MAP
+
+from app.memory.pipeline import trigger_memory_pipeline_async
 from app.visual_context import (
     store_visual_context as _store_visual_context,
     consume_visual_context as _consume_visual_context,
@@ -319,7 +321,7 @@ def handle_user_message(user_message, interface="terminal"):
             auto_name_session_if_needed(session_id, active_session)
             if should_summarize_memory(profile, user_message, session_id):
                 summarize_memory(profile, user_message, raw_ai_response, session_id)
-            _trigger_memory_pipeline(session_id)
+            _trigger_memory_pipeline_async(session_id)
             return raw_ai_response
         
         # CASE 2: No native tool call — use legacy /command detection
@@ -386,12 +388,12 @@ def handle_user_message(user_message, interface="terminal"):
                 auto_name_session_if_needed(session_id, active_session)
                 if should_summarize_memory(profile, user_message, session_id):
                     summarize_memory(profile, user_message, final_response, session_id)
-                _trigger_memory_pipeline(session_id)
+                _trigger_memory_pipeline_async(session_id)
                 return final_response
 
             # No synthesis text — return raw tool output
             auto_name_session_if_needed(session_id, active_session)
-            _trigger_memory_pipeline(session_id)
+            _trigger_memory_pipeline_async(session_id)
             return tool_md
         else:
             # NO TOOL: Save as assistant message and return
@@ -400,7 +402,7 @@ def handle_user_message(user_message, interface="terminal"):
             auto_name_session_if_needed(session_id, active_session)
             if should_summarize_memory(profile, user_message, session_id):
                 summarize_memory(profile, user_message, raw_ai_response, session_id)
-            _trigger_memory_pipeline(session_id)
+            _trigger_memory_pipeline_async(session_id)
             return raw_ai_response
 
 
@@ -411,77 +413,19 @@ _MEMORY_INIT_DONE: Dict[int, bool] = {}  # session_id -> True after first init
 _DECAY_INTERVAL_HOURS = 6
 _SEMANTIC_COOLDOWN_MSGS = 10
 
-def _trigger_memory_pipeline(session_id):
-    """Run episodic + semantic memory extraction on recent messages.
-
-    Called after each user/assistant exchange.
-    - Episodic: emotion-threshold gated (every emotional turn).
-    - Semantic: lightweight regex, gated by message-count cooldown.
-    - Decay: time-gated (once per _DECAY_INTERVAL_HOURS).
+def _trigger_memory_pipeline_async(session_id: int) -> None:
+    """Trigger memory pipeline in background if message count threshold met.
+    
+    Replaces old synchronous _trigger_memory_pipeline.
+    Non-blocking — returns immediately.
     """
     try:
-        from app.memory.extractor import should_create_episodic, calculate_emotional_weight
-        from app.memory.extractor import generate_episodic_summary, create_episodic_memory
-        from app.memory.extractor import extract_semantic_facts, upsert_semantic_memory
-        from app.memory.review import run_decay
-
-        recent = Database.get_chat_history(session_id=session_id, limit=20, recent=True)
-        if not recent:
-            return
-
-        # Extract IDs once — used for both episodic and semantic passes
-        recent_ids = [m['id'] for m in recent]
-
-        # --- Episodic: emotion gated ---
-        if should_create_episodic(recent):
-            emotional_weight = calculate_emotional_weight(recent)
-            summary = generate_episodic_summary(recent)
-            if summary:
-                importance = 0.5 + emotional_weight * 0.3
-                try:
-                    create_episodic_memory(
-                        session_id, summary, emotional_weight, importance,
-                        source_message_ids=recent_ids,
-                    )
-                except Exception as e:
-                    print(f"[WARNING] Episodic memory creation failed: {e}")
-
-        # --- Semantic: cooldown-gated lightweight regex per message ---
-        last_run = _memory_semantic_last_run.get(session_id)
+        from app.database import Database
         session_memory = Database.get_session_memory(session_id)
-        msg_count = session_memory.get('message_count', 0) if session_memory else 0
-        msg_delta = msg_count - _memory_semantic_last_msg_count.get(session_id, 0)
-        time_ok = (
-            last_run is None or
-            (datetime.now() - last_run).total_seconds() >= 300  # 5 min cooldown
-        )
-        should_run_semantic = msg_delta >= _SEMANTIC_COOLDOWN_MSGS and time_ok
-        if should_run_semantic:
-            try:
-                facts = extract_semantic_facts(recent)
-                for fact in facts:
-                    try:
-                        upsert_semantic_memory(session_id, fact['entity'], fact['relation'], fact['target'])
-                    except (KeyError, ValueError) as e:
-                        print(f"[WARNING] Semantic fact malformed: {e}")
-                    except Exception as e:
-                        print(f"[WARNING] Semantic memory upsert failed: {e}")
-                _memory_semantic_last_run[session_id] = datetime.now()
-                _memory_semantic_last_msg_count[session_id] = msg_count
-            except Exception as e:
-                print(f"[WARNING] Per-message semantic extraction failed: {e}")
-
-        # --- Decay: time-gated (once per 6 hours) ---
-        try:
-            last_decay = _last_decay_run.get(session_id)
-            now = datetime.now()
-            if last_decay is None or (now - last_decay).total_seconds() >= _DECAY_INTERVAL_HOURS * 3600:
-                run_decay(session_id)
-                _last_decay_run[session_id] = now
-        except Exception as e:
-            print(f"[WARNING] Memory decay failed: {e}")
+        count = session_memory.get("message_count", 0) if session_memory else 0
+        trigger_memory_pipeline_async(session_id, count)
     except Exception as e:
-        print(f"[WARNING] Memory extraction failed: {e}")
+        print(f"[WARNING] Memory pipeline trigger failed: {e}")
 
 def handle_user_message_streaming(user_message, interface="terminal", provider=None, model=None):
     """
@@ -601,7 +545,7 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
                 auto_name_session_if_needed(session_id, active_session)
                 if should_summarize_memory(profile, user_message, session_id):
                     summarize_memory(profile, user_message, final_response, session_id)
-                _trigger_memory_pipeline(session_id)
+                _trigger_memory_pipeline_async(session_id)
                 return
             
             else:
@@ -613,7 +557,7 @@ def handle_user_message_streaming(user_message, interface="terminal", provider=N
         if should_summarize_memory(profile, user_message, session_id):
             summarize_memory(profile, user_message, full_response, session_id)
 
-        _trigger_memory_pipeline(session_id)
+        _trigger_memory_pipeline_async(session_id)
     return
 
 def extract_recent_images(session_id, limit=3):
