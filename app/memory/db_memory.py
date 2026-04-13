@@ -1,9 +1,9 @@
 # FILE: app/memory/db_memory.py
 # DESCRIPTION: Unified memory CRUD layer over PostgreSQL semantic_facts table.
 #             All memory operations (semantic, episodic, segment) go through here.
-#             No SQLAlchemy ORM — pure psycopg2 raw SQL for vector friendliness.
+#             No SQLAlchemy ORM — pure psycopg v3 raw SQL for vector friendliness.
 #
-# Schema:
+# Schema (aligned with plast-mem):
 #   semantic_facts (
 #     id             SERIAL PRIMARY KEY,
 #     session_id     INTEGER,
@@ -11,15 +11,24 @@
 #     content        TEXT,
 #     embedding      VECTOR(1024), -- pgvector, NULL allowed
 #     metadata       JSONB,        -- carries per-type fields
+#     valid_at       TIMESTAMP,    -- when fact became true (plast-mem pattern)
+#     invalid_at     TIMESTAMP,    -- when fact became false (soft delete)
 #     created_at     TIMESTAMP DEFAULT NOW(),
 #     last_accessed  TIMESTAMP DEFAULT NOW()
 #   )
 #
+# Temporal Validity (plast-mem pattern):
+#   - valid_at: set on creation (when fact becomes true)
+#   - invalid_at: set when contradicted (soft delete)
+#   - Active facts: invalid_at IS NULL
+#   - Semantic facts use temporal validity (no FSRS decay)
+#   - Episodic facts use FSRS decay (stored in metadata)
+#
 # metadata carries per-type data:
 #   - static (semantic): { confidence, importance, entity, relation, target,
-#                          source_table, access_count }
-#   - dynamic (episodic): { importance, emotional_weight, summary, source_table,
-#                          access_count }
+#                          category, source_table, access_count }
+#   - dynamic (episodic): { importance, stability, difficulty, surprise_level,
+#                          title, summary, source_table, access_count }
 #   - dynamic (segment): { importance, start_message_id, end_message_id,
 #                          source_table, access_count }
 
@@ -101,8 +110,8 @@ def save_fact(
 
     query = """
         INSERT INTO semantic_facts
-            (fact_type, content, embedding, metadata, created_at, last_accessed)
-        VALUES (%s, %s, %s::vector, %s, %s, %s)
+            (fact_type, content, embedding, metadata, valid_at, created_at, last_accessed)
+        VALUES (%s, %s, %s::vector, %s, %s, %s, %s)
         RETURNING id
     """
 
@@ -113,6 +122,7 @@ def save_fact(
                 content,
                 vec_literal,
                 meta,
+                datetime.now(),  # valid_at
                 datetime.now(),
                 datetime.now(),
             ))
