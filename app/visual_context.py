@@ -13,7 +13,7 @@ _visual_context_lock = threading.Lock()
 _VISUAL_CONTEXT_TURNS = 3
 
 
-def store_visual_context(session_id: str, image_base64: str, mime: str) -> None:
+def store_visual_context(session_id: int, image_base64: str, mime: str) -> None:
     """Store a visual context snapshot for follow-up turns. Thread-safe."""
     with _visual_context_lock:
         _visual_context_buffer[session_id] = {
@@ -23,7 +23,7 @@ def store_visual_context(session_id: str, image_base64: str, mime: str) -> None:
         }
 
 
-def consume_visual_context(session_id: str) -> tuple[str | None, str | None]:
+def consume_visual_context(session_id: int) -> tuple[str | None, str | None]:
     """Return stored visual context if available and decrement turn counter.
     
     Returns (base64, mime) or (None, None). Thread-safe.

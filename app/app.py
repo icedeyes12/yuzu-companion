@@ -1598,7 +1598,6 @@ Relationship Dynamics: [Provide analysis of the relationship dynamics between Us
             f.write("\n=== RAW ANALYSIS ===\n")
             f.write(summary_text)
         
-        print(f"[DEBUG] Raw analysis saved to: {debug_file}")
         
         # Parse and update profile
         profile_update = parse_global_profile_summary(summary_text)
@@ -1788,10 +1787,6 @@ def global_profile_analysis(prompt: str) -> Optional[str]:
             "presence_penalty": 0.1,
             "stream": False
         }
-        
-        print(f"[DEBUG] Using model: {model}")
-        print(f"[DEBUG] Prompt tokens estimate: ~{len(prompt) // 4}")
-        print(f"[DEBUG] Max response tokens: {data['max_tokens']}")
         
         response = requests.post(
             "https://llm.chutes.ai/v1/chat/completions",
@@ -2081,10 +2076,6 @@ def parse_global_profile_summary(summary_text: str) -> Dict:
                     seen.add(item)
                     unique_items.append(item)
             profile_data["key_facts"][key] = unique_items
-    
-    print(f"[DEBUG] Parsed profile: player_summary={len(profile_data['player_summary'])} chars, "
-          f"likes={len(profile_data['key_facts']['likes'])}, "
-          f"personality_traits={len(profile_data['key_facts']['personality_traits'])}")
     
     return profile_data
 
