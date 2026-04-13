@@ -18,7 +18,7 @@ flowchart TB
 
     subgraph MemoryLayer["Memory Processing Layer"]
         EMBED["embedder.py\nChutes API (Qwen3-Embedding-0.6B)\n1024-dim vectors"]
-        PIPELINE["pipeline.py\nBackground thread\nMessage counter trigger"]
+        PIPELINE["memory.py\nBackground thread\nMessage counter trigger"]
         BATCH["Batch Segmentation\nSingle LLM call\n(titles + summaries + surprise)"]
         PCL["pcl.py\nPredict-Calibrate Learning\n(new/reinforce/update/invalidate)"]
         RETRIEVE["retrieval.py\nRRF + hybrid scoring\n+ temporal search"]
@@ -327,7 +327,7 @@ After retrieval, facts are marked pending review. When `review_memory()` is call
 
 | Module | Purpose | Key Functions |
 |--------|---------|---------------|
-| `pipeline.py` | Background memory pipeline runner | `run_memory_pipeline()`, `batch_segment()`, `create_episode_and_pcl()`, `trigger_memory_pipeline_async()` |
+| `memory.py` | Background memory pipeline runner (now: memory.py) | `run_memory_pipeline()`, `batch_segment()`, `create_episode_and_pcl()`, `trigger_memory_pipeline_async()` |
 | `db_memory.py` | Unified CRUD over `semantic_facts` | `save_fact()`, `search_similar()`, `invalidate_fact()`, `increment_importance()`, `decay_facts()` |
 | `embedder.py` | Chutes API embedding client | `embed_text()`, `embed_texts()`, `EMBEDDING_DIM=1024` |
 | `extractor.py` | Semantic fact extraction + PCL wiring | `extract_semantic_facts()`, `upsert_semantic_memory()`, `create_episodic_memory()` |
@@ -346,7 +346,7 @@ After retrieval, facts are marked pending review. When `review_memory()` is call
 ```
 app/memory/
 ├── __init__.py
-├── pipeline.py          # Background memory pipeline (NEW)
+├── memory.py          # Background memory pipeline (same file)
 ├── db_memory.py         # Unified memory CRUD (PostgreSQL + pgvector)
 ├── embedder.py           # Chutes API embedding client (1024-dim)
 ├── extractor.py           # Semantic fact extraction + PCL wiring
@@ -367,7 +367,7 @@ app/memory/
 ### app.py / web.py
 
 ```python
-from app.memory.pipeline import trigger_memory_pipeline_async, enqueue_memory_pipeline
+from app.memory.memory import trigger_memory_pipeline_async, enqueue_memory_pipeline
 from app.memory.review import run_decay
 from app.memory.retrieval import retrieve_memory, format_memory
 
