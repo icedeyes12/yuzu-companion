@@ -1,27 +1,37 @@
-# FILE: app/memory/pipeline.py
+# FILE: app/memory/memory.py
 # DESCRIPTION: Background memory pipeline runner.
-#              Spawns daemon thread to run segmentation + PCL + review
-#              without blocking the main chat flow.
+#              Spawns a daemon thread that processes segmentation, PCL, and memory review
+#              in the background without blocking the main chat loop.
 #
 # Architecture (aligned with plast-mem):
-#   1. Message counter trigger (every 20 msgs, force at 40)
-#   2. Batch segmentation (single LLM call for all segments)
-#   3. Episode creation → PCL pipeline per episode
-#   4. Memory review (if pending reviews exist)
+#   1. Segmentation → batch_segment() creates episodes
+#   2. PCL → create_episode_and_pcl() extracts semantic facts
+#   3. Memory Review → run_memory_review() updates FSRS parameters
 #
-# All operations run in background thread.
+# Trigger: After every N messages (WINDOW_BASE=20) or time-gated per session.
 
 from __future__ import annotations
+
+__all__ = [
+    "trigger_memory_pipeline_async",
+    "enqueue_memory_pipeline",
+    "run_memory_pipeline",
+    "run_memory_review",
+    "batch_segment",
+    "create_episode_and_pcl",
+    "should_trigger_segmentation",
+    "mark_segmentation_done",
+]
 
 import threading
 import time
 from typing import Optional
 
-# ── Constants (matching plast-mem) ────────────────────────────────────────────
-
-WINDOW_BASE = 20      # Count trigger threshold
-WINDOW_MAX = 40       # Force trigger threshold
-MIN_MESSAGES = 5      # Minimum for a valid segment
+# Segmentation constants (aligned with plast-mem)
+WINDOW_BASE = 20  # trigger count
+WINDOW_MAX = 40  # force process
+MIN_MESSAGES = 5
+TIME_GAP_MINUTES = 15
 
 # ── Background thread state ───────────────────────────────────────────────────
 

@@ -495,7 +495,7 @@ def retrieve_memory(session_id: int, query=None):
 def _format_static_context(static: list[dict]) -> str:
     """
     Format static (semantic) memories for system prompt injection.
-    Clean output — no pending_review markers, no section headers.
+    Clean output — includes category for clarity.
     Returns empty string if no facts.
     """
     if not static:
@@ -505,7 +505,9 @@ def _format_static_context(static: list[dict]) -> str:
         entity = mem.get("entity", "User")
         relation = mem.get("relation", "unknown")
         target = mem.get("target", mem.get("content", ""))
-        parts.append(f"- {entity} {relation} {target}")
+        category = mem.get("category", "unknown")
+        # Format: "- [category] entity relation target"
+        parts.append(f"- [{category}] {entity} {relation} {target}")
     return "\n".join(parts)
 
 

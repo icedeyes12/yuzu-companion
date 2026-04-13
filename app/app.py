@@ -13,7 +13,7 @@ from app.providers import get_ai_manager, reload_ai_manager
 from app.tools import multimodal_tools
 from app.tools.registry import execute_tool, get_tool_role, get_tool_definitions, TOOL_ROLE_MAP
 
-from app.memory.pipeline import trigger_memory_pipeline_async
+from app.memory.memory import trigger_memory_pipeline_async
 from app.visual_context import (
     store_visual_context as _store_visual_context,
     consume_visual_context as _consume_visual_context,
@@ -1274,7 +1274,7 @@ def start_session(interface="terminal"):
         # --- Memory system initialization ---
         try:
             from app.memory.review import run_decay
-            from app.memory.pipeline import enqueue_memory_pipeline
+            from app.memory.memory import enqueue_memory_pipeline
 
             # Apply FSRS decay to existing memories
             run_decay(session_id)
