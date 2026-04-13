@@ -744,9 +744,11 @@ class ChutesProvider(AIProvider):
             "top_k": top_k,
             "stream": stream
         }
-        tools = kwargs.get('tools')
-        if tools:
-            payload["tools"] = tools
+        # NOTE: Chutes does NOT support native tool calling.
+        # Strip tools to avoid confusing the model - rely on /command detection instead.
+        # tools = kwargs.get('tools')
+        # if tools:
+        #     payload["tools"] = tools
 
         log_prefix = kwargs.pop('log_prefix', '[CHAT]')
         print(f"{log_prefix} {model} | max_tokens={max_tokens}")
