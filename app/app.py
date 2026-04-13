@@ -379,6 +379,23 @@ def handle_user_message(user_message, interface="terminal"):
                 second_clean = re.sub(
                     r'\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$', '', second_text.strip()
                 )
+                
+                # CHECK: Does synthesis contain another command? (recursive tool call)
+                second_cmd = _detect_command(second_clean)
+                if second_cmd and not is_image_tool:
+                    # Only allow one level of recursion (avoid infinite loops)
+                    print(f"[SYNTHESIS] Detected nested command: /{second_cmd.get('command')}")
+                    exec_tool_name, nested_output = _execute_command_tool(second_cmd, session_id=session_id)
+                    nested_md = nested_output.get("markdown", str(nested_output))
+                    Database.add_message(get_tool_role(exec_tool_name), nested_md, session_id=session_id)
+                    second_clean = nested_md
+                elif second_cmd and is_image_tool:
+                    # For image synthesis, don't allow nested commands - just strip them
+                    print("[SYNTHESIS] Ignoring nested command in image synthesis pass")
+                    # Remove the command line from the response
+                    lines = second_clean.split('\n')
+                    second_clean = '\n'.join(line for line in lines if not line.strip().startswith('/request') and not line.strip().startswith('/imagine'))
+                
                 Database.add_message('assistant', second_clean, session_id=session_id)
                 if is_image_tool:
                     final_response = tool_md + "\n\n" + second_clean
@@ -646,13 +663,6 @@ def _build_generation_context(profile, session_id, interface="terminal", user_me
         memory_context += (
             "\n\nBACKGROUND (recent context):\n"
             f"{session_memory['session_context']}"
-        )
-
-    global_knowledge = profile.get('global_knowledge', {})
-    if global_knowledge.get('facts'):
-        memory_context += (
-            "\n\nBACKGROUND (long-term facts):\n"
-            f"{global_knowledge['facts']}"
         )
 
     profile_memory = profile.get('memory', {})

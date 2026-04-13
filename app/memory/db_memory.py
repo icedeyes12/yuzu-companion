@@ -38,6 +38,8 @@ from datetime import datetime
 
 from app.db_pg import (
     PgSession, pg_fetchone, pg_fetchall, pg_execute,
+    # Async versions
+    AsyncPgSession, pg_fetchone_async, pg_fetchall_async, pg_execute_async,
 )
 
 
@@ -579,3 +581,186 @@ def invalidate_fact(id: int) -> bool:
         return False
 
 
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# ASYNC FUNCTIONS (for FastAPI routes)
+# ═════════════════════════════════════════════════════════════════════════════
+
+async def save_fact_async(
+    session_id: int | None,
+    content: str,
+    embedding: list[float] | None,
+    fact_type: str = FACT_TYPE_STATIC,
+    metadata: dict | None = None,
+    category: str | None = None,
+) -> int | None:
+    """Async version of save_fact."""
+    meta = dict(metadata) if metadata else {}
+    if "session_id" not in meta:
+        meta["session_id"] = session_id
+    if category:
+        meta["category"] = category
+
+    norm_vec = _normalize(embedding) if embedding else None
+
+    if norm_vec is not None and len(norm_vec) != 1024:
+        raise ValueError(f"Embedding dimension must be 1024, got {len(norm_vec)}")
+
+    vec_literal = ("[" + ",".join(str(x) for x in norm_vec) + "]") if norm_vec is not None else None
+
+    try:
+        dup_check = await pg_fetchone_async(
+            "SELECT id FROM semantic_facts WHERE fact_type=%s AND content=%s AND invalid_at IS NULL LIMIT 1",
+            (fact_type, content),
+        )
+        if dup_check:
+            print(f"[db_memory] save_fact_async: duplicate content found, rejecting id={dup_check['id']}")
+            return dup_check["id"]
+    except Exception as e:
+        print(f"[db_memory] save_fact_async: dup check failed: {e}")
+
+    query = """
+        INSERT INTO semantic_facts
+            (fact_type, content, embedding, metadata, valid_at, created_at, last_accessed)
+        VALUES (%s, %s, %s::vector, %s, %s, %s, %s)
+        RETURNING id
+    """
+
+    try:
+        async with AsyncPgSession() as s:
+            row = await s.execute_returning(query, (
+                fact_type,
+                content,
+                vec_literal,
+                meta,
+                datetime.now(),
+                datetime.now(),
+                datetime.now(),
+            ))
+            return row["id"] if row else None
+    except Exception as e:
+        print(f"[db_memory] save_fact_async failed: {e}")
+        return None
+
+
+async def search_similar_async(
+    embedding: list[float],
+    session_id: int | None = None,
+    fact_type: str | None = None,
+    limit: int = 15,
+    max_distance: float = 1.5,
+    metadata_filter: dict | None = None,
+    category: str | None = None,
+) -> list[dict]:
+    """Async version of search_similar."""
+    try:
+        norm_vec = _normalize(embedding)
+        if not norm_vec:
+            return []
+
+        vec_literal = "[" + ",".join(str(x) for x in norm_vec) + "]"
+
+        conditions = ["embedding IS NOT NULL"]
+        params: list = []
+
+        if session_id is not None:
+            conditions.append("(metadata->>'session_id')::int = %s")
+            params.append(session_id)
+
+        if fact_type:
+            conditions.append("fact_type = %s")
+            params.append(fact_type)
+
+        if category:
+            conditions.append("(metadata->>'category') = %s")
+            params.append(category)
+
+        if metadata_filter:
+            for key, val in metadata_filter.items():
+                conditions.append("metadata->>%s = %s")
+                params.append(key)
+                params.append(val)
+
+        cond_sql = " AND ".join(conditions)
+
+        query = f"""
+            WITH searched AS (
+                SELECT id, fact_type, content, metadata,
+                       last_accessed, created_at,
+                       (embedding <=> '{vec_literal}'::vector) AS distance
+                FROM semantic_facts
+                WHERE {cond_sql}
+                  AND (embedding <=> '{vec_literal}'::vector) < %s
+            )
+            SELECT id, fact_type, content, metadata,
+                   last_accessed, created_at, distance
+            FROM searched
+            ORDER BY distance
+            LIMIT %s
+        """
+        params.extend([max_distance, limit])
+
+        results = await pg_fetchall_async(query, params)
+        return results if results else []
+
+    except Exception as e:
+        print(f"[db_memory] search_similar_async EXCEPTION: {e}")
+        return []
+
+
+async def get_facts_by_session_async(
+    session_id: int | None,
+    fact_type: str | None = None,
+    limit: int = 100,
+) -> list[dict]:
+    """Async version of get_facts_by_session."""
+    if fact_type == "static":
+        return await pg_fetchall_async(
+            "SELECT * FROM semantic_facts WHERE fact_type=%s LIMIT %s",
+            (fact_type, limit),
+        )
+    conditions, params = [], []
+    if session_id is not None:
+        conditions.append("(metadata->>'session_id')::int = %s")
+        params.append(session_id)
+    if fact_type:
+        conditions.append("fact_type = %s")
+        params.append(fact_type)
+    params.append(limit)
+    where = "WHERE " + " AND ".join(conditions) if conditions else "WHERE fact_type = 'dynamic'"
+    return await pg_fetchall_async(
+        f"SELECT * FROM semantic_facts {where} LIMIT %s",
+        params,
+    )
+
+
+async def update_last_accessed_async(ids: list[int]) -> int:
+    """Async version of update_last_accessed."""
+    if not ids:
+        return 0
+    now = datetime.now()
+    ph = ",".join(["%s"] * len(ids))
+    try:
+        async with AsyncPgSession() as s:
+            await s.execute(
+                f"UPDATE semantic_facts SET last_accessed=%s WHERE id IN ({ph})",
+                (now,) + tuple(ids),
+            )
+        return len(ids)
+    except Exception as e:
+        print(f"[db_memory] update_last_accessed_async failed: {e}")
+        return 0
+
+
+async def invalidate_fact_async(id: int) -> bool:
+    """Async version of invalidate_fact."""
+    try:
+        await pg_execute_async(
+            "UPDATE semantic_facts SET invalid_at=%s, last_accessed=%s WHERE id=%s",
+            (datetime.now(), datetime.now(), id),
+        )
+        return True
+    except Exception as e:
+        print(f"[db_memory] invalidate_fact_async failed: {e}")
+        return False
