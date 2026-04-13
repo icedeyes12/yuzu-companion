@@ -11,7 +11,7 @@ from typing import Dict, Optional, List
 from app.database import Database
 from app.providers import get_ai_manager, reload_ai_manager
 from app.tools import multimodal_tools
-from app.tools.registry import execute_tool, get_tool_role, get_tool_definitions, TOOL_ROLE_MAP
+from app.tools.registry import execute_tool, get_tool_role, get_tool_definitions
 
 from app.memory.memory import trigger_memory_pipeline_async
 from app.visual_context import (
@@ -715,15 +715,6 @@ def _build_generation_context(profile, session_id, interface="terminal", user_me
     for event in recent_session_events:
         session_context += f"\n- {event['content']} at {event['timestamp']}"
 
-    # =========================
-    # Available tools list
-    # =========================
-    available_tools = "\n".join(
-        [f"- /{cmd} -> maps to role '{role}'" for cmd, role in TOOL_ROLE_MAP.items()]
-    )
-
-    # =========================
-    # System message
     # =========================
     system_message = f'''
 # IDENTITY & CORE BEHAVIOR
