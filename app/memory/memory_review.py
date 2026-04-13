@@ -13,12 +13,10 @@ from __future__ import annotations
 __all__ = [
     "review_memory",
     "mark_retrieved_as_pending_review",
-    "get_pending_review_count",
 ]
 
 from datetime import datetime
 from app.memory.db_memory import (
-    pg_fetchone,
     get_fact_by_id,
     pg_execute,
 )
@@ -97,18 +95,6 @@ def mark_retrieved_as_pending_review(fact_ids: list[int], session_id: int | None
     except Exception as e:
         print(f"[review] batch mark_pending failed: {e}")
         return 0
-
-
-def get_pending_review_count(fact_type: str | None = None) -> int:
-    """Return count of facts with pending_review=TRUE (native column)."""
-    conditions = ["pending_review = TRUE"]
-    params: list = []
-    if fact_type:
-        conditions.append("fact_type = %s")
-        params.append(fact_type)
-    where = "WHERE " + " AND ".join(conditions)
-    row = pg_fetchone(f"SELECT COUNT(*) AS cnt FROM semantic_facts {where}", params)
-    return row["cnt"] if row else 0
 
 
 def _rate_fact(fact_content: str, fact_category: str | None, conversation_context: str) -> str | None:

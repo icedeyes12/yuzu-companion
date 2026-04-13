@@ -157,13 +157,6 @@ flowchart TD
     G --> A
 ```
 
-### Module: `segmenter.py`
-
-```python
-segment_session(session_id, prev_summary=None)  # Main entry, returns count
-_should_segment(messages, prev_summary)         # Dual-channel decision
-_llm_detect_boundary(messages, prev_summary)  # LLM boundary detection
-```
 
 ---
 
@@ -175,7 +168,7 @@ Semantic facts are extracted via the Predict-Calibrate Learning (PCL) pipeline, 
 
 ```mermaid
 sequenceDiagram
-    participant SEG as segmenter.py
+    participant SEG as memory.py (batch_segment)
     participant PCL as pcl.py
     participant LLM as AI Manager
     participant DB as PostgreSQL
@@ -333,13 +326,12 @@ After retrieval, facts are marked pending review. When `review_memory()` is call
 | `db_memory.py` | Unified CRUD over `semantic_facts` | `save_fact()`, `search_similar()`, `invalidate_fact()`, `increment_importance()`, `decay_facts()` |
 | `embedder.py` | Chutes API embedding client | `embed_text()`, `embed_texts()`, `EMBEDDING_DIM=1024` |
 | `extractor.py` | Semantic fact extraction + PCL wiring | `extract_semantic_facts()`, `upsert_semantic_memory()`, `create_episodic_memory()` |
-| `segmenter.py` | Dual-channel conversation segmentation | `segment_session()`, `_should_segment()`, `_llm_detect_boundary()` |
 | `retrieval.py` | Hybrid scoring + RRF retrieval | `retrieve_memory()`, `retrieve_static_memories()`, `retrieve_segments()`, `format_memory()` |
 | `review.py` | FSRS decay for episodic memories | `run_decay()`, `reinforce_memory()` |
 | `memory_review.py` | LLM-based memory review | `review_memory()`, `mark_retrieved_as_pending_review()` |
 | `pcl.py` | Predict-Calibrate Learning pipeline | `run_predict_calibrate()`, `consolidate_facts()` |
 
-**Deprecated:** `vector_store.py` — stub redirecting to `db_memory.py`
+**Removed:** `memory.py (batch_segment)` and `vector_store.py` — replaced by `batch_segment()` and `db_memory.py`
 
 ---
 
@@ -352,12 +344,10 @@ app/memory/
 ├── db_memory.py         # Unified memory CRUD (PostgreSQL + pgvector)
 ├── embedder.py           # Chutes API embedding client (1024-dim)
 ├── extractor.py           # Semantic fact extraction + PCL wiring
-├── segmenter.py          # Dual-channel conversation segmentation
 ├── retrieval.py           # RRF + hybrid scoring retrieval
 ├── review.py             # FSRS-style decay (episodic only)
 ├── memory_review.py      # LLM-based memory review + FSRS updates
 ├── pcl.py                # Predict-Calibrate Learning pipeline
-├── vector_store.py        # DEPRECATED: stub redirecting to db_memory
 └── docs/
     └── architecture.md    # This file (single source of truth)
 ```
