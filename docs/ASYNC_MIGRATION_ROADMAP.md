@@ -99,7 +99,7 @@ Ensure PCL enforces 8-category taxonomy:
 | Phase 2 | ✅ DONE | Schema migration - valid_at column added to save_fact |
 | Phase 3 | ✅ DONE | Async DB layer - sync+async pools, AsyncPgSession ready |
 | Phase 4 | ✅ DONE | Async memory layer - db_memory.py + retrieval.py async functions |
-| Phase 5 | 🔲 TODO | Web layer bridge |
+| Phase 5 | ✅ DONE | Web layer bridge - async memory context functions in app.py |
 | Phase 6 | 🔲 TODO | plast-mem re-adapt |
 
 ---
