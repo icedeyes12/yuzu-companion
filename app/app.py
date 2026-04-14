@@ -636,7 +636,7 @@ def _build_generation_context(profile, session_id, interface="terminal", user_me
     # =========================
     memory_context = ""
 
-    # --- Structured memory retrieval (embedding-based, replaces legacy) ---
+    # --- 1. Static semantic facts (global knowledge) ---
     try:
         from app.memory.retrieval import retrieve_for_context
         static_ids, memory_context_text = retrieve_for_context(session_id, query=user_message)
@@ -646,10 +646,7 @@ def _build_generation_context(profile, session_id, interface="terminal", user_me
         print(f"[WARNING] Structured memory retrieval failed: {e}")
         static_ids = []
 
-    # --- Mark retrieved facts as pending review (Phase 8.4) ---
-    # retrieve_for_context is the "clean" context path (no pending_review internally).
-    # So we wire it here: extract static_ids → mark_retrieved_as_pending_review.
-    # Episodic facts use FSRS retrievability scoring, not pending_review.
+    # --- Mark retrieved facts as pending review ---
     if static_ids:
         try:
             from app.memory.memory_review import mark_retrieved_as_pending_review
@@ -657,7 +654,24 @@ def _build_generation_context(profile, session_id, interface="terminal", user_me
         except Exception as e:
             print(f"[WARNING] Pending review marking failed: {e}")
 
-    # --- Legacy memory sources (backward compatibility fallback) ---
+    # --- 2. Dynamic/episodic memories (session-specific) ---
+    try:
+        from app.memory.retrieval import retrieve_dynamic_memories
+        dynamic_mems = retrieve_dynamic_memories(session_id, query=user_message, limit=5)
+        if dynamic_mems:
+            dynamic_parts = []
+            for mem in dynamic_mems:
+                content = mem.get("content", "") or mem.get("target", "")
+                if content:
+                    if len(content) > 120:
+                        content = content[:120] + "..."
+                    dynamic_parts.append(f"- {content}")
+            if dynamic_parts:
+                memory_context += "\n\nRecent episodes:\n" + "\n".join(dynamic_parts)
+    except Exception as e:
+        print(f"[WARNING] Dynamic memory retrieval failed: {e}")
+
+    # --- 3. Legacy memory sources (backward compatibility) ---
     session_memory = Database.get_session_memory(session_id)
     if session_memory and session_memory.get('session_context'):
         memory_context += (
@@ -721,9 +735,9 @@ def _build_generation_context(profile, session_id, interface="terminal", user_me
     recent_session_events = Database.get_recent_sessions_for_session(
         session_id, limit=3
     )
-    session_context = "\n\nCURRENT SESSION EVENTS:"
+    session_events = "\n\nCURRENT SESSION EVENTS:"
     for event in recent_session_events:
-        session_context += f"\n- {event['content']} at {event['timestamp']}"
+        session_events += f"\n- {event['content']} at {event['timestamp']}"
 
     # =========================
     system_message = f'''
@@ -782,7 +796,7 @@ Affection Level: {affection}/100
 Closeness Mode: [{closeness_mode}]
 
 Memory Context: {memory_context}
-Session Metadata: {session_context}
+Session Metadata: {session_events}
 '''.strip()
 
 
