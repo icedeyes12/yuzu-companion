@@ -53,7 +53,7 @@ All data lives in a single PostgreSQL database (`yuzuki`) with the pgvector exte
 **Key Design:**
 - No SQLite. No FAISS. No BLOB serialization.
 - Embeddings stored as native `VECTOR(1024)` columns.
-- psycopg2 handles `list[float]` directly via string interpolation of float lists.
+- psycopg v3 handles `list[float]` directly via string interpolation of float lists.
 
 ### Unified Memory Table (`semantic_facts`)
 
@@ -64,6 +64,7 @@ All data lives in a single PostgreSQL database (`yuzuki`) with the pgvector exte
 | `content` | TEXT | The memory content |
 | `embedding` | VECTOR(1024) | pgvector embedding (native, no serialization) |
 | `metadata` | JSONB | Flexible per-type fields |
+| `valid_at` | TIMESTAMP | When fact became true (plast-mem pattern) |
 | `created_at` | TIMESTAMP | Creation timestamp |
 | `last_accessed` | TIMESTAMP | Last retrieval timestamp |
 | `invalid_at` | TIMESTAMP | Soft delete — `NULL` = active, set = invalidated |
@@ -361,7 +362,7 @@ app/memory/
 ```python
 from app.memory.memory import trigger_memory_pipeline_async, enqueue_memory_pipeline
 from app.memory.review import run_decay
-from app.memory.retrieval import retrieve_memory, format_memory
+from app.memory.retrieval import retrieve_for_context
 
 # On session start — queue background pipeline
 run_decay(session_id)
@@ -370,9 +371,17 @@ enqueue_memory_pipeline(session_id)
 # After each turn — trigger if message count threshold met
 trigger_memory_pipeline_async(session_id, current_count)
 
-# Context building
-memories = retrieve_memory(session_id, query)
-context = format_memory(memories)
+# Context building for system prompt injection
+# retrieve_for_context returns (static_ids, context_text)
+# It does NOT mark pending_review internally
+static_ids, memory_context_text = retrieve_for_context(session_id, query=user_message)
+
+# Mark retrieved facts as pending review for later LLM-based review
+if static_ids:
+    from app.memory.memory_review import mark_retrieved_as_pending_review
+    mark_retrieved_as_pending_review(static_ids, session_id)
+
+# Inject into system_message as "Memory Context: {memory_context_text}"
 ```
 
 ---
@@ -387,4 +396,4 @@ context = format_memory(memories)
 6. **Message Counter Trigger**: Pipeline triggers every 20 messages, force at 40 — aligned with plast-mem thresholds.
 7. **RRF Merge**: Combines static and dynamic retrieval rankings without BM25 (unavailable on Termux).
 8. **FSRS Scope Restriction**: Semantic facts don't decay — they use `invalid_at` for temporal validity.
-9. **Vector Literal Interpolation**: psycopg2 cannot adapt Vector objects over the wire protocol — vectors are interpolated as string literals directly in SQL.
+9. **Vector Literal Interpolation**: psycopg v3 cannot adapt Vector objects over the wire protocol — vectors are interpolated as string literals directly in SQL.
