@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """
-Test reranker with data from yuzuki database.
-
-Requirement:
-  - SSH tunnel to PostgreSQL running
-  - Ollama with model dengcao/Qwen3-Reranker-0.6B:Q8_0 installed
-  - Environment variables set (see AGENTS.md for values)
+Test reranker model with database queries.
 
 Usage:
-  python3 test_reranker.py "your search query"
+    python3 scripts/test_reranker.py "your query"
+
+Assumes you have your own database credentials in your environment.
 """
 
 import os
@@ -27,10 +24,10 @@ def get_db_connection():
     """Get psycopg connection from env vars."""
     import psycopg
     return psycopg.connect(
-        host=os.getenv("PGHOST", "127.0.0.1"),
-        port=int(os.getenv("PGPORT", "5432")),
-        dbname=os.getenv("PGDATABASE", "yuzuki"),
-        user=os.getenv("PGUSER", "yuzu_agent"),
+        host=os.getenv("PGHOST"),
+        port=int(os.getenv("PGPORT")),
+        dbname=os.getenv("PGDATABASE"),
+        user=os.getenv("PGUSER"),
         password=os.getenv("PGPASSWORD"),
     )
 
@@ -143,7 +140,6 @@ Only output the JSON array, nothing else."""
 def main():
     if len(sys.argv) < 2:
         print("Usage: python3 test_reranker.py 'your query'")
-        print("\nSet env vars first: PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD")
         sys.exit(1)
     
     query = sys.argv[1]
