@@ -5,7 +5,8 @@ Test reranker model with database queries.
 Usage:
     python3 scripts/test_reranker.py "your query"
 
-Assumes you have your own database credentials in your environment.
+Requires: PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD env vars.
+Copy .env.example to .env and run from yuzu-companion root, or set env vars manually.
 """
 
 import os
@@ -14,8 +15,13 @@ import json
 import requests
 from typing import Optional
 
-# Read from environment (set these before running)
-# PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD
+# Load .env if running from project root
+_base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_dotenv_path = os.path.join(_base_dir, ".env")
+if os.path.exists(_dotenv_path):
+    from dotenv import load_dotenv
+    load_dotenv(_dotenv_path)
+
 OLLAMA_URL = "http://localhost:11434/api/generate"
 RERANKER_MODEL = "dengcao/Qwen3-Reranker-0.6B:Q8_0"
 
