@@ -11,6 +11,11 @@ from datetime import datetime
 import json
 import os
 
+# Load .env FIRST, before importing app modules
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+from dotenv import load_dotenv
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
 from app.app import (
     handle_user_message, handle_user_message_streaming, start_session,
     end_session_cleanup, summarize_memory, summarize_global_player_profile,
@@ -36,15 +41,9 @@ from app.db_pg_models_async import (
     get_api_keys_async,
 )
 
-# Load .env file if it exists (after imports to avoid E402)
-from dotenv import load_dotenv
-load_dotenv()
-
 # ---------------------------------------------------------------------------
 # FastAPI Application Setup
 # ---------------------------------------------------------------------------
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = FastAPI(
     title="Yuzu Companion",
