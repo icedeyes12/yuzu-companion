@@ -36,6 +36,10 @@ from app.db_pg_models_async import (
     get_api_keys_async,
 )
 
+# Load .env file if it exists (after imports to avoid E402)
+from dotenv import load_dotenv
+load_dotenv()
+
 # ---------------------------------------------------------------------------
 # FastAPI Application Setup
 # ---------------------------------------------------------------------------
