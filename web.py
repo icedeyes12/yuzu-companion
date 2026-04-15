@@ -13,19 +13,19 @@ import os
 
 # Load .env FIRST, before importing app modules
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-from app.app import (
+from app.app import (  # noqa: E402
     handle_user_message, handle_user_message_streaming, start_session,
     end_session_cleanup, summarize_memory, summarize_global_player_profile,
     set_preferred_provider, get_vision_capabilities, set_vision_model
 )
-from app.database import Database
-from app.providers import get_ai_manager
+from app.database import Database  # noqa: E402
+from app.providers import get_ai_manager  # noqa: E402
 
 # Async database operations for web routes
-from app.db_pg_models_async import (
+from app.db_pg_models_async import (  # noqa: E402
     get_profile_async,
     update_profile_async,
     get_active_session_async,
