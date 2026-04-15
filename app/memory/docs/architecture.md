@@ -48,7 +48,7 @@ flowchart TB
 
 ### PostgreSQL + pgvector
 
-All data lives in a single PostgreSQL database (`yuzuki`) with the pgvector extension for vector similarity search.
+All data lives in a single PostgreSQL database with the pgvector extension for vector similarity search.
 
 **Key Design:**
 - No SQLite. No FAISS. No BLOB serialization.

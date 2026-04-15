@@ -48,7 +48,7 @@ graph LR
     C --> E
     D --> E
     
-    E --> F[(Database<br/>yuzuki PostgreSQL)]
+    E --> F[(Database<br/>PostgreSQL)]
     E --> G[AI Providers<br/>Ollama/Cerebras/OpenRouter/Chutes]
     E --> H[Tools<br/>ImageGen/Search/Memory]
     E --> I[Memory System<br/>episodic + semantic]

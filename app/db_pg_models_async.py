@@ -25,9 +25,9 @@ async def init_pg_tables_async():
         """
         CREATE TABLE IF NOT EXISTS profiles (
             id SERIAL PRIMARY KEY,
-            display_name VARCHAR(255) NOT NULL DEFAULT 'bani',
-            partner_name VARCHAR(255) NOT NULL DEFAULT 'Yuzu',
-            affection INTEGER NOT NULL DEFAULT 85,
+            display_name VARCHAR(255) NOT NULL DEFAULT '',
+            partner_name VARCHAR(255) NOT NULL DEFAULT '',
+            affection INTEGER NOT NULL DEFAULT 50,
             theme VARCHAR(255) NOT NULL DEFAULT 'default',
             memory_json TEXT NOT NULL DEFAULT '{}',
             session_history_json TEXT NOT NULL DEFAULT '{}',
@@ -116,7 +116,7 @@ async def get_profile_async() -> dict:
                                   providers_config_json, context, timestamp, updated_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
-            ('bani', 'Yuzu', 85, 'default', '{}', '{}', '{}', '{}', '{}', now, now)
+            ('', '', 50, 'default', '{}', '{}', '{}', '{}', '{}', now, now)
         )
         row = await pg_fetchone_async("SELECT * FROM profiles LIMIT 1")
 
@@ -125,9 +125,9 @@ async def get_profile_async() -> dict:
 
     return {
         'id': row.get('id'),
-        'display_name': row.get('display_name', 'bani'),
-        'partner_name': row.get('partner_name', 'Yuzu'),
-        'affection': row.get('affection', 85),
+        'display_name': row.get('display_name', ''),
+        'partner_name': row.get('partner_name', ''),
+        'affection': row.get('affection', 50),
         'theme': row.get('theme', 'default'),
         'memory': _parse_json(row.get('memory_json', '{}')),
         'session_history': _parse_json(row.get('session_history_json', '{}')),

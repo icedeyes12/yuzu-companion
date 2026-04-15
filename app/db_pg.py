@@ -13,10 +13,10 @@ from psycopg_pool import AsyncConnectionPool, ConnectionPool
 from psycopg.rows import dict_row
 
 # ── Env defaults ────────────────────────────────────────────────────────────
-_PG_HOST = os.getenv("PGHOST", os.getenv("PG_HOST", "127.0.0.1"))
-_PG_PORT = os.getenv("PGPORT", os.getenv("PG_PORT", "5432"))
-_PG_DBNAME = os.getenv("PGDATABASE", os.getenv("PG_DBNAME", "yuzuki"))
-_PG_USER = os.getenv("PGUSER", os.getenv("PG_USER", "icedeyes12"))
+_PG_HOST = os.getenv("PGHOST", os.getenv("PG_HOST", ""))
+_PG_PORT = os.getenv("PGPORT", os.getenv("PG_PORT", ""))
+_PG_DBNAME = os.getenv("PGDATABASE", os.getenv("PG_DBNAME", ""))
+_PG_USER = os.getenv("PGUSER", os.getenv("PG_USER", ""))
 _PG_PASSWORD = os.getenv("PGPASSWORD", os.getenv("PG_PASSWORD", ""))
 _MIN_CONN = 1
 _MAX_CONN = 10
@@ -32,6 +32,11 @@ def vector_sql(val: list[float] | None) -> str | None:
 
 # ── DSN builder ──────────────────────────────────────────────────────────────
 def _build_dsn() -> str:
+    if not all([_PG_HOST, _PG_PORT, _PG_DBNAME, _PG_USER]):
+        raise RuntimeError(
+            "PostgreSQL connection requires PGHOST, PGPORT, PGDATABASE, PGUSER env vars. "
+            "Set them before starting the application."
+        )
     return (
         f"host={_PG_HOST} port={_PG_PORT} dbname={_PG_DBNAME} "
         f"user={_PG_USER} password={_PG_PASSWORD}"
