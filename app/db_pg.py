@@ -71,8 +71,8 @@ async def get_async_pool() -> AsyncConnectionPool:
             min_size=_MIN_CONN,
             max_size=_MAX_CONN,
             kwargs={"row_factory": dict_row},
-            open=True,  # Open pool immediately instead of calling open() separately
         )
+        await _async_pool.open()
         print(f"[db_pg] Async pool created: {_PG_HOST}:{_PG_PORT}/{_PG_DBNAME}")
     return _async_pool
 
