@@ -721,7 +721,9 @@ class ChutesProvider(AIProvider):
         """Single Chutes API call. Returns (status_code, content_or_None, error_detail)."""
         messages = self._normalize_messages_for_chutes(list(messages))
 
-        if self.supports_vision(model) and messages:
+        if kwargs.get('skip_vision') is True:
+            pass
+        elif self.supports_vision(model) and messages:
             last_user_message = self._get_last_user_message(messages)
             if last_user_message:
                 has_img = multimodal_tools.has_images(last_user_message)
@@ -956,7 +958,7 @@ class AIProviderManager:
         
         # Try main model (3 attempts: initial + 2 retries)
         for attempt in range(3):
-            result = provider.send_message(messages, MAIN_MODEL, log_prefix="[INT]", **kwargs)
+            result = provider.send_message(messages, MAIN_MODEL, log_prefix="[INT]", skip_vision=True, **kwargs)
             if result:
                 print(f"[INT] chutes/{MAIN_MODEL} OK (attempt {attempt + 1})")
                 return result
@@ -975,7 +977,7 @@ class AIProviderManager:
         
         # Try fallback model (2 attempts: initial + 1 retry)
         for attempt in range(2):
-            result = provider.send_message(messages, FALLBACK_MODEL, log_prefix="[INT]", **kwargs)
+            result = provider.send_message(messages, FALLBACK_MODEL, log_prefix="[INT]", skip_vision=True, **kwargs)
             if result:
                 print(f"[INT] chutes/{FALLBACK_MODEL} OK (attempt {attempt + 1})")
                 return result
