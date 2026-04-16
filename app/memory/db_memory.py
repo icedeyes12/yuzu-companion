@@ -120,8 +120,8 @@ def save_fact(
 
     query = """
         INSERT INTO semantic_facts
-            (fact_type, content, embedding, metadata, valid_at, created_at, last_accessed)
-        VALUES (%s, %s, %s::vector, %s, %s, %s, %s)
+            (fact_type, content, embedding, metadata, created_at, last_accessed)
+        VALUES (%s, %s, %s::vector, %s, %s, %s)
         RETURNING id
     """
 
@@ -132,7 +132,6 @@ def save_fact(
                 content,
                 vec_literal,
                 Json(meta),
-                datetime.now(),  # valid_at
                 datetime.now(),
                 datetime.now(),
             ))
@@ -715,8 +714,8 @@ async def save_fact_async(
 
     query = """
         INSERT INTO semantic_facts
-            (fact_type, content, embedding, metadata, valid_at, created_at, last_accessed)
-        VALUES (%s, %s, %s::vector, %s, %s, %s, %s)
+            (fact_type, content, embedding, metadata, created_at, last_accessed)
+        VALUES (%s, %s, %s::vector, %s, %s, %s)
         RETURNING id
     """
 
@@ -727,7 +726,6 @@ async def save_fact_async(
                 content,
                 vec_literal,
                 Json(meta),
-                datetime.now(),
                 datetime.now(),
                 datetime.now(),
             ))

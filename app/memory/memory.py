@@ -324,9 +324,29 @@ def run_memory_review(session_id: int) -> dict:
     Returns summary: {reviewed: n, ratings: {...}}
     """
     from app.memory.memory_review import review_memory
+    from app.memory.db_memory import get_facts_by_session, FACT_TYPE_STATIC
+    from app.db_pg_models import get_session_messages
     
     try:
-        result = review_memory(session_id)
+        # Get facts pending review
+        facts = get_facts_by_session(session_id, fact_type=FACT_TYPE_STATIC, limit=50)
+        pending_ids = [
+            f["id"] for f in facts
+            if f.get("metadata", {}).get("pending_review")
+        ]
+        
+        if not pending_ids:
+            print("[memory] No facts pending review")
+            return {"reviewed": 0}
+        
+        # Get conversation context
+        messages = get_session_messages(session_id, limit=20)
+        context = "\n".join(
+            f"{m.get('role', 'unknown')}: {m.get('content', '')[:200]}"
+            for m in messages[-10:]
+        ) if messages else ""
+        
+        result = review_memory(pending_ids, context, session_id)
         print(f"[memory] Memory review: {result}")
         return result
     except Exception as e:
