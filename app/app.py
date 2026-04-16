@@ -440,7 +440,9 @@ def _trigger_memory_pipeline_async(session_id: int) -> None:
         from app.database import Database
         session_memory = Database.get_session_memory(session_id)
         count = session_memory.get("message_count", 0) if session_memory else 0
-        trigger_memory_pipeline_async(session_id, count)
+        triggered = trigger_memory_pipeline_async(session_id, count)
+        if not triggered:
+            print(f"[memory] Skipping pipeline — count={count} (threshold: 20)")
     except Exception as e:
         print(f"[WARNING] Memory pipeline trigger failed: {e}")
 
