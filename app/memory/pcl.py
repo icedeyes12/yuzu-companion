@@ -20,6 +20,7 @@ __all__ = [
 ]
 
 from datetime import datetime
+from psycopg.types.json import Json
 from app.memory.db_memory import (
     invalidate_fact,
     get_fact_by_id,
@@ -338,7 +339,7 @@ def consolidate_facts(extracted: list[dict], session_id: int, episode_id=None) -
                     meta["confidence"] = min((meta.get("confidence", 0.7) + 0.1), 1.0)
                     pg_execute(
                         "UPDATE semantic_facts SET last_accessed=%s, metadata=%s WHERE id=%s",
-                        (datetime.now(), meta, source_id),
+                        (datetime.now(), Json(meta), source_id),
                     )
                     counts["reinforced"] += 1
             except Exception as e:
@@ -398,7 +399,7 @@ def run_predict_calibrate(
                     meta["consolidated_at"] = datetime.now().isoformat()
                     pg_execute(
                         "UPDATE semantic_facts SET metadata=%s, last_accessed=%s WHERE id=%s",
-                        (meta, datetime.now(), episode_id),
+                        (Json(meta), datetime.now(), episode_id),
                     )
             except Exception as e:
                 print(f"[PCL] Failed to mark episode {episode_id} consolidated: {e}")

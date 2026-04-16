@@ -9,6 +9,8 @@ __all__ = [
     "calculate_emotional_weight",
 ]
 
+from psycopg.types.json import Json
+
 from app.memory.db_memory import (
     save_fact,
     search_similar,
@@ -151,7 +153,7 @@ def upsert_semantic_memory(session_id, entity, relation, target, episode_id=None
                 meta["category"] = category
                 pg_execute(
                     "UPDATE semantic_facts SET last_accessed=%s, metadata=%s WHERE id=%s",
-                    (datetime.now(), meta, e["id"]),
+                    (datetime.now(), Json(meta), e["id"]),
                 )
                 return  # done — no insert needed
 
@@ -175,7 +177,7 @@ def upsert_semantic_memory(session_id, entity, relation, target, episode_id=None
             meta["category"] = category
             pg_execute(
                 "UPDATE semantic_facts SET last_accessed=%s, metadata=%s WHERE id=%s",
-                (datetime.now(), meta, existing_exact["id"]),
+                (datetime.now(), Json(meta), existing_exact["id"]),
             )
             return  # exact content dupe — reinforce, don't insert
 

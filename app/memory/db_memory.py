@@ -37,6 +37,8 @@ from __future__ import annotations
 import math
 from datetime import datetime
 
+from psycopg.types.json import Json
+
 from app.db_pg import (
     PgSession, pg_fetchone, pg_fetchall, pg_execute,
     # Async versions
@@ -129,7 +131,7 @@ def save_fact(
                 fact_type,
                 content,
                 vec_literal,
-                meta,
+                Json(meta),
                 datetime.now(),  # valid_at
                 datetime.now(),
                 datetime.now(),
@@ -175,7 +177,7 @@ def upsert_fact(
         meta["access_count"] = new_access_count
         pg_execute(
             "UPDATE semantic_facts SET last_accessed=%s, metadata=%s WHERE id=%s",
-            (datetime.now(), meta, e["id"]),
+            (datetime.now(), Json(meta), e["id"]),
         )
         return e["id"], True
 
@@ -539,7 +541,7 @@ def update_fact_importance(id: int, importance: float) -> bool:
         meta["importance"] = importance
         pg_execute(
             "UPDATE semantic_facts SET metadata=%s WHERE id=%s",
-            (meta, id),
+            (Json(meta), id),
         )
         return True
     except Exception as e:
@@ -559,7 +561,7 @@ def increment_importance(id: int, delta: float = 0.05, cap: float = 1.0) -> bool
         meta["access_count"] = (meta.get("access_count") or 0) + 1
         pg_execute(
             "UPDATE semantic_facts SET last_accessed=%s, metadata=%s WHERE id=%s",
-            (datetime.now(), meta, id),
+            (datetime.now(), Json(meta), id),
         )
         return True
     except Exception as e:
@@ -644,7 +646,7 @@ def decay_facts(
 
             pg_execute(
                 "UPDATE semantic_facts SET metadata=%s, last_accessed=%s WHERE id=%s",
-                (meta, now, row["id"]),
+                (Json(meta), now, row["id"]),
             )
             count += 1
 
@@ -724,7 +726,7 @@ async def save_fact_async(
                 fact_type,
                 content,
                 vec_literal,
-                meta,
+                Json(meta),
                 datetime.now(),
                 datetime.now(),
                 datetime.now(),

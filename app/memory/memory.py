@@ -92,7 +92,9 @@ def _build_batch_segment_prompt(messages: list[dict]) -> tuple[str, str]:
     
     system_prompt = """You are a conversation segmenter. Split the conversation into meaningful episodes.
 
-Output JSON array only, no markdown:
+IMPORTANT: Output ONLY a raw JSON array. Do NOT use markdown code blocks, do NOT wrap in ```json. Start with [ and end with ].
+
+Schema:
 [
   {
     "start_idx": 0,
