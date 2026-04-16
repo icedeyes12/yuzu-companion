@@ -143,7 +143,7 @@ def batch_segment(messages: list[dict]) -> list[dict]:
                 {"role": "user", "content": user_prompt},
             ],
             timeout=60,
-            max_tokens=4000,
+            max_tokens=4096,
         )
         if not response:
             return []
