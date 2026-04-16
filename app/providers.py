@@ -907,7 +907,7 @@ class AIProviderManager:
     # Preferred models for internal (non-chat) LLM calls
     _PREFERRED_MODELS = [
         "Qwen/Qwen3-Next-80B-A3B-Instruct",
-        "Qwen/Qwen3-235B-A22B-Instruct-2507-TEE",
+        "Qwen/Qwen3-30B-A3B",
     ]
 
     def _best_model(self, provider: str) -> Optional[str]:
@@ -933,10 +933,10 @@ class AIProviderManager:
             return None
         provider = self.providers['chutes']
         
-        # Ordered preference: Next-80B first, then TEE as fallback
+        # Ordered preference: Next-80B first, then Qwen3-30B as fallback
         preference = [
             "Qwen/Qwen3-Next-80B-A3B-Instruct",
-            "Qwen/Qwen3-235B-A22B-Instruct-2507-TEE",
+            "Qwen/Qwen3-30B-A3B",
         ]
         tried = set()
         
