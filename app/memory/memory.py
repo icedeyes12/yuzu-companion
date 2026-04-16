@@ -131,7 +131,7 @@ def batch_segment(messages: list[dict]) -> list[dict]:
     try:
         ai = _get_ai_manager()
     except Exception as e:
-        print(f"[pipeline] AI manager unavailable: {e}")
+        print(f"[memory] AI manager unavailable: {e}")
         return []
     
     system_prompt, user_prompt = _build_batch_segment_prompt(messages)
@@ -149,18 +149,29 @@ def batch_segment(messages: list[dict]) -> list[dict]:
             return []
         
         import json
+        import re
+        
+        # Strip markdown code blocks if present
+        stripped = response.strip()
+        if stripped.startswith("```"):
+            # Remove ```json or ``` at start
+            stripped = re.sub(r"^```(?:json)?\s*", "", stripped)
+            # Remove ``` at end
+            stripped = re.sub(r"\s*```$", "", stripped)
+            stripped = stripped.strip()
+        
         segments = None
         # Try to parse, handle truncation
-        for i in range(len(response), 0, -1):
+        for i in range(len(stripped), 0, -1):
             try:
-                segments = json.loads(response[:i])
+                segments = json.loads(stripped[:i])
                 if isinstance(segments, list):
                     break
             except json.JSONDecodeError:
                 continue
         
         if not isinstance(segments, list):
-            print("[pipeline] Batch segment: invalid JSON response")
+            print(f"[memory] Batch segment: invalid JSON response (first 200 chars): {stripped[:200]}")
             return []
         
         # Validate and normalize
@@ -187,7 +198,7 @@ def batch_segment(messages: list[dict]) -> list[dict]:
         return valid
     
     except Exception as e:
-        print(f"[pipeline] Batch segmentation failed: {e}")
+        print(f"[memory] Batch segmentation failed: {e}")
         return []
 
 
@@ -229,7 +240,7 @@ def create_episode_and_pcl(
     try:
         embedding = embed_text(summary)
     except Exception as e:
-        print(f"[pipeline] Embedding failed: {e}")
+        print(f"[memory] Embedding failed: {e}")
     
     # Calculate importance and stability based on surprise
     importance = 0.5 + surprise * 0.3
@@ -263,10 +274,10 @@ def create_episode_and_pcl(
     )
     
     if not episode_id:
-        print("[pipeline] Episode creation failed")
+        print("[memory] Episode creation failed")
         return None
     
-    print(f"[pipeline] Created episode {episode_id}: {title}")
+    print(f"[memory] Created episode {episode_id}: {title}")
     
     # Trigger PCL pipeline
     try:
@@ -277,9 +288,9 @@ def create_episode_and_pcl(
             episode_id=episode_id,
         )
         if pcl_result:
-            print(f"[pipeline] PCL result: {pcl_result}")
+            print(f"[memory] PCL result: {pcl_result}")
     except Exception as e:
-        print(f"[pipeline] PCL failed for episode {episode_id}: {e}")
+        print(f"[memory] PCL failed for episode {episode_id}: {e}")
     
     return episode_id
 
@@ -295,10 +306,10 @@ def run_memory_review(session_id: int) -> dict:
     
     try:
         result = review_memory(session_id)
-        print(f"[pipeline] Memory review: {result}")
+        print(f"[memory] Memory review: {result}")
         return result
     except Exception as e:
-        print(f"[pipeline] Memory review failed: {e}")
+        print(f"[memory] Memory review failed: {e}")
         return {"reviewed": 0}
 
 
@@ -318,7 +329,7 @@ def run_memory_pipeline(session_id: int, message_count: int) -> dict:
     from app.db_pg_models import get_session_messages
     from app.memory.db_memory import get_facts_by_session, FACT_TYPE_DYNAMIC
     
-    print(f"[pipeline] Starting for session {session_id}, count={message_count}")
+    print(f"[memory] Starting for session {session_id}, count={message_count}")
     
     # Get messages
     all_messages = get_session_messages(session_id, limit=10000)
@@ -341,16 +352,16 @@ def run_memory_pipeline(session_id: int, message_count: int) -> dict:
     ]
     
     if len(unsegmented) < MIN_MESSAGES:
-        print(f"[pipeline] Only {len(unsegmented)} unsegmented msgs, skipping")
+        print(f"[memory] Only {len(unsegmented)} unsegmented msgs, skipping")
         return {"segments": 0, "episodes": 0, "pcl_runs": 0}
     
     # Batch segment
     batch_result = batch_segment(unsegmented)
     if not batch_result:
-        print("[pipeline] No segments from batch LLM")
+        print("[memory] No segments from batch LLM")
         return {"segments": 0, "episodes": 0, "pcl_runs": 0}
     
-    print(f"[pipeline] Batch segmentation: {len(batch_result)} segments")
+    print(f"[memory] Batch segmentation: {len(batch_result)} segments")
     
     # Create episodes + PCL
     episode_count = 0
@@ -366,7 +377,7 @@ def run_memory_pipeline(session_id: int, message_count: int) -> dict:
     try:
         run_memory_review(session_id)
     except Exception as e:
-        print(f"[pipeline] Memory review error: {e}")
+        print(f"[memory] Memory review error: {e}")
     
     # Mark done
     mark_segmentation_done(session_id, message_count)
@@ -399,7 +410,7 @@ def _background_worker():
                 
                 run_memory_pipeline(session_to_process, count)
             except Exception as e:
-                print(f"[pipeline] Background worker error: {e}")
+                print(f"[memory] Background worker error: {e}")
         else:
             time.sleep(1)  # No work, wait
 
@@ -415,12 +426,12 @@ def enqueue_memory_pipeline(session_id: int) -> None:
     if _pipeline_thread is None or not _pipeline_thread.is_alive():
         _pipeline_thread = threading.Thread(target=_background_worker, daemon=True)
         _pipeline_thread.start()
-        print("[pipeline] Started background worker thread")
+        print("[memory] Started background worker thread")
     
     with _pipeline_lock:
         _pending_sessions.add(session_id)
     
-    print(f"[pipeline] Queued session {session_id} for background processing")
+    print(f"[memory] Queued session {session_id} for background processing")
 
 
 def trigger_memory_pipeline_async(session_id: int, current_count: int) -> bool:
