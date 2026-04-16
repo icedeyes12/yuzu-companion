@@ -143,7 +143,7 @@ def batch_segment(messages: list[dict]) -> list[dict]:
                 {"role": "user", "content": user_prompt},
             ],
             timeout=60,
-            max_tokens=2000,
+            max_tokens=4000,
         )
         if not response:
             return []
@@ -162,13 +162,34 @@ def batch_segment(messages: list[dict]) -> list[dict]:
         
         segments = None
         # Try to parse, handle truncation
-        for i in range(len(stripped), 0, -1):
-            try:
-                segments = json.loads(stripped[:i])
-                if isinstance(segments, list):
-                    break
-            except json.JSONDecodeError:
-                continue
+        
+        # First try as-is
+        try:
+            segments = json.loads(stripped)
+            if not isinstance(segments, list):
+                segments = None
+        except json.JSONDecodeError:
+            segments = None
+        
+        # If failed, try to close truncated array
+        if segments is None:
+            for close_attempt in ["]", "]", "}]"]:
+                try:
+                    segments = json.loads(stripped + close_attempt)
+                    if isinstance(segments, list):
+                        break
+                except json.JSONDecodeError:
+                    continue
+        
+        # Last resort: chop from end
+        if segments is None:
+            for i in range(len(stripped) - 1, 0, -1):
+                try:
+                    segments = json.loads(stripped[:i] + "]")
+                    if isinstance(segments, list):
+                        break
+                except json.JSONDecodeError:
+                    continue
         
         if not isinstance(segments, list):
             print(f"[memory] Batch segment: invalid JSON response (first 200 chars): {stripped[:200]}")
