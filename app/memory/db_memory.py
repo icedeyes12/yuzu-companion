@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 
 from app.db_pg import (
@@ -564,6 +565,94 @@ def increment_importance(id: int, delta: float = 0.05, cap: float = 1.0) -> bool
     except Exception as e:
         print(f"[db_memory] increment_importance failed: {e}")
         return False
+
+
+# ── FSRS Decay ────────────────────────────────────────────────────────────────
+
+
+def decay_facts(
+    session_id: int | None = None, fact_type: str = FACT_TYPE_DYNAMIC
+) -> int:
+    """
+    Apply FSRS-style decay to episodic/dynamic facts.
+
+    Decay formula:
+        importance = importance * exp(-hours_since_last_access / stability)
+        stability = 24 * (1 + access_count * 0.5)
+
+    Does NOT affect static (semantic) facts — they use invalid_at temporal validity.
+
+    Returns the number of facts decayed.
+    """
+    try:
+        now = datetime.now()
+
+        if session_id is not None:
+            rows = pg_fetchall(
+                """
+                SELECT id, metadata, last_accessed
+                FROM semantic_facts
+                WHERE fact_type = %s
+                  AND (metadata->>'session_id')::int = %s
+                  AND invalid_at IS NULL
+                """,
+                (fact_type, session_id),
+            )
+        else:
+            rows = pg_fetchall(
+                """
+                SELECT id, metadata, last_accessed
+                FROM semantic_facts
+                WHERE fact_type = %s
+                  AND invalid_at IS NULL
+                """,
+                (fact_type,),
+            )
+
+        count = 0
+        for row in rows:
+            meta = row["metadata"] or {}
+            last_accessed = row["last_accessed"]
+
+            importance = meta.get("importance") or 0.5
+            access_count = meta.get("access_count") or 0
+
+            if last_accessed:
+                if isinstance(last_accessed, str):
+                    try:
+                        last_accessed = datetime.strptime(
+                            last_accessed, "%Y-%m-%d %H:%M:%S.%f"
+                        )
+                    except ValueError:
+                        last_accessed = datetime.strptime(
+                            last_accessed, "%Y-%m-%d %H:%M:%S"
+                        )
+                hours = (now - last_accessed).total_seconds() / 3600.0
+            else:
+                hours = 0
+
+            # FSRS decay
+            stability_val = 24.0 * (1.0 + access_count * 0.5)
+            new_importance = (
+                importance * math.exp(-hours / stability_val)
+                if stability_val > 0
+                else importance
+            )
+
+            meta["importance"] = new_importance
+            meta["stability"] = stability_val
+
+            pg_execute(
+                "UPDATE semantic_facts SET metadata=%s, last_accessed=%s WHERE id=%s",
+                (meta, now, row["id"]),
+            )
+            count += 1
+
+        return count
+
+    except Exception as e:
+        print(f"[db_memory] decay_facts failed: {e}")
+        return 0
 
 
 # ── Soft Delete ───────────────────────────────────────────────────────────────
