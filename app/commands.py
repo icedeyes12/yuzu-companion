@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, Iterator
 
 from app.logging_config import get_logger
 from app.tools.registry import execute_tool
@@ -30,6 +30,105 @@ _MARKDOWN_IMAGE_PATH = re.compile(
 )
 _MARKDOWN_IMAGE_ANY = re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
 _GENERATED_IMAGE_SRC = re.compile(r'src="(static/generated_images/[^"]+)"')
+
+# Maximum chars to buffer while sniffing for a leading /command.
+# Generous enough for any realistic command line, but bounded so we never
+# starve the user of streamed output if the model omits a newline.
+_COMMAND_SNIFF_LIMIT = 512
+
+
+class StreamFilter:
+    """Stateful filter that holds back chunks until a /command on the first
+    line can be confirmed or ruled out.
+
+    Usage:
+        sf = StreamFilter()
+        for chunk in upstream:
+            for safe in sf.feed(chunk):
+                yield safe
+        for safe in sf.flush():
+            yield safe
+
+        # After streaming completes:
+        if sf.command:
+            ...  # don't render command line; suppressed via emit
+        full_text = sf.full_text
+
+    Behavior:
+      - First non-whitespace char is '/': buffer until newline (or limit).
+        On newline, parse the command, suppress that line, and stream the
+        rest live.
+      - First non-whitespace char is not '/': flush buffer immediately and
+        pass through every subsequent chunk untouched.
+    """
+
+    __slots__ = ("_buffer", "_decided", "_is_command", "command", "full_text")
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._decided = False
+        self._is_command = False
+        self.command: dict[str, str] | None = None
+        self.full_text = ""
+
+    def feed(self, chunk: str) -> Iterator[str]:  # type: ignore[name-defined]
+        if not chunk:
+            return
+        self.full_text += chunk
+
+        if self._decided and not self._is_command:
+            yield chunk
+            return
+
+        self._buffer += chunk
+
+        if not self._decided:
+            stripped = self._buffer.lstrip()
+            if stripped and not stripped.startswith("/"):
+                # Definitely not a command.
+                self._decided = True
+                self._is_command = False
+                yield self._buffer
+                self._buffer = ""
+                return
+            if len(self._buffer) >= _COMMAND_SNIFF_LIMIT and "\n" not in self._buffer:
+                # Ran out of patience: treat as plain text.
+                self._decided = True
+                self._is_command = False
+                yield self._buffer
+                self._buffer = ""
+                return
+            if not stripped:
+                # Only whitespace so far; keep buffering.
+                return
+            # Starts with '/': wait for the newline (handled below).
+
+        if "\n" in self._buffer and not self._decided:
+            self._decided = True
+            self._is_command = True
+            first_line, _, rest = self._buffer.partition("\n")
+            self.command = detect_command(first_line)
+            self._buffer = ""
+            # Suppress the command line; the rest is rarely produced by the
+            # model when a /command is the first line, but pass it through
+            # for correctness.
+            if rest:
+                yield rest
+
+    def flush(self) -> Iterator[str]:  # type: ignore[name-defined]
+        """Drain any held-back text. Call once after the upstream completes."""
+        if not self._decided:
+            # Stream ended before we could decide. If the buffer starts with
+            # a slash and never produced a newline, treat it as a command on
+            # a single line.
+            stripped = self._buffer.lstrip()
+            if stripped.startswith("/"):
+                self._is_command = True
+                self.command = detect_command(self._buffer)
+            else:
+                yield self._buffer
+            self._buffer = ""
+            self._decided = True
 
 
 def detect_command(response_text: str | None) -> dict[str, str] | None:

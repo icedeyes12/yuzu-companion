@@ -9,6 +9,7 @@ from typing import Any, Iterator
 
 from app.commands import (
     IMAGE_SHORTCUT_WARNING,
+    StreamFilter,
     detect_command,
     execute_command,
     extract_markdown_image_path,
@@ -182,6 +183,39 @@ def _run_synthesis(
     return cleaned
 
 
+def _stream_synthesis(
+    profile: dict[str, Any],
+    session_id: int,
+    interface: str,
+    tool_markdown: str,
+    is_image_tool: bool,
+) -> Iterator[tuple[str, str]]:
+    """Stream the 2nd LLM pass.
+
+    Yields (chunk, full_so_far) tuples. The orchestrator can pass `chunk`
+    straight to the consumer and persist `full_so_far` once the stream ends.
+    On nested-command detection we fall back to the non-streaming
+    _run_synthesis path because nested execution is structural, not a
+    streaming concern.
+    """
+    image_context: list[dict[str, Any]] | None = None
+    if is_image_tool:
+        image_context = _build_image_context(tool_markdown, session_id)
+
+    sf = StreamFilter()
+    accumulated: list[str] = []
+    for chunk in generate_ai_response_streaming(
+        profile, "", interface, session_id,
+        image_content_for_context=image_context,
+    ):
+        for safe in sf.feed(chunk):
+            accumulated.append(safe)
+            yield safe, "".join(accumulated)
+    for safe in sf.flush():
+        accumulated.append(safe)
+        yield safe, "".join(accumulated)
+
+
 # ---------------------------------------------------------------------------
 # Per-turn side effects
 # ---------------------------------------------------------------------------
@@ -298,10 +332,15 @@ def handle_user_message_streaming(
     provider: str | None = None,
     model: str | None = None,
 ) -> Iterator[str]:
-    """Streaming entrypoint. Currently buffers the full response then yields
-    it through the same orchestration as handle_user_message.
+    """Streaming entrypoint with true incremental chunk delivery.
 
-    True chunked streaming is deferred to Stage 1.5; see project history.
+    Behavior:
+      - Buffers chunks only until a leading /command can be ruled out
+        (typically the first 1-3 chunks).
+      - When NO command: streams every subsequent chunk live.
+      - When a /command IS detected: suppresses the command line, executes
+        the tool, emits the tool result, then streams the synthesis pass
+        live.
     """
     profile = Database.get_profile()
     if not user_message.strip():
@@ -312,21 +351,26 @@ def handle_user_message_streaming(
     session_id = active_session["id"]
     cached_images = _cache_images_from_message(user_message)
 
-    chunks: list[str] = []
+    sf = StreamFilter()
+    visible_chunks: list[str] = []
     try:
         for chunk in generate_ai_response_streaming(
             profile, user_message, interface, session_id, provider, model
         ):
-            if chunk:
-                chunks.append(chunk)
-                yield chunk
+            for safe in sf.feed(chunk):
+                visible_chunks.append(safe)
+                yield safe
+        for safe in sf.flush():
+            visible_chunks.append(safe)
+            yield safe
     except Exception:
         _persist_user(user_message, session_id, cached_images)
         raise
 
     _persist_user(user_message, session_id, cached_images)
 
-    full_response = _clean("".join(chunks)) or _EMPTY_RESPONSE_FALLBACK
+    full_response = _clean(sf.full_text) or _EMPTY_RESPONSE_FALLBACK
+    visible_response = _clean("".join(visible_chunks))
 
     if is_markdown_image_shortcut(full_response):
         log.warning(
@@ -336,28 +380,41 @@ def handle_user_message_streaming(
         yield IMAGE_SHORTCUT_WARNING
         return
 
-    cmd_info = detect_command(full_response)
-    if not cmd_info:
-        Database.add_message("assistant", full_response, session_id=session_id)
-        _post_turn(profile, user_message, full_response, session_id, active_session)
+    if not sf.command:
+        # Plain response - already streamed live. Persist and finish.
+        text = visible_response or _EMPTY_RESPONSE_FALLBACK
+        Database.add_message("assistant", text, session_id=session_id)
+        _post_turn(profile, user_message, text, session_id, active_session)
         return
 
-    tool_name, tool_result = execute_command(cmd_info, session_id=session_id)
+    # Tool path - the command line was suppressed during streaming.
+    tool_name, tool_result = execute_command(sf.command, session_id=session_id)
     tool_markdown = tool_result.get("markdown", str(tool_result))
     _persist_tool_result(tool_name, tool_markdown, session_id)
     yield "\n\n" + tool_markdown
 
     is_image_tool = parse_image_path(tool_markdown) is not None
-    synthesis = _run_synthesis(
-        profile, session_id, interface, tool_markdown, is_image_tool
-    )
+    synthesis_chunks: list[str] = []
+    full_synthesis = ""
+    yielded_synthesis_header = False
+    try:
+        for chunk, full in _stream_synthesis(
+            profile, session_id, interface, tool_markdown, is_image_tool
+        ):
+            synthesis_chunks.append(chunk)
+            full_synthesis = full
+            if not yielded_synthesis_header:
+                yield "\n\n" + chunk if is_image_tool else chunk
+                yielded_synthesis_header = True
+            else:
+                yield chunk
+    except Exception as e:  # noqa: BLE001
+        log.warning("synthesis stream failed, no narration yielded: %s", e)
+
+    synthesis = _clean(full_synthesis) if full_synthesis else None
 
     if synthesis:
         Database.add_message("assistant", synthesis, session_id=session_id)
-        if is_image_tool:
-            yield "\n\n" + synthesis
-        else:
-            yield synthesis
         final_response = (
             f"{tool_markdown}\n\n{synthesis}" if is_image_tool else synthesis
         )

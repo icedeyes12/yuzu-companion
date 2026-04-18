@@ -283,6 +283,47 @@ def generate_ai_response(
     return text, None
 
 
+def _stream_from_provider(
+    provider: str,
+    model: str,
+    messages: list[dict[str, Any]],
+    *,
+    image_context: list[dict[str, Any]] | None,
+) -> Iterator[str]:
+    """Yield raw chunks from the provider's streaming API.
+
+    Honors the same vision-routing override as the non-streaming path:
+    when an image context is present we force-switch to the best vision
+    provider and strip tool schemas (vision endpoints typically reject them).
+    """
+    ai_manager = get_ai_manager()
+
+    if image_context and provider in ai_manager.providers:
+        v_provider, v_model = multimodal_tools.get_best_vision_provider()
+        if v_provider and v_model:
+            log.info("streaming 2nd-pass vision: %s/%s", v_provider, v_model)
+            provider, model = v_provider, v_model
+
+    started = time.time()
+    received = 0
+    try:
+        for chunk in ai_manager.send_message_streaming(
+            provider, model, messages, timeout=180, max_tokens=4096
+        ):
+            if chunk:
+                received += len(chunk)
+                yield chunk
+    except Exception as e:  # noqa: BLE001
+        log.error("streaming exception (%s/%s): %s", provider, model, e)
+        return
+
+    duration = time.time() - started
+    log.info(
+        "chat (stream) %s/%s | chars=%d | %.1fs",
+        provider, model, received, duration,
+    )
+
+
 def generate_ai_response_streaming(
     profile: dict[str, Any],
     user_message: str,
@@ -292,9 +333,15 @@ def generate_ai_response_streaming(
     model: str | None = None,
     image_content_for_context: list[dict[str, Any]] | None = None,
 ) -> Iterator[str]:
-    """Streaming variant. Currently delegates to non-streaming send_message;
-    yields the full response as a single chunk. The provider streaming API
-    will be wired in Stage 2 once the orchestrator path is stable.
+    """Stream a response from the configured provider chunk by chunk.
+
+    Performs the same context assembly and vision routing as the
+    non-streaming variant, then dispatches via the provider's streaming
+    API. Yields raw provider chunks; the orchestrator is responsible for
+    filtering /command preambles and post-processing.
+
+    The /imagine fast path returns a single chunk because image
+    generation is a synchronous blocking call.
     """
     if session_id is None:
         session_id = Database.get_active_session()["id"]
@@ -316,11 +363,9 @@ def generate_ai_response_streaming(
     if image_content_for_context:
         messages.append({"role": "user", "content": image_content_for_context})
 
-    text = _send_to_provider(
+    yield from _stream_from_provider(
         resolved_provider,
         resolved_model,
         messages,
         image_context=image_content_for_context,
     )
-    if text:
-        yield text
