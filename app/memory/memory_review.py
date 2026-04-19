@@ -328,6 +328,19 @@ def review_memory(fact_ids: list[int], conversation_context: str, session_id: in
         try:
             row = get_fact_by_id(fid)
             if row:
+                # FSRS review only applies to episodic facts (dynamic)
+                # Skip semantic facts - they use temporal validity instead
+                fact_type = row.get("fact_type", "")
+                if fact_type == "static":
+                    # Clear pending_review for semantic facts, they don't need FSRS review
+                    meta = row.get("metadata", {}) or {}
+                    meta["pending_review"] = False
+                    pg_execute(
+                        "UPDATE semantic_facts SET pending_review=FALSE, metadata=%s WHERE id=%s",
+                        (Json(meta), fid),
+                    )
+                    continue
+                
                 facts_to_rate.append({
                     "id": fid,
                     "content": row.get("content", ""),
