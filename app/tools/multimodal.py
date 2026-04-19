@@ -158,7 +158,7 @@ class MultimodalTools:
         }
 
     def extract_image_urls(self, text: str) -> List[str]:
-        url_pattern = r'https?://[^\s<>"\'{}]+'
+        url_pattern = r'https?://[^\s<>"\'{}]{1,500}'
         urls = re.findall(url_pattern, text, re.IGNORECASE)
         
         image_urls = []
@@ -467,7 +467,7 @@ class MultimodalTools:
         import re as _re
         result_str = _img_execute({"prompt": prompt})
         try:
-            m = _re.search(r'src="(static/generated_images/[^"]+)"', result_str)
+            m = _re.search(r'src="(static/generated_images/[^"]{1,200})"', result_str)
             if m:
                 return m.group(1), None
             return None, "No image in result"
@@ -561,9 +561,9 @@ class MultimodalTools:
 
     def detect_uploaded_images(self, text: str) -> List[str]:
         upload_patterns = [
-            r'static/uploads/\d{8}_\d{6}_\d+_[^\s\)]+',
-            r'static/generated_images/\d{8}_\d{6}_[^\s\)]+',
-            r'!\[Image \d+\]\([^)]+\)'
+            r'static/uploads/\d{8}_\d{6}_\d+_[^\s\)]{0,200}',
+            r'static/generated_images/\d{8}_\d{6}_[^\s\)]{0,200}',
+            r'!\[Image \d+\]\([^)]{1,200}\)'
         ]
         
         found_images = []

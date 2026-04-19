@@ -455,14 +455,14 @@ def format_conversation_summary(rows: list[dict]) -> str:
 # AI history formatting (tool-contract parsing for chat_history_for_ai)
 # ---------------------------------------------------------------------------
 
-_RX_BASH_COMMAND = re.compile(r'```bash\n\S+\$\s*(/[^\n]+)\n```')
-_RX_DETAILS_OPEN = re.compile(r'<details>\s*<summary>.*?</summary>', re.DOTALL)
+_RX_BASH_COMMAND = re.compile(r'```bash\n\S+\$\s*(/[^\n]{1,500})\n```')
+_RX_DETAILS_OPEN = re.compile(r'<details>\s*<summary>[^<]{0,500}</summary>', re.DOTALL)
 _RX_DETAILS_CLOSE = re.compile(r'</details>', re.DOTALL)
-_RX_BASH_BLOCK = re.compile(r'```bash\n.*?\n```', re.DOTALL)
-_RX_FENCE_OPEN = re.compile(r'```[\w]*\n?')
+_RX_BASH_BLOCK = re.compile(r'```bash\n[^`]{0,5000}\n```', re.DOTALL)
+_RX_FENCE_OPEN = re.compile(r'```[\w]{0,20}\n?')
 _RX_FENCE_CLOSE = re.compile(r'```')
 _RX_BLOCKQUOTE = re.compile(r'^>\s*', re.MULTILINE)
-_RX_HTML_TAGS = re.compile(r'<[^>]+>')
+_RX_HTML_TAGS = re.compile(r'<[^>]{1,500}>')
 _RX_LEADING_NL = re.compile(r'^\n+')
 _RX_TRAILING_NL = re.compile(r'\n+$')
 
