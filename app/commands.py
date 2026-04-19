@@ -36,6 +36,16 @@ _GENERATED_IMAGE_SRC = re.compile(r'src="(static/generated_images/[^"]+)"')
 # starve the user of streamed output if the model omits a newline.
 _COMMAND_SNIFF_LIMIT = 512
 
+# Maximum length for regex input to prevent ReDoS
+_REGEX_INPUT_LIMIT = 10000
+
+
+def _safe_regex_search(pattern: re.Pattern, text: str) -> re.Match | None:
+    """Safely search with input length limit to prevent ReDoS."""
+    if len(text) > _REGEX_INPUT_LIMIT:
+        text = text[:_REGEX_INPUT_LIMIT]
+    return pattern.search(text)
+
 
 class StreamFilter:
     """Stateful filter that holds back chunks until a /command on the first
@@ -192,11 +202,17 @@ def is_markdown_image_shortcut(response_text: str | None) -> bool:
     """True when the model emitted a raw ![](static/...) instead of /imagine."""
     if not response_text:
         return False
+    # Limit input length to prevent ReDoS
+    if len(response_text) > _REGEX_INPUT_LIMIT:
+        response_text = response_text[:_REGEX_INPUT_LIMIT]
     return bool(_MARKDOWN_IMAGE_PATH.search(response_text))
 
 
 def extract_markdown_image_path(response_text: str) -> str | None:
     """Return the first markdown image path/URL in *response_text*, if any."""
+    # Limit input length to prevent ReDoS
+    if len(response_text) > _REGEX_INPUT_LIMIT:
+        response_text = response_text[:_REGEX_INPUT_LIMIT]
     match = _MARKDOWN_IMAGE_ANY.search(response_text)
     return match.group(1) if match else None
 

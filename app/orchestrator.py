@@ -40,30 +40,72 @@ _MD_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 
 
 def _cache_uploaded_images(message: str) -> list[str]:
+    """Extract image paths from uploaded-images marker, with path validation."""
     if "UPLOADED_IMAGES:" not in message or "IMAGE_UPLOAD:" not in message:
         return []
+    
+    import os
     paths: list[str] = []
+    
+    # Allowed directories for image paths
+    allowed_dirs = ("static/", "uploads/", "generated_images/")
+    
     for line in message.split("\n"):
         if line.startswith("IMAGE_UPLOAD:"):
             candidate = line[len("IMAGE_UPLOAD:"):].strip()
-            import os
+            
+            # Security: validate path is within allowed directories
+            # Prevent path traversal attacks
+            if not candidate:
+                continue
+            
+            # Normalize path to prevent traversal
+            candidate = os.path.normpath(candidate)
+            
+            # Check for path traversal attempts
+            if candidate.startswith("..") or candidate.startswith("/"):
+                log.warning("rejected path traversal attempt: %s", candidate[:50])
+                continue
+            
+            # Verify path is within allowed directories
+            if not any(candidate.startswith(d) for d in allowed_dirs):
+                log.warning("rejected path outside allowed dirs: %s", candidate[:50])
+                continue
+            
             if os.path.isfile(candidate):
                 paths.append(candidate)
+    
     return paths
 
 
 def _cache_images_from_message(message: str) -> list[str]:
-    """Resolve any image references in *message* to local cache paths."""
+    """Resolve any image references in *message* to local cache paths, with validation."""
     import os
     uploaded = _cache_uploaded_images(message)
     if uploaded:
         return uploaded
 
+    # Allowed directories for image paths
+    allowed_dirs = ("static/", "uploads/", "generated_images/")
+    
     cached: list[str] = []
     for match in _MD_IMAGE_PATTERN.finditer(message):
         source = match.group(1)
+        
+        # Limit source length to prevent ReDoS
+        if len(source) > 500:
+            source = source[:500]
+        
         if source.startswith(("static/", "uploads/", "generated_images/")):
             local = source if source.startswith("static/") else f"static/{source}"
+            
+            # Security: validate normalized path
+            local = os.path.normpath(local)
+            if not any(local.startswith(d) for d in allowed_dirs):
+                continue
+            if ".." in local or local.startswith("/"):
+                continue
+                
             if os.path.isfile(local):
                 cached.append(local)
         else:
