@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import logging
+
 __all__ = [
     "review_memory",
     "mark_retrieved_as_pending_review",
@@ -21,6 +23,8 @@ from app.memory.db_memory import (
     get_fact_by_id,
     pg_execute,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ── Rating → FSRS parameter mappings ─────────────────────────────────────────
@@ -79,13 +83,13 @@ def mark_retrieved_as_pending_review(fact_ids: list[int], session_id: int | None
             )
             return 1
         except Exception as e:
-            print(f"[review] mark_pending failed for id={fid}: {e}")
+            logger.warning(f"mark_pending failed for id={fid}: {e}")
             return 0
 
     # Batch update for multiple ids
     ph = ",".join(["%s"] * len(fact_ids))
     try:
-# meta_batch kept for future batch metadata update
+        # meta_batch kept for future batch metadata update
         pass  # meta_batch = {fid: {"last_reviewed_at": now.isoformat()} for fid in fact_ids}
         # Use batch update: set pending_review=TRUE, last_accessed=now
         pg_execute(
@@ -94,7 +98,7 @@ def mark_retrieved_as_pending_review(fact_ids: list[int], session_id: int | None
         )
         return len(fact_ids)
     except Exception as e:
-        print(f"[review] batch mark_pending failed: {e}")
+        logger.warning(f"batch mark_pending failed: {e}")
         return 0
 
 
@@ -149,10 +153,10 @@ Rate: again, hard, good, or easy (respond with ONLY the word)."""
             return "good"
         if "easy" in rating or "core" in rating or "pillar" in rating:
             return "easy"
-        print(f"[review] Unrecognized rating: {rating!r}")
+        logger.warning(f"Unrecognized rating: {rating!r}")
         return None
     except Exception as e:
-        print(f"[review] LLM rating failed: {e}")
+        logger.warning(f"LLM rating failed: {e}")
         return None
 
 
@@ -180,7 +184,7 @@ def _update_fsrs_params(fact_id: int, rating: str) -> bool:
         fact_type = row.get("fact_type", "")
         if source_table != "episodic_memories" and fact_type != "dynamic":
             # Semantic/static facts don't use FSRS — skip update
-            print(f"[review] Skipping FSRS update for non-episodic fact id={fact_id} (source={source_table})")
+            logger.debug(f"Skipping FSRS update for non-episodic fact id={fact_id} (source={source_table})")
             return False
         
         now = datetime.now()
@@ -208,7 +212,7 @@ def _update_fsrs_params(fact_id: int, rating: str) -> bool:
         )
         return True
     except Exception as e:
-        print(f"[review] FSRS update failed for id={fact_id}: {e}")
+        logger.error(f"FSRS update failed for id={fact_id}: {e}")
         return False
 
 
@@ -244,10 +248,10 @@ def review_memory(fact_ids: list[int], conversation_context: str, session_id: in
 
             _update_fsrs_params(fid, rating)
             counts[rating] += 1
-            print(f"[review] id={fid} rated={rating}")
+            logger.debug(f"id={fid} rated={rating}")
         except Exception as e:
-            print(f"[review] review failed for id={fid}: {e}")
+            logger.warning(f"review failed for id={fid}: {e}")
             counts["failed"] += 1
 
-    print(f"[review] session={session_id} results: {counts}")
+    logger.info(f"session={session_id} results: {counts}")
     return counts

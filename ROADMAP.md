@@ -122,40 +122,47 @@ Refactor ~30 Python files in `app/` package, with `app.py` (1400 lines) being th
 
 ### 🎯 7-Step Plan (3 Commits)
 
-#### Stage 4.1: Extract Memory SQL Constants + Delete Dead Code ⬜ NEXT
+#### Stage 4.1: Extract Memory SQL Constants + Delete Dead Code ✅ COMPLETE
 
-**Commit 1 of 3**
+**Commit 1 of 3** — ✅ Completed 2026-04-19
 
-- [ ] **Extract SQL Constants**
+- [x] **Extract SQL Constants**
   - Move all SQL strings to `db_memory_queries.py`
   - Create query builder functions
   - Add vector literal helpers
 
-- [ ] **Delete Dead Code**
-  - ✅ `models.py` already deprecated in Stage 1
-  - [ ] Remove `models.py` completely
-  - [ ] Delete `upsert_fact()` (unused)
-  - [ ] Remove other dead functions
+- [x] **Delete Dead Code**
+  - `models.py` already deleted (not present in directory)
+  - Deleted `upsert_fact()` (unused)
+  - Deleted `search_trgm_keywords()` (DEPRECATED)
+  - Deleted `update_fact_importance()` (DEPRECATED)
+  - Removed duplicate `_normalize()` - use `normalize_vector` from `db_memory_queries`
 
-- [ ] **Update Imports**
-  - Update all files to use new SQL constants
-  - Verify no broken imports
+- [x] **Update Imports**
+  - Updated `db_memory.py` to import from `db_memory_queries`
+  - Updated `retrieval.py` to import from `db_memory_queries`
+  - Fixed scripts to import `pg_fetchall`/`pg_execute` from `db_pg`
 
-#### Stage 4.2: Unify Sync/Async in `db_memory.py` and `retrieval.py` ⬜
+- [x] **Logging Migration (partial)**
+  - Converted `print()` to `logging` in `db_memory.py`
+  - Converted `print()` to `logging` in `retrieval.py`
+
+- [x] **Bug Fixes**
+  - Fixed syntax error in `tests/test_db_queries.py` (walrus operator)
+
+#### Stage 4.2: Unify Sync/Async in `db_memory.py` and `retrieval.py` 🔄 IN PROGRESS
 
 **Commit 2 of 3**
 
-- [ ] **`db_memory.py` Unification**
-  - Consolidate sync/async repository functions
-  - Use `db_memory_queries` builders exclusively
-  - Remove SQL duplication
-  - Simplify function signatures
+- [x] **`db_memory.py` Unification**
+  - ✅ Consolidate sync/async repository functions - both use same SQL constants
+  - ✅ Use `db_memory_queries` builders exclusively
+  - ✅ Remove SQL duplication - done in Stage 4.1
 
 - [ ] **`retrieval.py` Unification**
-  - Consolidate search functions
-  - Use query builders from `db_memory_queries`
-  - Optimize vector similarity search
-  - Add caching if beneficial
+  - ✅ Use query builders from `db_memory_queries` - done in Stage 4.1
+  - [ ] Optimize vector similarity search
+  - [ ] Add caching if beneficial
 
 - [ ] **Testing**
   - Verify retrieval still works
@@ -166,10 +173,12 @@ Refactor ~30 Python files in `app/` package, with `app.py` (1400 lines) being th
 
 **Commit 3 of 3**
 
-- [ ] **Logging Migration**
-  - Replace all `print()` calls with `logging`
-  - Use `get_logger(__name__)` consistently
-  - Proper log levels (DEBUG, INFO, WARNING, ERROR)
+- [ ] **Logging Migration (remaining files)**
+  - Replace all `print()` calls in `memory_review.py`
+  - Replace all `print()` calls in `memory.py`
+  - Replace all `print()` calls in `extractor.py`
+  - Replace all `print()` calls in `pcl.py`
+  - Replace all `print()` calls in `review.py`
 
 - [ ] **Add Tests**
   - Unit tests for query builders
@@ -362,8 +371,8 @@ Refactor ~30 Python files in `app/` package, with `app.py` (1400 lines) being th
 | Stage 1 | ✅ Complete | 2-3 days | 🔴 Critical | ~3 days | Merged |
 | Stage 2 | ✅ Complete | 1 day | 🟡 High | ~1 day | Merged |
 | Stage 3 | ✅ Complete | 0.5 day | 🟢 Medium | ~0.5 day | Merged |
-| Stage 4.1 | 🔄 In Progress | 1 day | 🔴 Critical | - | SQL + dead code |
-| Stage 4.2 | ⬜ Planned | 1.5 days | 🔴 Critical | - | Sync/async unify |
+| Stage 4.1 | ✅ Complete | 1 day | 🔴 Critical | ~1 day | SQL + dead code |
+| Stage 4.2 | 🔄 In Progress | 1.5 days | 🔴 Critical | - | Sync/async unify |
 | Stage 4.3 | ⬜ Planned | 1 day | 🔴 Critical | - | Logging + tests |
 | Stage 4.5 | ⬜ Deferred | 0.5 day | 🟡 High | - | Pending review fix |
 | Stage 5 | ⬜ Planned | 2 days | 🟡 High | - | Tools package |
