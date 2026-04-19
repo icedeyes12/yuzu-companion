@@ -1,6 +1,6 @@
 # FILE: app/commands.py
 # DESCRIPTION: /command detection, dispatch, and markdown-image guards.
-#              All pure helpers - no side effects beyond logging and tool dispatch.
+#              All pure helpers - no side effects beyond log
 
 from __future__ import annotations
 
@@ -26,9 +26,9 @@ _TOOL_ALIASES: dict[str, str] = {
 }
 
 _MARKDOWN_IMAGE_PATH = re.compile(
-    r'!\[[^\]]*\]\((static/|uploads/|generated_images/)[^)]+\)'
+    r'!\[[^\]]{0,200}\]\((static/|uploads/|generated_images/)[^)]{1,200}\)'
 )
-_MARKDOWN_IMAGE_ANY = re.compile(r'!\[[^\]]*\]\(([^)]+)\)')
+_MARKDOWN_IMAGE_ANY = re.compile(r'!\[[^\]]{0,200}\]\(([^)]{1,200})\)')
 _GENERATED_IMAGE_SRC = re.compile(r'src="(static/generated_images/[^"]+)"')
 
 # Maximum chars to buffer while sniffing for a leading /command.

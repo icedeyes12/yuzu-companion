@@ -31,7 +31,7 @@ log = get_logger(__name__)
 _TIMESTAMP_SUFFIX = re.compile(r"\s*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*$")
 _NESTED_COMMAND_PREFIXES = ("/request", "/imagine")
 _EMPTY_RESPONSE_FALLBACK = "I'm having trouble responding right now. Please try again."
-_MD_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+_MD_IMAGE_PATTERN = re.compile(r"!\[[^\]]{0,200}\]\(([^)]{1,200})\)")
 
 
 # ---------------------------------------------------------------------------
