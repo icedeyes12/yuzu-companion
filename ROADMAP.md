@@ -1,12 +1,9 @@
-Here's the updated ROADMAP.md reflecting the approved commit:
-
-` ` `markdown
 # Refactor Roadmap: Complete Codebase Pythonic Refactor
 
 **Project**: yuzu-companion  
-**Branch**: `refactor/stage-1-app-decomposition`  
+**Branch**: `refactor/stage-1-app-decomposition` → `refactor/stage-4-memory-package`  
 **MR**: [!70](https://gitlab.com/icedeyes12-group/yuzu-companion/-/merge_requests/70)  
-**Status**: Stage 1 Complete ✅ | Ready for Review  
+**Status**: Stage 4 In Progress 🔄 | Stages 1-3 Complete ✅  
 **Strategy**: Staged approach - one MR per concern, independently testable  
 **Behavior Preservation**: Option (b) - rename/reshape APIs freely (self-hosted, controlled callers)
 
@@ -16,217 +13,193 @@ Here's the updated ROADMAP.md reflecting the approved commit:
 
 Refactor ~30 Python files in `app/` package, with `app.py` (1400 lines) being the primary monolith. Breaking into 6 coordinated stages to avoid thousands-of-lines MRs that can't be reviewed or tested on Termux.
 
-**⚠️ Note**: Stage 1 expanded beyond original scope to include critical memory system consolidation work (originally planned for Stage 4). This was necessary to ensure the foundation modules had proper memory integration.
-
 ---
 
-## Stage 1: Foundation Modules + Memory Consolidation ✅ COMPLETE
+## Stage 1: Foundation Modules ✅ COMPLETE & MERGED
 
-**Goal**: Split 1400-line monolith into focused modules + consolidate memory SQL  
+**Goal**: Split 1400-line monolith into focused modules  
 **Impact**: Highest leverage, biggest maintainability win  
-**Files Changed**: 23 files
+**Files Changed**: 23 files  
+**Status**: ✅ Merged to master
 
-### ✅ Core Modules Extracted
+### Completed Work
 
-- [x] **`app/logging_config.py`** - Centralized logging
-  - Honors `LOG_LEVEL` environment variable
-  - Idempotent configuration with `get_logger()` helper
-  - Replaces scattered `print(...)` debug calls
+- ✅ **`app/logging_config.py`** - Centralized logging
+- ✅ **`app/commands.py`** - Command detection & execution with `StreamFilter`
+- ✅ **`app/prompts.py`** - System prompt assembly
+- ✅ **`app/llm_client.py`** - AI response generation + `chutes_chat()` helper
+- ✅ **`app/orchestrator.py`** - Message handling entrypoint
+- ✅ **`app/profile_analysis.py`** - Profile & memory analysis
+- ✅ **`app/db_pg.py`** - Enhanced PostgreSQL layer
+- ✅ **`app/memory/db_memory_queries.py`** - SQL consolidation (partial Stage 4 work)
+- ✅ **Bug Fixes**: Streaming synthesis, unbound variables, `pg_scalar()` fix
 
-- [x] **`app/commands.py`** - Command detection & execution
-  - `/command` detection logic (`detect_command`)
-  - `StreamFilter` for command sniffing in streaming responses
-  - Image shortcut guards (markdown image detection)
-  - Tool dispatch integration (`execute_command`)
-  - Command argument parsing with tool aliases
-
-- [x] **`app/prompts.py`** - System prompt assembly
-  - System prompt builder with affection/closeness modes
-  - Message context construction (`build_messages`)
-  - Memory retrieval integration (static + dynamic)
-  - Session context injection
-  - Interface-specific formatting (terminal vs web)
-
-- [x] **`app/llm_client.py`** - AI response generation
-  - **`chutes_chat()`** - Consolidated Chutes HTTP helper
-  - Eliminates 3 duplicated raw-Chutes call sites
-  - Vision routing logic
-  - Direct `/imagine` handling
-  - `generate_ai_response()` (non-streaming)
-  - `generate_ai_response_streaming()` (streaming)
-  - Provider/model resolution
-
-- [x] **`app/orchestrator.py`** - Message handling entrypoint
-  - `handle_user_message()` (non-streaming)
-  - `handle_user_message_streaming()` (streaming)
-  - Tool detection → execution → synthesis pipeline
-  - Image context management with base64 encoding
-  - Post-turn side effects (session naming, memory summarization)
-  - **BUG FIX**: Fixed duplicated synthesis block
-  - **BUG FIX**: Fixed unbound `final_response` variable
-
-- [x] **`app/profile_analysis.py`** - Profile & memory analysis
-  - `summarize_global_player_profile()` - Full conversation analysis
-  - `parse_global_profile_summary()` - LLM output parser
-  - `_merge_profile_data()` - Smart memory merging
-  - Per-session memory summarization
-  - Chutes integration for summaries
-  - Memory normalization and deduplication
-
-### ✅ Database Layer Improvements
-
-- [x] **`app/db_pg.py`** - Enhanced PostgreSQL layer
-  - Improved `PgSession` / `AsyncPgSession` context managers
-  - Better error handling and logging
-  - **FIX**: `pg_scalar()` now uses `execute_scalar()` (was incorrectly using `fetchone()`)
-  - Module-level convenience helpers
-  - Full `__all__` exports
-  - Comprehensive docstrings
-
-### ✅ Memory System Consolidation (Stage 4 Work)
-
-- [x] **`app/memory/db_memory_queries.py`** - NEW FILE
-  - Single source of truth for SQL strings
-  - Vector literal helpers (`normalize_vector`, `vector_literal`)
-  - Dynamic WHERE-clause builders
-  - Eliminates SQL duplication between sync/async paths
-  - Static SQL constants for common queries
-  - pgvector integration with injection-safe interpolation
-
-- [x] **`app/memory/models.py`** - DEPRECATED
-  - Added deprecation warnings
-  - Stub exports for backward compatibility
-  - Migration path documented in comments
-
-### ✅ Type Hints & Modern Python
-
-- [x] All new modules use `from __future__ import annotations`
-- [x] PEP 604 union syntax (`X | None`) throughout
-- [x] Full type coverage on public APIs
-- [x] Proper use of `Iterator`, `Iterable`, `Any` from `typing`
-
-### ✅ Code Quality
-
-- [x] All `print()` debug calls replaced with `logging`
-- [x] Consistent use of `get_logger(__name__)`
-- [x] Proper exception handling with `BLE001` noqa where defensive
-- [x] Comprehensive docstrings on all public functions
-- [x] Clear separation of concerns
-
-### 📊 Stage 1 Statistics
-
-- **Files Changed**: 23
-- **Lines Added**: ~3,500+
-- **Lines Removed**: ~500+
-- **New Modules**: 7
-- **Deprecated Modules**: 1
-- **Bug Fixes**: 2 critical streaming bugs
-- **SQL Consolidation**: Eliminated duplicate SQL across sync/async
+**Outcome**: 
+- 3 Chutes call sites → 1 consolidated helper
+- All `print()` → `logging`
+- Full type hints with PEP 604 syntax
+- 2 critical streaming bugs fixed
 
 ---
 
-## Stage 2: `app/database.py` Simplification ⬜ NEXT
+## Stage 2: `app/database.py` Simplification ✅ COMPLETE & MERGED
 
 **Goal**: Remove passthrough wrapper, simplify database access  
 **Impact**: Reduced indirection, clearer data flow  
-**Estimated Effort**: 1 day
+**Status**: ✅ Merged to master
 
-### Planned Tasks
+### Completed Work
 
-- [ ] **Evaluate `Database` Static Class**
-  - Decision: Delete wrapper and import `db_pg_models` directly
-  - **Recommendation**: Delete and migrate callers (cleaner architecture)
+- ✅ **Removed `Database` Static Class**
+  - Deleted passthrough wrapper
+  - Migrated all callers to direct `db_pg_models` imports
 
-- [ ] **Migrate All Callers**
-  - Find all `Database.method()` calls across codebase
-  - Replace with direct `db_pg_models.method()` imports
-  - Update imports in all affected files
+- ✅ **Migrated All Callers**
+  - Updated imports across entire codebase
+  - Verified no circular dependencies
 
-- [ ] **Remove `app/database.py`**
-  - Delete file after migration complete
-  - Update `__init__.py` if needed
-  - Verify no circular dependencies
+- ✅ **Deleted `app/database.py`**
+  - File removed after migration complete
+  - Updated `__init__.py`
 
-- [ ] **Validation**
+- ✅ **Validation**
   - Manual testing on Termux
-  - Verify all database operations still work
-  - Check for performance changes
+  - All database operations verified working
+  - No performance regressions
+
+**Outcome**: Cleaner architecture, direct database access, reduced indirection
 
 ---
 
-## Stage 3: `app/db_pg.py` Final Cleanup ⬜
+## Stage 3: `app/db_pg.py` Final Cleanup ✅ COMPLETE & MERGED
 
 **Goal**: Remove remaining duplication, polish database layer  
 **Impact**: Small but clean wins  
-**Estimated Effort**: 0.5 day
+**Status**: ✅ Merged to master
 
-### Planned Tasks
+### Completed Work
 
-- [x] ~~Remove Duplicated Functions~~ - DONE in Stage 1
-  - ✅ `pg_scalar()` now correctly uses `execute_scalar()`
+- ✅ **Removed Duplicated Functions**
+  - `pg_scalar()` now correctly uses `execute_scalar()`
+  - Eliminated redundant helper functions
 
-- [x] ~~Verify `dict_row` Usage~~ - DONE in Stage 1
-  - ✅ Already using `psycopg.rows.dict_row` correctly
+- ✅ **Verified `dict_row` Usage**
+  - Confirmed `psycopg.rows.dict_row` used correctly throughout
 
-- [ ] **Drop Legacy Aliases** (if any remain)
-  - Audit for unused legacy function names
-  - Remove if nothing depends on them
+- ✅ **Dropped Legacy Aliases**
+  - Removed unused legacy function names
+  - Cleaned up backward compatibility stubs
 
-- [x] ~~Type Hints~~ - DONE in Stage 1
-  - ✅ Full type coverage added
-  - ✅ Modern union syntax used
+- ✅ **Type Hints**
+  - Full type coverage on all functions
+  - Modern union syntax (`X | None`)
 
-- [x] ~~Documentation~~ - DONE in Stage 1
-  - ✅ Usage examples for `PgSession` / `AsyncPgSession`
-  - ✅ Connection pool behavior documented
+- ✅ **Documentation**
+  - Usage examples for `PgSession` / `AsyncPgSession`
+  - Connection pool behavior documented
+  - All public APIs have docstrings
 
-**Status**: Most Stage 3 work completed in Stage 1. Only legacy alias cleanup remains.
+**Outcome**: Database layer fully modernized and documented
 
 ---
 
-## Stage 4: `app/memory/` Package Refactor ⬜ PARTIALLY COMPLETE
+## Stage 4: `app/memory/` Package Refactor 🔄 IN PROGRESS
 
-**Goal**: Largest subsystem after `app.py` - per-file review and cleanup  
+**Goal**: Largest subsystem - per-file review, SQL consolidation, sync/async unification  
 **Impact**: Critical for memory pipeline reliability  
-**Status**: SQL consolidation done in Stage 1, remaining files need review
+**Status**: 🔄 In Progress - 3-commit plan
 
-### ✅ Completed in Stage 1
+### 📊 Memory System Health Check (Pre-Refactor)
 
-- [x] **`db_memory_queries.py`** - NEW FILE
-  - Single source of truth for SQL strings
-  - Vector helpers and query builders
-  - Eliminates sync/async SQL duplication
+**Database Status** (verified before refactor):
+- ✅ Extensions: `pg_trgm 1.6`, `vector 0.8.2`, `plpgsql 1.0`
+- ✅ Total facts: 2,641
+- ✅ Active facts: 1,586
+- ✅ Pipeline working (not just fallback to recent history)
+- ⚠️ **Known Issue**: `pending_review` drift (512 in column vs 230 in JSON)
+  - Harmless to retrieval but real drift
+  - Will fix in Stage 4.5 with sign-off
 
-- [x] **`models.py`** - DEPRECATED
-  - Deprecation warnings added
-  - Migration path documented
+### 🎯 7-Step Plan (3 Commits)
 
-### ⬜ Remaining Files to Refactor
+#### Stage 4.1: Extract Memory SQL Constants + Delete Dead Code ⬜ NEXT
+
+**Commit 1 of 3**
+
+- [ ] **Extract SQL Constants**
+  - Move all SQL strings to `db_memory_queries.py`
+  - Create query builder functions
+  - Add vector literal helpers
+
+- [ ] **Delete Dead Code**
+  - ✅ `models.py` already deprecated in Stage 1
+  - [ ] Remove `models.py` completely
+  - [ ] Delete `upsert_fact()` (unused)
+  - [ ] Remove other dead functions
+
+- [ ] **Update Imports**
+  - Update all files to use new SQL constants
+  - Verify no broken imports
+
+#### Stage 4.2: Unify Sync/Async in `db_memory.py` and `retrieval.py` ⬜
+
+**Commit 2 of 3**
+
+- [ ] **`db_memory.py` Unification**
+  - Consolidate sync/async repository functions
+  - Use `db_memory_queries` builders exclusively
+  - Remove SQL duplication
+  - Simplify function signatures
+
+- [ ] **`retrieval.py` Unification**
+  - Consolidate search functions
+  - Use query builders from `db_memory_queries`
+  - Optimize vector similarity search
+  - Add caching if beneficial
+
+- [ ] **Testing**
+  - Verify retrieval still works
+  - Test vector search accuracy
+  - Validate sync/async parity
+
+#### Stage 4.3: Replace `print()` with `logging` + Add Tests ⬜
+
+**Commit 3 of 3**
+
+- [ ] **Logging Migration**
+  - Replace all `print()` calls with `logging`
+  - Use `get_logger(__name__)` consistently
+  - Proper log levels (DEBUG, INFO, WARNING, ERROR)
+
+- [ ] **Add Tests**
+  - Unit tests for query builders
+  - Integration tests for retrieval
+  - Vector search validation tests
+  - Fact extraction tests
+
+- [ ] **Documentation**
+  - Update docstrings
+  - Add usage examples
+  - Document memory pipeline flow
+
+### ⬜ Remaining Files (After 3-Commit Plan)
 
 - [ ] **`memory.py`** - Main memory orchestration
   - Review pipeline logic
   - Simplify async/sync boundaries
   - Add type hints
-  - Use new `db_memory_queries` module
 
 - [ ] **`extractor.py`** - Fact extraction
   - Review extraction logic
   - Optimize for performance
   - Add validation
-  - Integrate with `db_memory_queries`
-
-- [ ] **`retrieval.py`** - Memory retrieval
-  - Review search algorithms
-  - Optimize vector similarity
-  - Add caching if needed
-  - Use query builders from `db_memory_queries`
 
 - [ ] **`review.py`** - Memory review/decay
   - Review decay algorithms
   - Validate review logic
   - Add metrics
 
-- [ ] **`pcl.py`** - PCL (Persistent Context Layer?)
+- [ ] **`pcl.py`** - PCL (Persistent Context Layer)
   - Understand purpose
   - Refactor if needed
   - Document
@@ -236,23 +209,25 @@ Refactor ~30 Python files in `app/` package, with `app.py` (1400 lines) being th
   - Optimize batch processing
   - Add error handling
 
-- [ ] **`db_memory.py`** - Memory database layer
-  - Migrate to use `db_memory_queries` exclusively
-  - Remove remaining SQL duplication
-  - Simplify repository functions
+### 🔧 Stage 4.5: Fix `pending_review` Drift (Planned)
 
-### Cross-Cutting Concerns
+**Deferred until after 3-commit plan**
 
-- [x] ~~Deprecate `models.py`~~ - DONE in Stage 1
-- [ ] **Plan Full Removal Timeline**
-  - Identify remaining callers
-  - Create migration guide
-  - Set deprecation deadline
+- [ ] **Investigate Drift**
+  - 512 in column vs 230 in JSON
+  - Identify why `TRUE` values don't reset
 
-- [ ] **Memory Pipeline Testing**
-  - Add integration tests
-  - Validate fact extraction
-  - Test decay logic
+- [ ] **Implement Fix**
+  - Add proper reset logic
+  - Sync column with JSON state
+  - Add validation
+
+- [ ] **Testing**
+  - Verify drift eliminated
+  - Monitor over time
+  - Add regression test
+
+**Note**: Awaiting sign-off before implementing fix
 
 ---
 
@@ -319,73 +294,124 @@ Refactor ~30 Python files in `app/` package, with `app.py` (1400 lines) being th
 
 ## 🎯 Success Criteria
 
-### Stage 1 ✅ ACHIEVED
-- ✅ No behavior regressions (needs Termux testing)
-- ✅ Improved code organization and readability
-- ✅ Reduced code duplication (3 Chutes call sites → 1)
-- ✅ Type hints on all public APIs
-- ✅ Logging instead of print statements
-- ✅ Modern Python patterns (3.10+)
-- ✅ Critical bugs fixed (streaming synthesis)
+### Per-Stage Completion
+- ✅ Stage 1: No behavior regressions, improved organization, bugs fixed
+- ✅ Stage 2: Database wrapper removed, cleaner architecture
+- ✅ Stage 3: Database layer polished and documented
+- 🔄 Stage 4: Memory system consolidated, sync/async unified, tests added
+- ⬜ Stage 5: Tool registry cleaned up
+- ⬜ Stage 6: Scripts standardized
 
 ### Overall Project
 - ⬜ All 6 stages completed and merged
 - ⬜ `app.py` reduced from 1400 lines to <200 lines (or removed entirely)
-- ⬜ No `Database` passthrough wrapper
-- ⬜ Consolidated memory system
+- ✅ No `Database` passthrough wrapper (Stage 2 complete)
+- 🔄 Consolidated memory system (Stage 4 in progress)
 - ⬜ Clean tool registry
 - ⬜ Documented scripts
-- ⬜ (Future) Add `tests/` directory with pytest coverage
+- 🔄 Tests added (Stage 4.3 will add first tests)
 
 ---
 
 ## 📝 Notes & Decisions
 
-### Stage 1 Scope Expansion
-**Decision**: Included `db_memory_queries.py` (originally Stage 4) in Stage 1  
-**Rationale**: Foundation modules needed proper memory integration. Consolidating SQL strings was critical for the orchestrator and LLM client to work correctly.  
-**Impact**: Stage 1 is larger than planned but more cohesive. Stage 4 is now lighter.
+### Stage 4 Breakdown Rationale
+**Decision**: Split Stage 4 into 3 focused commits  
+**Rationale**: Memory system is complex. Breaking into SQL extraction → sync/async unification → testing makes each commit reviewable and testable independently.  
+**Impact**: Stage 4 takes longer but each step is safer.
+
+### Pending Review Drift
+**Issue**: 512 facts marked `pending_review=TRUE` in column vs 230 in JSON  
+**Impact**: Harmless to retrieval (doesn't affect search results)  
+**Fix**: Deferred to Stage 4.5 pending sign-off  
+**Root Cause**: `TRUE` values accumulate but never get reset properly
 
 ### Testing Strategy
-- **Current**: No automated tests (`pytest` in requirements but no `tests/` directory)
-- **Approach**: Manual testing on Termux per stage
-- **Risk**: Runtime regressions possible without test coverage
-- **Next Step**: Test Stage 1 thoroughly before proceeding to Stage 2
-
-### Behavior Preservation
-- **Mode**: Option (b) - Free to rename/reshape APIs
-- **Rationale**: Self-hosted, you control all callers
-- **Constraint**: Must maintain external API contracts (FastAPI routes)
-
-### Known Issues Fixed in Stage 1
-- ✅ **Duplicated synthesis block** in `handle_user_message_streaming`
-- ✅ **Unbound `final_response`** variable in streaming path
-- ✅ **`pg_scalar()` bug** - was using `fetchone()` instead of `execute_scalar()`
+- **Current**: No automated tests (pytest in requirements but no `tests/` directory)
+- **Stage 4.3**: Will add first tests for memory system
+- **Future**: Expand test coverage in later stages
+- **Approach**: Manual testing on Termux + automated tests where feasible
 
 ### Migration Path
-Each stage is independently mergeable:
-1. ✅ Stage 1: Create feature branch from `master`
-2. ✅ Stage 1: Implement changes (DONE)
-3. ⬜ Stage 1: Manual testing on Termux (PENDING)
-4. ⬜ Stage 1: Review MR !70
-5. ⬜ Stage 1: Merge to `master`
-6. ⬜ Stage 2: Branch from updated `master`
+- ✅ Stage 1: Merged to master
+- ✅ Stage 2: Merged to master
+- ✅ Stage 3: Merged to master
+- 🔄 Stage 4: In progress (3 commits)
+  - ⬜ Stage 4.1: SQL extraction + dead code removal
+  - ⬜ Stage 4.2: Sync/async unification
+  - ⬜ Stage 4.3: Logging + tests
+  - ⬜ Stage 4.5: Fix pending_review drift (deferred)
+- ⬜ Stage 5: Branch from updated master after Stage 4
+- ⬜ Stage 6: Branch from updated master after Stage 5
 
 ---
 
 ## 🚀 Current Status
 
-**Active Stage**: Stage 1 - ✅ **COMPLETE** (awaiting review & testing)  
-**Next Stage**: Stage 2 - `app/database.py` simplification  
+**Active Stage**: Stage 4.1 - Extract Memory SQL Constants + Delete Dead Code  
+**Next Commit**: Stage 4.1 (1 of 3)  
 **Blocked**: None  
-**Credits**: Ran out during Stage 1 (agentic mode) - final commit approved manually
+**Credits**: Sufficient for Stage 4 work
 
 ---
 
 ## 📅 Timeline
 
-| Stage | Status | Estimated Effort | Priority | Actual Effort |
-|-------|--------|-----------------|----------|---------------|
-| Stage 1 | ✅ Complete | 2-3 days | 🔴 Critical | ~3 days |
-| Stage 2 | ⬜ Planned | 1 day | 🟡 High | - |
-| Stage 3 | ⬜ Mostly
+| Stage | Status | Estimated | Priority | Actual | Notes |
+|-------|--------|-----------|----------|--------|-------|
+| Stage 1 | ✅ Complete | 2-3 days | 🔴 Critical | ~3 days | Merged |
+| Stage 2 | ✅ Complete | 1 day | 🟡 High | ~1 day | Merged |
+| Stage 3 | ✅ Complete | 0.5 day | 🟢 Medium | ~0.5 day | Merged |
+| Stage 4.1 | 🔄 In Progress | 1 day | 🔴 Critical | - | SQL + dead code |
+| Stage 4.2 | ⬜ Planned | 1.5 days | 🔴 Critical | - | Sync/async unify |
+| Stage 4.3 | ⬜ Planned | 1 day | 🔴 Critical | - | Logging + tests |
+| Stage 4.5 | ⬜ Deferred | 0.5 day | 🟡 High | - | Pending review fix |
+| Stage 5 | ⬜ Planned | 2 days | 🟡 High | - | Tools package |
+| Stage 6 | ⬜ Planned | 1 day | 🟢 Low | - | Scripts cleanup |
+
+**Total Progress**: 3/6 stages complete (50%) + Stage 4 in progress (0/3 commits)
+
+---
+
+## 🔍 Stage 4 Detailed Breakdown
+
+### Stage 4.1: SQL Extraction + Dead Code Removal
+
+**Files to Modify**:
+- `app/memory/db_memory_queries.py` (expand)
+- `app/memory/models.py` (delete)
+- `app/memory/db_memory.py` (update imports)
+- `app/memory/retrieval.py` (update imports)
+
+**Expected Changes**:
+- ~500 lines moved to `db_memory_queries.py`
+- ~200 lines deleted (dead code)
+- ~50 import updates
+
+### Stage 4.2: Sync/Async Unification
+
+**Files to Modify**:
+- `app/memory/db_memory.py` (major refactor)
+- `app/memory/retrieval.py` (major refactor)
+
+**Expected Changes**:
+- ~300 lines consolidated (remove duplication)
+- Unified function signatures
+- Consistent error handling
+
+### Stage 4.3: Logging + Tests
+
+**Files to Modify**:
+- All `app/memory/*.py` files (logging)
+- `tests/memory/` (new directory)
+
+**Expected Changes**:
+- ~50 `print()` → `logging` replacements
+- ~500 lines of new tests
+- Test fixtures and helpers
+
+---
+
+**Last Updated**: 2026-04-19  
+**Author**: Bani Baskara (@icedeyes12)  
+**Current Branch**: `refactor/stage-4-memory-package`

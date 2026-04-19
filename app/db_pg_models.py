@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
 from app.db_pg import PgSession, pg_execute, pg_fetchall, pg_fetchone
 from app.db_queries import (
