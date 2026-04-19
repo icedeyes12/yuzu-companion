@@ -1,14 +1,17 @@
 # FILE: app/tools/multimodal.py
 # DESCRIPTION: Multimodal tools with image caching and vision support
 
+import logging
 import requests
 import base64
 import re
 import time
 import os
 import hashlib
-from app.database import Database
 from typing import List, Dict, Optional, Tuple
+from app.db_pg_models import get_profile, get_api_keys
+
+logger = logging.getLogger(__name__)
 
 class MultimodalTools:
     IMAGE_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static', 'image_cache')
@@ -33,10 +36,6 @@ class MultimodalTools:
             'openrouter': "https://openrouter.ai/api/v1/chat/completions",
             'chutes_image': "https://image.chutes.ai/generate"
         }
-        
-        # Image generation logic moved to tools/image_generate.py
-        # This module is now only for multimodal input processing.
-        self.image_generation_models = {}
         
         # Image cache for base64 encoded images
         self.image_cache = {}
@@ -106,7 +105,7 @@ class MultimodalTools:
         for ext in ('.png', '.jpg', '.jpeg', '.gif', '.webp'):
             candidate = os.path.join(self.IMAGE_CACHE_DIR, f"{url_hash}{ext}")
             if os.path.isfile(candidate):
-                print(f"[Vision] Using cached image → {candidate}")
+                logger.debug(f"[Vision] Using cached image → {candidate}")
                 return candidate
 
         try:
@@ -127,10 +126,10 @@ class MultimodalTools:
             with open(filepath, 'wb') as f:
                 f.write(response.content)
 
-            print(f"[Vision] Downloaded image → {filepath}")
+            logger.debug(f"[Vision] Downloaded image → {filepath}")
             return filepath
         except Exception as e:
-            print(f"[WARNING] Failed to download image from {url}: {e}")
+            logger.warning(f"[WARNING] Failed to download image from {url}: {e}")
             return None
 
     @staticmethod
@@ -320,7 +319,7 @@ class MultimodalTools:
                 # Local file path — encode directly
                 image_content = self.encode_image_to_base64(source)
                 if image_content:
-                    print(f"[Vision] Encoded local image → {source}")
+                    logger.debug(f"[Vision] Encoded local image → {source}")
                     content.append(image_content)
         
         return [{"role": "user", "content": content}]
@@ -474,7 +473,7 @@ class MultimodalTools:
             return None, "No image in result"
         except Exception as e:
             # Log the parsing error but return a generic message
-            print(f"[multimodal] Failed to parse image generation result: {e}")
+            logger.debug(f"[multimodal] Failed to parse image generation result: {e}")
             return None, "Image result parsing failed"
     
     def get_best_vision_provider(self) -> Tuple[Optional[str], Optional[str]]:
@@ -488,11 +487,11 @@ class MultimodalTools:
         Returns:
             Tuple of (provider_name, model_name) or (None, None) if none available
         """
-        api_keys = Database.get_api_keys()
+        api_keys = get_api_keys()
         
         # 1. Check user's saved preference first
         try:
-            profile = Database.get_profile()
+            profile = get_profile()
             providers_config = profile.get('providers_config', {})
             prefs = providers_config.get('vision_model_preferences', {})
             saved_provider = prefs.get('provider')
@@ -502,12 +501,12 @@ class MultimodalTools:
                 # Validate that the saved model is still available
                 available = self.get_available_vision_models(saved_provider)
                 if saved_model in available:
-                    print(f"[Vision] Using saved preference: {saved_provider}/{saved_model}")
+                    logger.debug(f"[Vision] Using saved preference: {saved_provider}/{saved_model}")
                     return saved_provider, saved_model
                 else:
-                    print(f"[Vision] Saved model {saved_provider}/{saved_model} not available, using default")
+                    logger.debug(f"[Vision] Saved model {saved_provider}/{saved_model} not available, using default")
         except Exception as e:
-            print(f"[Vision] Could not load saved preference: {e}")
+            logger.debug(f"[Vision] Could not load saved preference: {e}")
         
         # 2. Try Chutes first (preferred)
         if 'chutes' in api_keys:
