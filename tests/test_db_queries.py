@@ -189,7 +189,7 @@ class TestToolContractParsers:
             "```bash\n$ /imagine a cat\n```\n"
             "result\n</details>"
         )
-        assert extract_command_from_contract := extract_command_from_markdown_contract
+        extract_command_from_contract = extract_command_from_markdown_contract
         assert extract_command_from_contract(contract) == "/imagine a cat"
 
     def test_extract_command_returns_input_when_no_match(self):
