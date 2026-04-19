@@ -51,6 +51,9 @@ _MIN_STABILITY   = 0.1
 _MIN_DIFFICULTY  = 0.1
 _MAX_DIFFICULTY  = 4.0
 
+# Batch processing
+_REVIEW_BATCH_SIZE = 20  # facts per LLM call
+
 
 def _get_ai_manager():
     """Lazy-import to avoid circular imports."""
@@ -100,6 +103,91 @@ def mark_retrieved_as_pending_review(fact_ids: list[int], session_id: int | None
     except Exception as e:
         logger.warning(f"batch mark_pending failed: {e}")
         return 0
+
+
+def _rate_facts_batch(
+    facts: list[dict],
+    conversation_context: str,
+) -> dict[int, str]:
+    """Rate multiple facts in a single LLM call.
+
+    Args:
+        facts: list of {id, content, category} dicts
+        conversation_context: recent conversation text
+
+    Returns:
+        dict mapping fact_id -> rating ("again"/"hard"/"good"/"easy")
+    """
+    if not facts:
+        return {}
+
+    # Build facts list for prompt
+    facts_text = "\n".join(
+        f"[{i+1}] ID={f['id']}: {f['content'][:200]} (category: {f.get('category', 'unknown')})"
+        for i, f in enumerate(facts)
+    )
+
+    system_prompt = """You are a memory relevance reviewer. Rate each memory's relevance to the conversation.
+
+Ratings:
+- **again**: NOT used — noise, irrelevant, incorrect
+- **hard**: Tangentially related — weak connection
+- **good**: Directly relevant — influenced conversation helpfully
+- **easy**: CORE PILLAR — essential to conversation
+
+Respond with ONLY a JSON array of objects:
+[{"id": 123, "rating": "good"}, {"id": 124, "rating": "again"}, ...]
+
+Rate ALL facts. Use exactly: "again", "hard", "good", or "easy"."""
+
+    user_prompt = f"""Conversation context:
+{conversation_context[:1000]}
+
+Facts to rate:
+{facts_text}
+
+Rate each fact (respond with JSON array only):"""
+
+    try:
+        import json
+        ai = _get_ai_manager()
+        response = ai._internal_llm_call(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            timeout=30,
+            max_tokens=500,
+        )
+        if not response:
+            return {}
+
+        # Parse JSON response
+        try:
+            ratings = json.loads(response.strip())
+        except json.JSONDecodeError:
+            # Try to extract JSON from response
+            import re
+            match = re.search(r'\[.*\]', response, re.DOTALL)
+            if match:
+                ratings = json.loads(match.group(0))
+            else:
+                logger.warning(f"Could not parse batch ratings: {response[:100]}")
+                return {}
+
+        # Build result dict
+        result = {}
+        for item in ratings:
+            if isinstance(item, dict) and "id" in item and "rating" in item:
+                rating = item["rating"].lower().strip()
+                if rating in _RATING_MULTIPLIERS:
+                    result[item["id"]] = rating
+
+        return result
+
+    except Exception as e:
+        logger.warning(f"Batch rating failed: {e}")
+        return {}
 
 
 def _rate_fact(fact_content: str, fact_category: str | None, conversation_context: str) -> str | None:
@@ -219,7 +307,7 @@ def _update_fsrs_params(fact_id: int, rating: str) -> bool:
 def review_memory(fact_ids: list[int], conversation_context: str, session_id: int | None = None) -> dict:
     """Review a list of retrieved memories against the conversation context.
 
-    Each fact is rated by LLM (again/hard/good/easy) and FSRS parameters updated.
+    Uses batch processing for efficiency: processes up to 20 facts per LLM call.
 
     Args:
         fact_ids: list of fact IDs returned from retrieve_memory
@@ -231,27 +319,48 @@ def review_memory(fact_ids: list[int], conversation_context: str, session_id: in
     """
     counts = {"again": 0, "hard": 0, "good": 0, "easy": 0, "failed": 0}
 
+    if not fact_ids:
+        return counts
+
+    # Fetch all facts first
+    facts_to_rate = []
     for fid in fact_ids:
         try:
             row = get_fact_by_id(fid)
-            if not row:
-                counts["failed"] += 1
-                continue
+            if row:
+                facts_to_rate.append({
+                    "id": fid,
+                    "content": row.get("content", ""),
+                    "category": row.get("metadata", {}).get("category"),
+                })
+        except Exception as e:
+            logger.warning(f"Could not fetch fact {fid}: {e}")
+            counts["failed"] += 1
 
-            content = row.get("content", "")
-            category = row.get("metadata", {}).get("category")
-            rating = _rate_fact(content, category, conversation_context)
-
+    # Process in batches
+    for i in range(0, len(facts_to_rate), _REVIEW_BATCH_SIZE):
+        batch = facts_to_rate[i:i + _REVIEW_BATCH_SIZE]
+        
+        # Rate batch
+        ratings = _rate_facts_batch(batch, conversation_context)
+        
+        # Update FSRS params for each fact
+        for fact in batch:
+            fid = fact["id"]
+            rating = ratings.get(fid)
+            
+            if rating is None:
+                # Fallback to single-fact rating if batch didn't return this one
+                rating = _rate_fact(fact["content"], fact.get("category"), conversation_context)
+            
             if rating is None:
                 counts["failed"] += 1
                 continue
+            
+            if _update_fsrs_params(fid, rating):
+                counts[rating] = counts.get(rating, 0) + 1
+            else:
+                counts["failed"] += 1
 
-            _update_fsrs_params(fid, rating)
-            counts[rating] += 1
-            logger.debug(f"id={fid} rated={rating}")
-        except Exception as e:
-            logger.warning(f"review failed for id={fid}: {e}")
-            counts["failed"] += 1
-
-    logger.info(f"session={session_id} results: {counts}")
+    logger.info(f"session={session_id} reviewed {len(facts_to_rate)} facts in {(len(facts_to_rate) + _REVIEW_BATCH_SIZE - 1) // _REVIEW_BATCH_SIZE} batches: {counts}")
     return counts
