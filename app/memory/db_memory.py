@@ -255,8 +255,8 @@ def search_tsv(
     )
 
     sql = build_search_tsv_query(conditions)
-    # Params order: query (for plainto_tsquery), ...conditions..., query (for ts_rank), limit
-    params_with_query = [query] + params + [query, limit]
+    # Params order: query (ts_rank), query (WHERE), ...conditions..., limit
+    params_with_query = [query, query] + params + [limit]
 
     try:
         results = pg_fetchall(sql, params_with_query)
