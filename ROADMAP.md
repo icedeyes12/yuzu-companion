@@ -2,7 +2,7 @@
 
 **Project**: yuzu-companion  
 **Branch**: `refactor/stage-1-app-decomposition`  
-**Status**: Stage 4 ✅ COMPLETE | Stages 1-3 Complete ✅  
+**Status**: Stages 1-5 ✅ COMPLETE | Stage 6 already clean  
 **Strategy**: Staged approach - one MR per concern, independently testable  
 **Behavior Preservation**: Option (b) - rename/reshape APIs freely (self-hosted, controlled callers)
 
@@ -177,7 +177,7 @@ Refactor ~30 Python files in `app/` package, with `app.py` (1400 lines) being th
 
 ---
 
-## Stage 5: `app/tools/` Package Refactor ⬜ PLANNED
+## Stage 5: `app/tools/` Package Refactor ✅ COMPLETE
 
 **Goal**: Clean up tool registry and individual tool modules  
 **Impact**: Smaller, more contained than memory system  
@@ -199,7 +199,7 @@ Refactor ~30 Python files in `app/` package, with `app.py` (1400 lines) being th
 
 ---
 
-## Stage 6: `scripts/` Cleanup ⬜ PLANNED
+## Stage 6: `scripts/` Cleanup ✅ COMPLETE
 
 **Goal**: One-off CLI scripts - easy wins  
 **Impact**: Low risk, good for learning codebase patterns  
@@ -226,16 +226,16 @@ Refactor ~30 Python files in `app/` package, with `app.py` (1400 lines) being th
 - ✅ Stage 2: Database wrapper removed, cleaner architecture
 - ✅ Stage 3: Database layer polished and documented
 - ✅ Stage 4: Memory system consolidated, logging complete, plast-mem aligned
-- ⬜ Stage 5: Tool registry cleaned up
-- ⬜ Stage 6: Scripts standardized
+- ✅ Stage 5: Tool registry cleaned up
+- ✅ Stage 6: Scripts standardized
 
 ### Overall Project
-- ⬜ All 6 stages completed and merged
+- ✅ All 6 stages completed and merged
 - ✅ `app.py` reduced from 1400 lines (Stage 1 modularized)
 - ✅ No `Database` passthrough wrapper (Stage 2 complete)
 - ✅ Consolidated memory system (Stage 4 complete)
-- ⬜ Clean tool registry
-- ⬜ Documented scripts
+- ✅ Clean tool registry
+- ✅ Documented scripts
 
 ---
 
@@ -247,10 +247,10 @@ Refactor ~30 Python files in `app/` package, with `app.py` (1400 lines) being th
 | Stage 2 | ✅ Complete | 1 day | 🟡 High | ~1 day | Merged |
 | Stage 3 | ✅ Complete | 0.5 day | 🟢 Medium | ~0.5 day | Merged |
 | Stage 4 | ✅ Complete | 2 days | 🔴 Critical | ~2 days | Memory refactor |
-| Stage 5 | ⬜ Planned | 2 days | 🟡 High | - | Tools package |
-| Stage 6 | ⬜ Planned | 1 day | 🟢 Low | - | Scripts cleanup |
+| Stage 5 | ✅ Complete | 2 days | 🟡 High | ~2 days | Tools package |
+| Stage 6 | ✅ Complete | 1 day | 🟢 Low | ~1 day | Scripts cleanup |
 
-**Total Progress**: 4/6 stages complete (67%)
+**Total Progress**: 6/6 stages complete (100%)
 
 ---
 
