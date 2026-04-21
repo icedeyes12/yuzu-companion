@@ -91,7 +91,8 @@ SCHEMA_DDL: tuple[str, ...] = (
         message_count INTEGER NOT NULL DEFAULT 0,
         memory_json TEXT NOT NULL DEFAULT '{}',
         timestamp TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
+        updated_at TIMESTAMP DEFAULT NOW(),
+        deleted_at TIMESTAMP DEFAULT NULL
     )
     """,
     """
@@ -117,7 +118,10 @@ SCHEMA_DDL: tuple[str, ...] = (
     """,
     "CREATE INDEX IF NOT EXISTS idx_chat_sessions_active ON chat_sessions(is_active)",
     "CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated ON chat_sessions(updated_at)",
+    "CREATE INDEX IF NOT EXISTS idx_chat_sessions_deleted ON chat_sessions(deleted_at)",
     "CREATE INDEX IF NOT EXISTS idx_api_keys_name ON api_keys(key_name)",
+    # Migration: Add deleted_at column if it doesn't exist (safe to run multiple times)
+    "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP DEFAULT NULL",
 )
 
 
@@ -199,7 +203,7 @@ def parse_profile_row(row: dict | None) -> dict:
 # ---------------------------------------------------------------------------
 
 SQL_SESSION_SELECT_ACTIVE = \
-    "SELECT * FROM chat_sessions WHERE is_active = TRUE LIMIT 1"
+    "SELECT * FROM chat_sessions WHERE is_active = TRUE AND deleted_at IS NULL LIMIT 1"
 
 SQL_SESSION_INSERT = """
 INSERT INTO chat_sessions (name, is_active, message_count, memory_json, created_at, updated_at)
@@ -207,18 +211,18 @@ VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
 """
 
 SQL_SESSION_SELECT_ALL = \
-    "SELECT * FROM chat_sessions ORDER BY updated_at DESC"
+    "SELECT * FROM chat_sessions WHERE deleted_at IS NULL ORDER BY updated_at DESC"
 
 SQL_SESSION_DEACTIVATE_ALL = \
-    "UPDATE chat_sessions SET is_active = FALSE"
+    "UPDATE chat_sessions SET is_active = FALSE WHERE deleted_at IS NULL"
 
 SQL_SESSION_ACTIVATE_ONE = \
-    "UPDATE chat_sessions SET is_active = TRUE, updated_at = %s WHERE id = %s"
+    "UPDATE chat_sessions SET is_active = TRUE, updated_at = %s WHERE id = %s AND deleted_at IS NULL"
 
 SQL_SESSION_RENAME = \
-    "UPDATE chat_sessions SET name = %s, updated_at = %s WHERE id = %s"
+    "UPDATE chat_sessions SET name = %s, updated_at = %s WHERE id = %s AND deleted_at IS NULL"
 
-SQL_SESSION_DELETE = "UPDATE chat_sessions SET is_active = FALSE WHERE id = %s"
+SQL_SESSION_DELETE = "UPDATE chat_sessions SET deleted_at = NOW() WHERE id = %s"
 
 SQL_SESSION_UPDATE_MEMORY = \
     "UPDATE chat_sessions SET memory_json = %s, updated_at = %s WHERE id = %s"
