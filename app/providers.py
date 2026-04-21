@@ -589,6 +589,7 @@ class ChutesProvider(AIProvider):
             "deepseek-ai/DeepSeek-V3.2-Exp",
             "moonshotai/Kimi-K2-Instruct-0905",
             "moonshotai/Kimi-K2.5-TEE",
+            "moonshotai/Kimi-K2.6-TEE",
             "tngtech/DeepSeek-TNG-R1T-Chimera",
             "tngtech/DeepSeek-TNG-R1T2-Chimera",
             "Qwen/Qwen3-Next-80B-A3B-Instruct",
