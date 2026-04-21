@@ -218,7 +218,7 @@ SQL_SESSION_ACTIVATE_ONE = \
 SQL_SESSION_RENAME = \
     "UPDATE chat_sessions SET name = %s, updated_at = %s WHERE id = %s"
 
-SQL_SESSION_DELETE = "DELETE FROM chat_sessions WHERE id = %s"
+SQL_SESSION_DELETE = "UPDATE chat_sessions SET is_active = FALSE WHERE id = %s"
 
 SQL_SESSION_UPDATE_MEMORY = \
     "UPDATE chat_sessions SET memory_json = %s, updated_at = %s WHERE id = %s"
