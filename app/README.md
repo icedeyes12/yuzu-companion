@@ -78,7 +78,7 @@ graph TD
     A --> G[memory/]
     A --> H[tools/]
 
-    API --> API1[__init__.py<br/>Package init]
+    API --> API1["init.py<br/>Package init"]
     API --> API2[routes.py<br/>All /api/* endpoints]
 
     B1 --> B1a[Centralized logging<br/>get_logger()]
@@ -714,24 +714,25 @@ sequenceDiagram
 ## Dependencies
 
 ```markdown
-# Core
-SQLAlchemy>=2.0.0     # ORM
-pycryptodome>=3.20.0  # Encryption
+# Database & Encryption
+SQLAlchemy>=2.0.0           # ORM (legacy compatibility)
+psycopg[binary,pool]>=3.1   # PostgreSQL adapter (psycopg v3) + pgvector
+pycryptodome>=3.20.0       # ChaCha20-Poly1305 encryption
 
 # Web (FastAPI)
-fastapi>=0.115.0      # Modern async web framework
+fastapi>=0.115.0           # Modern async web framework
 uvicorn[standard]>=0.30.0  # ASGI server
-pydantic>=2.8.0       # Data validation with type hints
+pydantic>=2.8.0            # Data validation with type hints
 python-multipart>=0.0.9   # For file uploads
-Jinja2>=3.1.0         # Template engine (still used)
+Jinja2>=3.1.0              # Template engine
 
 # Terminal UI
-rich>=13.0.0
-prompt-toolkit>=3.0.0
+rich>=13.0.0               # Beautiful terminal formatting
+prompt-toolkit>=3.0.0      # Advanced terminal input
 
 # Networking
-requests>=2.33.0
-beautifulsoup4>=4.12.0
+requests>=2.33.0           # HTTP requests
+beautifulsoup4>=4.12.0     # HTML parsing
 ```
 
 ---
