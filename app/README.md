@@ -38,7 +38,7 @@ Yuzu Companion is a multi-interface AI companion with:
 - **Encrypted conversations** — ChaCha20-Poly1305 encryption for API keys
 - **Three interfaces** — Terminal (Rich UI), Web (FastAPI), and programmatic (CLI/API)
 
-```mermaid
+```
 graph LR
     A[User] --> B[main.py - CLI Entry]
     A --> C[web.py - Web Server]
@@ -58,48 +58,45 @@ graph LR
 
 ## Directory Structure
 
-```mermaid
-graph TD
-    A[app/] --> B[app.py]
-    A --> B1[logging_config.py]
-    A --> B2[visual_context.py]
-    A --> B3[commands.py]
-    A --> B4[prompts.py]
-    A --> B5[llm_client.py]
-    A --> B6[orchestrator.py]
-    A --> B7[profile_analysis.py]
-    A --> API[api/]
-    A --> C[db_pg.py]
-    A --> C1[db_pg_models.py]
-    A --> C2[db_queries.py]
-    A --> D[providers.py]
-    A --> E[encryption.py]
-    A --> F[key_manager.py]
-    A --> G[memory/]
-    A --> H[tools/]
-
-    API --> API1[init.py - Package init]
-    API --> API2[routes.py - All /api/* endpoints]
-
-    B1 --> B1a[Centralized logging - get_logger()]
-
-    G --> G1[extractor.py]
-    G --> G2[memory.py]
-    G --> G3[retrieval.py]
-    G --> G4[review.py]
-    G --> G5[embedder.py]
-    G --> G6[db_memory_queries.py]
-    G --> G7[db_memory.py]
-    G --> G8[pcl.py]
-    G --> G9[memory_review.py]
-
-    H --> H1[registry.py]
-    H --> H1b[schemas.py]
-    H --> H2[multimodal.py]
-    H --> H3[image_generate.py]
-    H --> H4[http_request.py]
-    H --> H5[memory_store.py]
-    H --> H6[memory_search.py]
+```
+app/
+├── app.py                 # Thin entry point → orchestrator
+├── orchestrator.py        # Message handling pipeline
+├── llm_client.py          # AI response generation
+├── commands.py            # /command detection + StreamFilter
+├── prompts.py             # System prompt assembly
+├── profile_analysis.py    # Profile + memory analysis
+├── session_lifecycle.py   # Session start/end
+├── logging_config.py      # Centralized logging
+├── visual_context.py      # Visual context buffer
+├── providers.py           # AI provider abstraction
+├── db_pg.py               # PostgreSQL connection pool
+├── db_queries.py          # SQL constants + parsers
+├── db_pg_models.py        # Sync CRUD wrappers
+├── db_pg_models_async.py  # Async CRUD wrappers
+├── encryption.py          # ChaCha20-Poly1305 for API keys
+├── key_manager.py         # Key derivation
+├── api/                   # API routing package
+│   ├── __init__.py        # Exposes api_router
+│   └── routes.py          # All /api/* endpoints
+├── memory/                # Memory subsystem
+│   ├── db_memory.py       # Unified memory CRUD
+│   ├── db_memory_queries.py # SQL constants
+│   ├── retrieval.py       # Hybrid retrieval (RRF + FSRS)
+│   ├── extractor.py       # Fact extraction
+│   ├── memory.py          # Background pipeline
+│   ├── memory_review.py   # LLM-based review
+│   ├── pcl.py             # Predict-Calibrate Learning
+│   ├── review.py          # FSRS decay
+│   └── embedder.py        # Chutes embedding API
+└── tools/                 # Tool system
+    ├── registry.py        # Central dispatch
+    ├── schemas.py         # ToolDefinition + ToolParam
+    ├── multimodal.py      # Vision routing
+    ├── image_generate.py  # Image generation
+    ├── http_request.py    # HTTP requests
+    ├── memory_store.py    # Store facts
+    └── memory_search.py   # Search memories
 ```
 
 **Removed/Deprecated:**
@@ -212,7 +209,7 @@ PostgreSQL connection management using `ThreadedConnectionPool` with context man
 
 Direct PostgreSQL CRUD operations using raw psycopg2. All data in PostgreSQL (`yuzuki`).
 
-```mermaid
+```
 erDiagram
     PROFILE ||--o{ CHAT_SESSION : has
     CHAT_SESSION ||--o{ MESSAGE : contains
@@ -286,7 +283,7 @@ Single source of truth for SQL strings, schema DDL, and row parsers. Used by bot
 
 Pluggable provider architecture:
 
-```mermaid
+```
 classDiagram
     class AIProvider {
         +name: str
@@ -408,7 +405,7 @@ Single source of truth for tool dispatch. Lazy-loads `TOOL_DEFINITIONS` from eac
 
 ### Tool Dispatch Flow
 
-```mermaid
+```
 flowchart TD
     A[LLM response] --> B{tool_calls present?}
     B -->|Yes| C[Structured function call]
@@ -477,7 +474,7 @@ Each tool module exports a `TOOL_DEFINITION` dict alongside its `execute()` func
 
 The memory subsystem lives in `app/memory/` and provides long-term, structured memory with human-inspired retention dynamics.
 
-```mermaid
+```
 flowchart LR
     A[User Message] --> B[messages table]
     B --> C[segmenter.py]
@@ -564,7 +561,7 @@ See `file memory/README.md` for full documentation.
 
 Handles image processing for vision and generation:
 
-```mermaid
+```
 flowchart TD
     A[User Message] --> B{Image detected?}
     B -->|Yes| C[Download to cache]
@@ -624,7 +621,7 @@ Master key lifecycle management:
 
 ## Session Management
 
-```mermaid
+```
 stateDiagram-v2
     [*] --> ActiveSession
     ActiveSession --> MessageExchange: user sends message
@@ -685,7 +682,7 @@ API keys are stored encrypted in `api_keys` table:
 
 ## Workflow: Message Processing
 
-```mermaid
+```
 sequenceDiagram
     participant U as User
     participant A as app.py
@@ -713,13 +710,15 @@ sequenceDiagram
 
 ## Dependencies
 
-```markdown
-# Database & Encryption
-SQLAlchemy>=2.0.0           # Database ORM and session management
-psycopg[binary,pool]>=3.1   # PostgreSQL async adapter (psycopg v3)
-pycryptodome>=3.20.0       # ChaCha20-Poly1305 encryption
+Based on actual imports in the codebase:
 
-# Web (FastAPI)
+```markdown
+# Core Dependencies
+psycopg[binary,pool]>=3.1   # PostgreSQL adapter (psycopg v3) + pgvector
+pycryptodome>=3.20.0       # ChaCha20-Poly1305 encryption for API keys
+python-dotenv>=1.0.0       # Environment variable loading
+
+# Web Framework (FastAPI)
 fastapi>=0.115.0           # Modern async web framework
 uvicorn[standard]>=0.30.0  # ASGI server
 pydantic>=2.8.0            # Data validation
@@ -728,10 +727,15 @@ Jinja2>=3.1.0              # Template engine
 
 # Terminal UI
 rich>=13.0.0               # Terminal formatting
-prompt-toolkit>=3.0.0      # Advanced input
+prompt-toolkit>=3.0.0      # Advanced input with history
 
 # Networking
-requests>=2.33.0           # HTTP requests
+requests>=2.33.0           # HTTP requests for AI providers
+
+# Development (optional)
+black>=23.0.0              # Code formatting
+pytest>=7.0.0              # Testing framework
+mypy>=1.0.0                # Type checking
 ```
 
 ---
