@@ -58,48 +58,43 @@ graph LR
 
 ## Directory Structure
 
-```mermaid
-graph TD
-    A["app/"] --> B["app.py"]
-    A --> B1["logging_config.py"]
-    A --> B2["visual_context.py"]
-    A --> B3["commands.py"]
-    A --> B4["prompts.py"]
-    A --> B5["llm_client.py"]
-    A --> B6["orchestrator.py"]
-    A --> B7["profile_analysis.py"]
-    A --> API["api/"]
-    A --> C["db_pg.py"]
-    A --> C1["db_pg_models.py"]
-    A --> C2["db_queries.py"]
-    A --> D["providers.py"]
-    A --> E["encryption.py"]
-    A --> F["key_manager.py"]
-    A --> G["memory/"]
-    A --> H["tools/"]
-    
-    API --> API1["__init__.py<br/>Package init"]
-    API --> API2["routes.py<br/>All /api/* endpoints"]
-    
-    B1 --> B1a["Centralized logging<br/>get_logger()"]
-    
-    G --> G1["extractor.py<br/>Semantic + Episodic extraction"]
-    G --> G2["memory.py<br/>Background pipeline + segmentation"]
-    G --> G3["retrieval.py<br/>Memory retrieval pipeline"]
-    G --> G4["review.py<br/>FSRS decay & reinforcement"]
-    G --> G5["embedder.py<br/>Vector embeddings via Chutes"]
-    G --> G6["db_memory_queries.py<br/>SQL constants + builders"]
-    G --> G7["db_memory.py<br/>Unified PostgreSQL CRUD"]
-    G --> G8["pcl.py<br/>Predict-Calibrate Learning"]
-    G --> G9["memory_review.py<br/>LLM-based memory review"]
-    
-    H --> H1["registry.py<br/>Tool execution + schema registry"]
-    H --> H1b["schemas.py<br/>ToolParam + ToolDefinition dataclasses"]
-    H --> H2["multimodal.py<br/>Vision & image caching"]
-    H --> H3["image_generate.py<br/>Image generation"]
-    H --> H4["http_request.py<br/>HTTP GET/POST tool"]
-    H --> H5["memory_store.py<br/>Memory persistence"]
-    H --> H6["memory_search.py<br/>Memory retrieval"]
+```
+app/
+├── api/
+│   ├── __init__.py           # Package init
+│   └── routes.py             # All /api/* endpoints
+├── memory/
+│   ├── db_memory.py          # Unified PostgreSQL CRUD
+│   ├── db_memory_queries.py  # SQL constants + builders
+│   ├── embedder.py           # Vector embeddings via Chutes
+│   ├── extractor.py          # Semantic + Episodic extraction
+│   ├── memory.py             # Background pipeline + segmentation
+│   ├── memory_review.py      # LLM-based memory review
+│   ├── pcl.py                # Predict-Calibrate Learning
+│   ├── retrieval.py          # Memory retrieval pipeline
+│   └── review.py             # FSRS decay & reinforcement
+├── tools/
+│   ├── http_request.py       # HTTP GET/POST tool
+│   ├── image_generate.py     # Image generation
+│   ├── memory_search.py      # Memory retrieval
+│   ├── memory_store.py       # Memory persistence
+│   ├── multimodal.py         # Vision & image caching
+│   ├── registry.py           # Tool execution + schema registry
+│   └── schemas.py            # ToolParam + ToolDefinition dataclasses
+├── app.py
+├── commands.py
+├── db_pg.py
+├── db_pg_models.py
+├── db_queries.py
+├── encryption.py
+├── key_manager.py
+├── llm_client.py
+├── logging_config.py         # Centralized logging, get_logger()
+├── orchestrator.py
+├── profile_analysis.py
+├── prompts.py
+├── providers.py
+└── visual_context.py
 ```
 
 **Removed/Deprecated:**
@@ -713,25 +708,51 @@ sequenceDiagram
 
 ## Dependencies
 
+Based on actual imports in the codebase:
+
+| Package | Status | Reason |
+|---------|--------|--------|
+| **pycryptodome** | ✅ KEPT | `from Crypto.Cipher import ChaCha20_Poly1305` |
+| **python-dotenv** | ✅ ADDED | `from dotenv import load_dotenv` |
+| **psycopg[binary,pool]** | ✅ KEPT | `from psycopg.rows import dict_row` |
+| **fastapi** | ✅ KEPT | Web framework |
+| **uvicorn** | ✅ KEPT | ASGI server |
+| **pydantic** | ✅ KEPT | Data validation |
+| **python-multipart** | ✅ KEPT | File uploads |
+| **Jinja2** | ✅ KEPT | Template engine |
+| **rich/prompt-toolkit** | ✅ KEPT | Terminal UI |
+| **requests** | ✅ KEPT | HTTP client for AI providers |
+| **numpy/scipy** | ⚠️ NOT IN REQUIREMENTS | Only in `hello_world.py` (demo script) |
+| **psycopg2** | ⚠️ NOT IN REQUIREMENTS | Only in `archive/migrations/` (legacy) |
+| **SQLAlchemy** | ❌ NOT USED | Only in comments |
+| **beautifulsoup4** | ❌ NOT USED | grep returned 0 results |
+
 ```markdown
 # Core
-SQLAlchemy>=2.0.0     # ORM
-pycryptodome>=3.20.0  # Encryption
+pycryptodome>=3.20.0  # ChaCha20-Poly1305 encryption
+python-dotenv>=1.0.0  # .env loading
+
+# Database
+psycopg[binary,pool]>=3.1  # PostgreSQL adapter (psycopg v3)
 
 # Web (FastAPI)
-fastapi>=0.115.0      # Modern async web framework
+fastapi>=0.115.0           # Modern async web framework
 uvicorn[standard]>=0.30.0  # ASGI server
-pydantic>=2.8.0       # Data validation with type hints
-python-multipart>=0.0.9   # For file uploads
-Jinja2>=3.1.0         # Template engine (still used)
+pydantic>=2.8.0            # Data validation with type hints
+python-multipart>=0.0.9    # For file uploads
+Jinja2>=3.1.0              # Template engine
 
 # Terminal UI
 rich>=13.0.0
 prompt-toolkit>=3.0.0
 
 # Networking
-requests>=2.33.0
-beautifulsoup4>=4.12.0
+requests>=2.33.0  # HTTP client for AI providers
+
+# Development (optional)
+black>=23.0.0     # Code formatting
+pytest>=7.0.0     # Testing framework
+mypy>=1.0.0       # Type checking
 ```
 
 ---
