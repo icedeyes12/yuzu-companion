@@ -10,10 +10,10 @@ The `app/` directory is the core of Yuzu Companion — the AI companion system t
 - [Overview](#overview)
 - [Directory Structure](#directory-structure)
 - [Core Entry Points](#core-entry-points)
-  - [`app.py`](#apppy--orchestration-core)
-  - [`main.py`](#mainpy--cli-application)
-  - [`web.py`](#webpy--fastapi-web-server)
-- [Database Layer](#database-layer)
+  - [`file app.py`](#apppy--orchestration-core)
+  - [`file main.py`](#mainpy--cli-application)
+  - [`file web.py`](#webpy--fastapi-web-server)
+- Database Layer
 - [AI Provider System](#ai-provider-system)
 - [Tool System](#tool-system)
 - [Memory System](#memory-system)
@@ -43,11 +43,11 @@ graph LR
     A[User] --> B[main.py<br/>CLI Entry]
     A --> C[web.py<br/>Web Server]
     A --> D[External<br/>API Calls]
-    
+
     B --> E[app.py<br/>Core Logic]
     C --> E
     D --> E
-    
+
     E --> F[(Database<br/>PostgreSQL)]
     E --> G[AI Providers<br/>Ollama/Cerebras/OpenRouter/Chutes]
     E --> H[Tools<br/>ImageGen/Search/Memory]
@@ -68,6 +68,7 @@ graph TD
     A --> B5[llm_client.py]
     A --> B6[orchestrator.py]
     A --> B7[profile_analysis.py]
+    A --> API[api/]
     A --> C[db_pg.py]
     A --> C1[db_pg_models.py]
     A --> C2[db_queries.py]
@@ -76,7 +77,10 @@ graph TD
     A --> F[key_manager.py]
     A --> G[memory/]
     A --> H[tools/]
-    
+
+    API --> API1[__init__.py<br/>Package init]
+    API --> API2[routes.py<br/>All /api/* endpoints]
+
     B1 --> B1a[Centralized logging<br/>get_logger()]
 
     G --> G1[extractor.py<br/>Semantic + Episodic extraction]
@@ -99,66 +103,112 @@ graph TD
 ```
 
 **Removed/Deprecated:**
-- `database.py` — deleted (use `db_pg_models.py` directly)
-- `memory/models.py` — deleted (no ORM layer)
-- `memory/segmenter.py` — merged into `memory.py`
-- `memory/vector_store.py` — deprecated stub
+
+- `file database.py` — deleted (use `file db_pg_models.py` directly)
+- `file memory/models.py` — deleted (no ORM layer)
+- `file memory/segmenter.py` — merged into `file memory.py`
+- `file memory/vector_store.py` — deprecated stub
 
 ---
 
 ## Core Entry Points
 
-### `orchestrator.py` — Message Orchestration
+### `file orchestrator.py` — Message Orchestration
 
 The single entry point for handling user messages. Coordinates:
+
 1. Image caching from user messages
 2. Vision model routing when images detected
 3. **Standard tool calling** — `tool_calls` from LLM + legacy `/command` fallback
 4. Memory pipeline triggering
 5. Response generation via provider selection
 
-### `app.py` — Core Application Facade
+### `file app.py` — Core Application Facade
 
-Simplified facade that delegates to `orchestrator.py` for backward compatibility.
+Simplified facade that delegates to `file orchestrator.py` for backward compatibility.\
 Key functions:
+
 - `handle_user_message()` — synchronous response
 - `handle_user_message_streaming()` — streaming response
 - `start_session()` — initialize session, run memory pipeline
 - `summarize_memory()` — per-session context update
 - `summarize_global_player_profile()` — cross-session profile analysis
 
-### `main.py` — CLI Application
+### `file main.py` — CLI Application
 
 Terminal interface using Rich + prompt_toolkit. Provides:
+
 - Interactive chat loop with command handling (`/model`, `/imagine`, `/vision`, `/session`, etc.)
 - Session management menu
 - Provider/model switching
 - Code block extraction and saving
 - Web interface launcher
 
-### `web.py` — FastAPI Web Server
+### `file web.py` — FastAPI Entry Point
 
-REST API + templates for the web UI:
-- `/` — landing page
-- `/chat` — chat interface
-- `/config` — configuration panel
-- `/api/send_message` — message endpoint
-- `/api/send_message_stream` — streaming endpoint
-- `/api/memory_stats` — structured memory stats
-- `/api/providers/*` — provider management
+Minimal entry point that sets up the web server:
+
+- Static mounts (`/static`, `/uploads`, `/generated_images`)
+- HTML page routes (`/`, `/chat`, `/config`, `/about`)
+- Registers `api_router` from `file app/api/routes.py`
+
+All API endpoints are defined in `file app/api/routes.py`.
+
+---
+
+## API Routing
+
+### `file api/__init__.py`
+
+Package init that exposes `api_router` for registration in `file web.py`.
+
+### `file api/routes.py`
+
+All `/api/*` endpoints (\~700 lines):
+
+| Endpoint | Method | Purpose |
+| --- | --- | --- |
+| `/api/config` | GET | Frontend SSOT for vision models |
+| `/api/send_message` | POST | Synchronous message handling |
+| `/api/send_message_stream` | POST | Streaming message handling |
+| `/api/get_profile` | GET | Profile data |
+| `/api/providers/*` | \* | Provider management |
+| `/api/sessions/*` | \* | Session CRUD |
+| `/api/memory_stats` | GET | Memory statistics |
+
+**Key endpoint:** `/api/config`
+
+Returns dynamic configuration for the frontend:
+
+```json
+{
+  "status": "success",
+  "vision": {
+    "models_by_provider": {
+      "chutes": ["Qwen/Qwen3.5-397B-A17B-TEE", ...],
+      "openrouter": ["moonshotai/kimi-k2.5"]
+    },
+    "current_provider": "chutes",
+    "current_model": "Qwen/Qwen3.5-397B-A17B-TEE"
+  }
+}
+```
+
+This eliminates hardcoded vision model lists in `file static/js/config.js`.
 
 ---
 
 ## Database Layer
 
-### `db_pg.py` — Connection Pool
+### `file db_pg.py` — Connection Pool
 
 PostgreSQL connection management using `ThreadedConnectionPool` with context managers:
+
 - `PgSession` — sync context manager for database operations
 - `AsyncPgSession` — async context manager for FastAPI routes
 - `pg_fetchone`, `pg_fetchall`, `pg_execute` — convenience functions
 
-### `db_pg_models.py` — CRUD Operations
+### `file db_pg_models.py` — CRUD Operations
 
 Direct PostgreSQL CRUD operations using raw psycopg2. All data in PostgreSQL (`yuzuki`).
 
@@ -166,7 +216,7 @@ Direct PostgreSQL CRUD operations using raw psycopg2. All data in PostgreSQL (`y
 erDiagram
     PROFILE ||--o{ CHAT_SESSION : has
     CHAT_SESSION ||--o{ MESSAGE : contains
-    
+
     PROFILE {
         int id PK
         string display_name
@@ -178,7 +228,7 @@ erDiagram
         string image_model
         string vision_model
     }
-    
+
     CHAT_SESSION {
         int id PK
         string name
@@ -186,7 +236,7 @@ erDiagram
         int message_count
         json memory_json
     }
-    
+
     MESSAGE {
         int id PK
         int session_id FK
@@ -195,7 +245,7 @@ erDiagram
         bool content_encrypted
         string timestamp
     }
-    
+
     SEMANTIC_FACTS {
         int id PK
         int session_id FK
@@ -209,6 +259,7 @@ erDiagram
 ```
 
 **Key tables:**
+
 - `profiles` — user/companion settings, memory JSON, provider config
 - `chat_sessions` — session tracking, per-session memory
 - `messages` — conversation log (role, content, timestamp, image_paths)
@@ -217,11 +268,12 @@ erDiagram
   - `fact_type='static'` — semantic memories (stable facts)
   - `fact_type='dynamic'` — episodic memories and segments (decayable)
 
-### `db_queries.py` — SQL Constants
+### `file db_queries.py` — SQL Constants
 
 Single source of truth for SQL strings, schema DDL, and row parsers. Used by both sync and async repository layers.
 
 **Safety rules:**
+
 - NEVER drops tables
 - Only safe migrations (add columns, never destructive)
 - Aborts if database corruption detected
@@ -230,7 +282,7 @@ Single source of truth for SQL strings, schema DDL, and row parsers. Used by bot
 
 ## AI Provider System
 
-### `providers.py`
+### `file providers.py`
 
 Pluggable provider architecture:
 
@@ -246,30 +298,30 @@ classDiagram
         +supports_vision()
         +format_vision_message()
     }
-    
+
     class OllamaProvider {
         +base_url: str
         +available_models: List
     }
-    
+
     class CerebrasProvider {
         +base_url: str
         +api_key: str
         +available_models: List
     }
-    
+
     class OpenRouterProvider {
         +base_url: str
         +api_key: str
         +available_models: List
     }
-    
+
     class ChutesProvider {
         +base_url: str
         +api_key: str
         +available_models: List
     }
-    
+
     class AIProviderManager {
         +providers: Dict
         +load_providers()
@@ -278,7 +330,7 @@ classDiagram
         +send_message_streaming()
         +auto_send_message()
     }
-    
+
     AIProvider <|-- OllamaProvider
     AIProvider <|-- CerebrasProvider
     AIProvider <|-- OpenRouterProvider
@@ -289,21 +341,23 @@ classDiagram
 **Supported providers:**
 
 | Provider | Base URL | Vision Support | Image Gen |
-|----------|----------|----------------|-----------|
+| --- | --- | --- | --- |
 | Ollama | `http://127.0.0.1:11434` | No | No |
 | Cerebras | `https://api.cerebras.ai/v1/chat/completions` | No | No |
 | OpenRouter | `https://openrouter.ai/api/v1/chat/completions` | `moonshotai/kimi-k2.5` | Via Chutes |
 | Chutes | `https://llm.chutes.ai/v1/chat/completions` | No | Yes |
 
 **Ollama models:**
-```
+
+```markdown
 smollm:360m, smollm2:360m, glm-4.6:cloud, qwen3-vl:235b-cloud,
 qwen3-coder:480b-cloud, kimi-k2:1t-cloud, kimi-k2.5:cloud,
 gpt-oss:120b-cloud, gpt-oss:20b-cloud, deepseek-v3.1:671b-cloud
 ```
 
 **OpenRouter models (selected):**
-```
+
+```markdown
 moonshotai/kimi-k2.5, anthropic/claude-3.5-haiku, openai/gpt-4o-mini,
 deepseek-ai/DeepSeek-V3, Qwen/Qwen3-8B, meta-llama/llama-3.3-70b-instruct
 ```
@@ -315,9 +369,9 @@ deepseek-ai/DeepSeek-V3, Qwen/Qwen3-8B, meta-llama/llama-3.3-70b-instruct
 The tool system has two execution modes:
 
 1. **Standard tool calling** — OpenAI `function` call format (primary, v2.1+)
-2. **Legacy `/command` text detection** — command-prefixed responses (fallback compat)
+2. **Legacy** `/command` **text detection** — command-prefixed responses (fallback compat)
 
-### `tools/schemas.py` — Tool Schema Definitions
+### `file tools/schemas.py` — Tool Schema Definitions
 
 Declarative tool definitions using `ToolParam` and `ToolDefinition` dataclasses.
 
@@ -340,11 +394,12 @@ class ToolDefinition:
     category: str = "general"
 ```
 
-### `tools/registry.py` — Central Registry
+### `file tools/registry.py` — Central Registry
 
 Single source of truth for tool dispatch. Lazy-loads `TOOL_DEFINITIONS` from each tool module on first access.
 
 **Key exports:**
+
 - `get_tool_definitions()` — returns list of all registered `ToolDefinition` dicts
 - `get_tool_definition(name)` — returns schema for a specific tool
 - `execute_tool(name, arguments, session_id)` — dispatch and return markdown contract
@@ -371,6 +426,7 @@ flowchart TD
 ```
 
 **Dispatch priority:**
+
 1. Structured `tool_calls[0]` from LLM → execute via registry → done
 2. Legacy `/command` text detection → execute via registry → done
 3. Plain text → return as-is
@@ -378,7 +434,7 @@ flowchart TD
 ### Registered Tool Schemas
 
 | Tool | Role | Params | Terminal |
-|------|-------|--------|----------|
+| --- | --- | --- | --- |
 | `image_generate` | `image_tools` | `prompt` (str, required) | ✅ |
 | `request` | `request_tools` | `url` (str, required), `method` (str, optional) | ❌ |
 | `memory_search` | `memory_search_tools` | `query` (str, required) | ❌ |
@@ -386,7 +442,8 @@ flowchart TD
 
 ### Markdown Contract Format
 
-Tool results are stored in a `<details>` block:
+Tool results are stored in a \`\`\`\`html-details\
+\` block:
 
 ```html
 <details>
@@ -396,10 +453,10 @@ Tool results are stored in a `<details>` block:
 Yuzu$ /imagine a cute cat
 ```
 
-> Image generated successfully
+> Image generated successfully\
 > Saved to: static/generated_images/xxx.png
 
-</details>
+```markdown
 ```
 
 ### Tool Modules
@@ -407,12 +464,12 @@ Yuzu$ /imagine a cute cat
 Each tool module exports a `TOOL_DEFINITION` dict alongside its `execute()` function:
 
 | Module | Purpose |
-|--------|---------|
-| `image_generate.py` | Image generation via Chutes API (HunYuan, Z-Turbo, Qwen) |
-| `http_request.py` | Fetch public HTTPS endpoints with size/type validation |
-| `memory_store.py` | Persist semantic facts with LLM-guided categorization |
-| `memory_search.py` | Hybrid retrieval across semantic + episodic memories |
-| `multimodal.py` | Vision model routing and image caching (non-tool, helpers) |
+| --- | --- |
+|  | Image generation via Chutes API (HunYuan, Z-Turbo, Qwen) |
+|  | Fetch public HTTPS endpoints with size/type validation |
+|  | Persist semantic facts with LLM-guided categorization |
+|  | Hybrid retrieval across semantic + episodic memories |
+|  | Vision model routing and image caching (non-tool, helpers) |
 
 ---
 
@@ -442,7 +499,7 @@ flowchart LR
 ### Memory Layers
 
 | Layer | `fact_type` | `metadata.source_table` | Purpose |
-|-------|-------------|------------------------|---------|
+| --- | --- | --- | --- |
 | **Semantic** | `static` | — | Stable facts as (entity, relation, target) triples |
 | **Episodic** | `dynamic` | `episodic_memories` | Summarized interaction events with emotional weight |
 | **Segments** | `dynamic` | `conversation_segments` | Chunked conversation windows for summarization |
@@ -488,22 +545,22 @@ LIMIT 15;
 ### Key Modules
 
 | Module | Purpose |
-|--------|---------|
-| `db_memory.py` | Unified CRUD over `semantic_facts` with pgvector search |
-| `db_memory_queries.py` | SQL constants + query builders |
-| `retrieval.py` | Hybrid scoring retrieval pipeline |
-| `extractor.py` | LLM-based semantic + episodic extraction |
-| `memory.py` | Background pipeline + batch segmentation |
-| `review.py` | FSRS-style decay and reinforcement |
-| `embedder.py` | Chutes API embedding client |
+| --- | --- |
+|  | Unified CRUD over `semantic_facts` with pgvector search |
+|  | SQL constants + query builders |
+|  | Hybrid scoring retrieval pipeline |
+|  | LLM-based semantic + episodic extraction |
+|  | Background pipeline + batch segmentation |
+|  | FSRS-style decay and reinforcement |
+|  | Chutes API embedding client |
 
-See [`memory/README.md`](memory/README.md) for full documentation.
+See `file memory/README.md` for full documentation.
 
 ---
 
 ## Multimodal System
 
-### `tools/multimodal.py`
+### `file tools/multimodal.py`
 
 Handles image processing for vision and generation:
 
@@ -520,13 +577,14 @@ flowchart TD
     H --> I[Format vision message]
     I --> J[moonshotai/kimi-k2.5]
     J --> K[Vision analysis]
-    
+
     L[imagine command] --> M[Chutes API]
     M --> N[Save to<br/>static/generated_images/]
     N --> O[Return path in contract]
 ```
 
 **Vision pipeline:**
+
 1. Extract image URLs/paths from message markdown
 2. Download remote images to `static/image_cache/`
 3. Encode as base64 data URI
@@ -534,6 +592,7 @@ flowchart TD
 5. Attach vision response to conversation
 
 **Image generation pipeline:**
+
 1. Detect `/imagine` command or image generation keywords
 2. Call Chutes image API
 3. Save result to `static/generated_images/`
@@ -544,7 +603,7 @@ flowchart TD
 
 ## Encryption
 
-### `encryption.py`
+### `file encryption.py`
 
 ChaCha20-Poly1305 encryption for API keys at rest:
 
@@ -553,9 +612,10 @@ ChaCha20-Poly1305 encryption for API keys at rest:
 - Key derivation from master key in `encryption.key`
 - Fallback to plaintext if decryption fails
 
-### `key_manager.py`
+### `file key_manager.py`
 
 Master key lifecycle management:
+
 - Key generation on first run
 - Secure key storage
 - Key rotation support
@@ -579,6 +639,7 @@ stateDiagram-v2
 ```
 
 On session start:
+
 1. Run FSRS decay on existing memories
 2. Segment unsegmented messages
 3. Extract semantic + episodic memories
@@ -615,8 +676,9 @@ On session start:
 ### API Key Management
 
 API keys are stored encrypted in `api_keys` table:
+
 - `cerebras` — Cerebras API key
-- `chutes` — Chutes API key  
+- `chutes` — Chutes API key
 - `openrouter` — OpenRouter API key
 
 ---
@@ -631,7 +693,7 @@ sequenceDiagram
     participant T as Tools/Registry
     participant P as Providers
     participant D as Database
-    
+
     U->>A: "Hello! /imagine a cat"
     A->>M: detect_images()
     M-->>A: no images
@@ -651,7 +713,7 @@ sequenceDiagram
 
 ## Dependencies
 
-```
+```markdown
 # Core
 SQLAlchemy>=2.0.0     # ORM
 pycryptodome>=3.20.0  # Encryption
