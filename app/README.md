@@ -708,25 +708,6 @@ sequenceDiagram
 
 ## Dependencies
 
-Based on actual imports in the codebase:
-
-| Package | Status | Reason |
-|---------|--------|--------|
-| **pycryptodome** | ✅ KEPT | `from Crypto.Cipher import ChaCha20_Poly1305` |
-| **python-dotenv** | ✅ ADDED | `from dotenv import load_dotenv` |
-| **psycopg[binary,pool]** | ✅ KEPT | `from psycopg.rows import dict_row` |
-| **fastapi** | ✅ KEPT | Web framework |
-| **uvicorn** | ✅ KEPT | ASGI server |
-| **pydantic** | ✅ KEPT | Data validation |
-| **python-multipart** | ✅ KEPT | File uploads |
-| **Jinja2** | ✅ KEPT | Template engine |
-| **rich/prompt-toolkit** | ✅ KEPT | Terminal UI |
-| **requests** | ✅ KEPT | HTTP client for AI providers |
-| **numpy/scipy** | ⚠️ NOT IN REQUIREMENTS | Only in `hello_world.py` (demo script) |
-| **psycopg2** | ⚠️ NOT IN REQUIREMENTS | Only in `archive/migrations/` (legacy) |
-| **SQLAlchemy** | ❌ NOT USED | Only in comments |
-| **beautifulsoup4** | ❌ NOT USED | grep returned 0 results |
-
 ```markdown
 # Core
 pycryptodome>=3.20.0  # ChaCha20-Poly1305 encryption
@@ -750,7 +731,6 @@ prompt-toolkit>=3.0.0
 requests>=2.33.0  # HTTP client for AI providers
 
 # Development (optional)
-black>=23.0.0     # Code formatting
 pytest>=7.0.0     # Testing framework
 mypy>=1.0.0       # Type checking
 ```
