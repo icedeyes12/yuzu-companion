@@ -40,18 +40,18 @@ Yuzu Companion is a multi-interface AI companion with:
 
 ```mermaid
 graph LR
-    A[User] --> B[main.py<br/>CLI Entry]
-    A --> C[web.py<br/>Web Server]
-    A --> D[External<br/>API Calls]
+    A[User] --> B[main.py - CLI Entry]
+    A --> C[web.py - Web Server]
+    A --> D[External - API Calls]
 
-    B --> E[app.py<br/>Core Logic]
+    B --> E[app.py - Core Logic]
     C --> E
     D --> E
 
-    E --> F[(Database<br/>PostgreSQL)]
-    E --> G[AI Providers<br/>Ollama/Cerebras/OpenRouter/Chutes]
-    E --> H[Tools<br/>ImageGen/Search/Memory]
-    E --> I[Memory System<br/>episodic + semantic]
+    E --> F[(Database - PostgreSQL)]
+    E --> G[AI Providers - Ollama/Cerebras/OpenRouter/Chutes]
+    E --> H[Tools - ImageGen/Search/Memory]
+    E --> I[Memory System - episodic + semantic]
 ```
 
 ---
@@ -78,28 +78,28 @@ graph TD
     A --> G[memory/]
     A --> H[tools/]
 
-    API --> API1["init.py<br/>Package init"]
-    API --> API2[routes.py<br/>All /api/* endpoints]
+    API --> API1[init.py - Package init]
+    API --> API2[routes.py - All /api/* endpoints]
 
-    B1 --> B1a[Centralized logging<br/>get_logger()]
+    B1 --> B1a[Centralized logging - get_logger()]
 
-    G --> G1[extractor.py<br/>Semantic + Episodic extraction]
-    G --> G2[memory.py<br/>Background pipeline + segmentation]
-    G --> G3[retrieval.py<br/>Memory retrieval pipeline]
-    G --> G4[review.py<br/>FSRS decay & reinforcement]
-    G --> G5[embedder.py<br/>Vector embeddings via Chutes]
-    G --> G6[db_memory_queries.py<br/>SQL constants + builders]
-    G --> G7[db_memory.py<br/>Unified PostgreSQL CRUD]
-    G --> G8[pcl.py<br/>Predict-Calibrate Learning]
-    G --> G9[memory_review.py<br/>LLM-based memory review]
+    G --> G1[extractor.py]
+    G --> G2[memory.py]
+    G --> G3[retrieval.py]
+    G --> G4[review.py]
+    G --> G5[embedder.py]
+    G --> G6[db_memory_queries.py]
+    G --> G7[db_memory.py]
+    G --> G8[pcl.py]
+    G --> G9[memory_review.py]
 
-    H --> H1[registry.py<br/>Tool execution + schema registry]
-    H --> H1b[schemas.py<br/>ToolParam + ToolDefinition dataclasses]
-    H --> H2[multimodal.py<br/>Vision & image caching]
-    H --> H3[image_generate.py<br/>Image generation]
-    H --> H4[http_request.py<br/>HTTP GET/POST tool]
-    H --> H5[memory_store.py<br/>Memory persistence]
-    H --> H6[memory_search.py<br/>Memory retrieval]
+    H --> H1[registry.py]
+    H --> H1b[schemas.py]
+    H --> H2[multimodal.py]
+    H --> H3[image_generate.py]
+    H --> H4[http_request.py]
+    H --> H5[memory_store.py]
+    H --> H6[memory_search.py]
 ```
 
 **Removed/Deprecated:**
@@ -480,18 +480,18 @@ The memory subsystem lives in `app/memory/` and provides long-term, structured m
 ```mermaid
 flowchart LR
     A[User Message] --> B[messages table]
-    B --> C[segmenter.py<br/>Split by time/size]
-    C --> D[semantic_facts<br/>fact_type=dynamic<br/>source_table=segments]
-    B --> E[extractor.py<br/>Semantic facts]
-    E --> F[semantic_facts<br/>fact_type=static]
+    B --> C[segmenter.py]
+    C --> D[semantic_facts - dynamic - segments]
+    B --> E[extractor.py]
+    E --> F[semantic_facts - static]
     B --> E
-    E --> G[semantic_facts<br/>fact_type=dynamic<br/>source_table=episodic]
-    D --> H[retrieval.py<br/>pgvector search]
+    E --> G[semantic_facts - dynamic - episodic]
+    D --> H[retrieval.py]
     F --> H
     G --> H
     H --> I[Context for LLM]
     I --> J[LLM Response]
-    H --> K[review.py<br/>FSRS decay]
+    H --> K[review.py]
     K -.-> F
     K -.-> G
 ```
@@ -579,7 +579,7 @@ flowchart TD
     J --> K[Vision analysis]
 
     L[imagine command] --> M[Chutes API]
-    M --> N[Save to<br/>static/generated_images/]
+    M --> N[Save to static/generated_images/]
     N --> O[Return path in contract]
 ```
 
@@ -715,24 +715,23 @@ sequenceDiagram
 
 ```markdown
 # Database & Encryption
-SQLAlchemy>=2.0.0           # ORM (legacy compatibility)
-psycopg[binary,pool]>=3.1   # PostgreSQL adapter (psycopg v3) + pgvector
+SQLAlchemy>=2.0.0           # Database ORM and session management
+psycopg[binary,pool]>=3.1   # PostgreSQL async adapter (psycopg v3)
 pycryptodome>=3.20.0       # ChaCha20-Poly1305 encryption
 
 # Web (FastAPI)
 fastapi>=0.115.0           # Modern async web framework
 uvicorn[standard]>=0.30.0  # ASGI server
-pydantic>=2.8.0            # Data validation with type hints
-python-multipart>=0.0.9   # For file uploads
+pydantic>=2.8.0            # Data validation
+python-multipart>=0.0.9   # File uploads
 Jinja2>=3.1.0              # Template engine
 
 # Terminal UI
-rich>=13.0.0               # Beautiful terminal formatting
-prompt-toolkit>=3.0.0      # Advanced terminal input
+rich>=13.0.0               # Terminal formatting
+prompt-toolkit>=3.0.0      # Advanced input
 
 # Networking
 requests>=2.33.0           # HTTP requests
-beautifulsoup4>=4.12.0     # HTML parsing
 ```
 
 ---
