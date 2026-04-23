@@ -137,10 +137,10 @@ def start_session(interface: str = "terminal") -> dict[str, Any]:
 
 def _bootstrap_memory(session_id: int) -> None:
     try:
-        from app.memory.memory import enqueue_memory_pipeline
         from app.memory.review import run_decay
         run_decay(session_id)
-        enqueue_memory_pipeline(session_id)
+        # Don't enqueue pipeline on every session start - let natural triggers handle it
+        # Pipeline will be triggered by should_trigger_segmentation() thresholds
     except Exception as e:  # noqa: BLE001
         log.warning("memory bootstrap failed: %s", e)
 
