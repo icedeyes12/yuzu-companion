@@ -1,7 +1,7 @@
 # ==========================================================
 # [FILE]        : requirements.txt
-# [VERSION]     : 2.1.0
-# [DATE]        : 2026-04-22
+# [VERSION]     : 2.2.0
+# [DATE]        : 2026-04-24
 # [PROJECT]     : Yuzu Companion
 # [DESCRIPTION] : Project dependencies - based on actual imports
 # [AUTHOR]      : Bani Baskara
@@ -17,6 +17,8 @@ psycopg[binary,pool]>=3.1
 pycryptodome>=3.20.0
 # Environment variable loading (.env)
 python-dotenv>=1.0.0
+# Free Spaced Repetition Scheduler for memory decay
+fsrs>=6.3.1
 
 # Web Framework (FastAPI)
 # -----------------------

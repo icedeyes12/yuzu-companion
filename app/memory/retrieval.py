@@ -130,10 +130,10 @@ def _recency_factor(last_accessed) -> float:
 def _fsrs_retrievability(r: dict) -> float:
     """
     FSRS retrievability for episodic facts.
-    retrievability = exp(-hours_since_last_access / stability)
-    - freshly accessed (0h ago) → retrievability = 1.0
-    - 1 stability period ago → retrievability = 0.368
-    - 2 stability periods ago → retrievability = 0.135
+
+    Uses fsrs library if available for proper retrievability calculation.
+    Falls back to manual exponential decay if fsrs not installed.
+
     Only applies to episodic facts (source_table='episodic_memories').
     """
     meta = r.get("metadata", {}) or {}
@@ -141,6 +141,55 @@ def _fsrs_retrievability(r: dict) -> float:
     if source_table != "episodic_memories":
         return 1.0  # no FSRS re-rank for non-episodic facts
 
+    # Try fsrs library first
+    try:
+        from fsrs import Card
+        fsrs_available = True
+    except ImportError:
+        fsrs_available = False
+
+    if fsrs_available:
+        from fsrs import Card
+        from app.memory.memory_review import _get_fsrs
+
+        fsrs = _get_fsrs()
+        if fsrs:
+            stability = meta.get("stability", 1.0)
+            difficulty = meta.get("difficulty", 1.0)
+            last_reviewed = meta.get("last_reviewed_at")
+            state = meta.get("state", 2)  # default to review state
+            reps = meta.get("reps", 0)
+            lapses = meta.get("lapses", 0)
+
+            now = datetime.now()
+            if last_reviewed:
+                try:
+                    last_dt = datetime.fromisoformat(last_reviewed.replace("Z", "+00:00").replace("+00:00", ""))
+                    days_elapsed = max((now - last_dt).total_seconds() / 86400.0, 0.0)
+                except Exception:
+                    days_elapsed = 0.0
+            else:
+                days_elapsed = 0.0
+
+            try:
+                card = Card(
+                    stability=stability,
+                    difficulty=difficulty,
+                    elapsed_days=days_elapsed,
+                    scheduled_days=stability,
+                    reps=reps,
+                    lapses=lapses,
+                    state=state,
+                    last_review=last_reviewed,
+                )
+                # Get retrievability from fsrs
+                retrievability = fsrs.retrievability(card, days_elapsed)
+                return max(retrievability, 0.1)
+            except Exception as e:
+                logger.debug(f"FSRS retrievability calculation failed: {e}")
+                # Fall through to manual calculation
+
+    # Manual fallback: exponential decay
     last_accessed = r.get("last_accessed")
     if not last_accessed:
         return 0.1  # never accessed → low retrievability
