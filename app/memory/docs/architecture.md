@@ -152,7 +152,7 @@ flowchart TD
     F --> H
     H --> I{"surprise_level ≥ 0.85?"}
     I -->|Yes| J["Flashbulb boost: stability × 1.5"]
-    I -->|No| K["Normal stability"]
+    I -->|No| K["Normal stability (24h base)"]
     J --> L["Trigger PCL pipeline"]
     K --> L
     G --> A
