@@ -143,6 +143,7 @@ def search_similar(
     max_distance: float = 1.5,
     metadata_filter: dict | None = None,
     category: str | None = None,
+    hnsw_ef_search: int | None = None,
 ) -> list[dict]:
     """
     ANN search via PostgreSQL <=> (cosine) operator.

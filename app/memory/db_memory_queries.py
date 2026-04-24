@@ -150,6 +150,7 @@ def build_metadata_conditions(
 def build_search_similar_query(
     vec_literal: str,
     extra_conditions: list[str],
+    hnsw_ef_search: int | None = None,
 ) -> str:
     """Render the vector-similarity SQL with the given extra WHERE clauses.
 
