@@ -222,7 +222,7 @@ class CerebrasProvider(AIProvider):
             messages = self._normalize_messages(messages)
 
             temperature = kwargs.get('temperature', 0.69)
-            max_tokens = kwargs.get('max_tokens', 4096)
+            max_tokens = kwargs.get('max_tokens')
             top_p = kwargs.get('top_p', 0.7)
             top_k = kwargs.get('top_k', 40)
             typical_p = kwargs.get('typical_p', 0.8)
@@ -246,7 +246,7 @@ class CerebrasProvider(AIProvider):
             # Debug: Log summary (not full payload)
             # Count only new messages (not historical context from DB)
             sum(1 for m in messages if m.get('role') == 'user' and m == messages[-1])
-            logger.debug(f"[Cerebras] {model} | new_msg=1 | max_tokens={max_tokens}")
+            logger.debug(f"[Cerebras] {model} | new_msg=1 | max_tokens={max_tokens or 'unlimited'}")
 
             response = requests.post(
                 self.base_url,
@@ -280,7 +280,7 @@ class CerebrasProvider(AIProvider):
             messages = self._normalize_messages(messages)
 
             temperature = kwargs.get('temperature', 0.69)
-            max_tokens = kwargs.get('max_tokens', 4096)
+            max_tokens = kwargs.get('max_tokens')
             top_p = kwargs.get('top_p', 0.7)
             top_k = kwargs.get('top_k', 40)
             typical_p = kwargs.get('typical_p', 0.8)
@@ -418,7 +418,7 @@ class OpenRouterProvider(AIProvider):
                     messages = self._replace_last_user_message(messages, last_user_message, vision_messages)
             
             temperature = kwargs.get('temperature', 0.73)
-            max_tokens = kwargs.get('max_tokens', 4096)
+            max_tokens = kwargs.get('max_tokens')
             top_p = kwargs.get('top_p', 0.9)
             top_k = kwargs.get('top_k', 40)
             typical_p = kwargs.get('typical_p', 0.8)
@@ -451,7 +451,7 @@ class OpenRouterProvider(AIProvider):
                 payload["tools"] = tools
 
             # Debug: Log summary (not full payload)
-            logger.debug(f"[OpenRouter] {model} | max_tokens={max_tokens}")
+            logger.debug(f"[OpenRouter] {model} | max_tokens={max_tokens or 'unlimited'}")
 
             response = requests.post(
                 self.base_url,
@@ -495,7 +495,7 @@ class OpenRouterProvider(AIProvider):
                     messages = self._replace_last_user_message(messages, last_user_message, vision_messages)
             
             temperature = kwargs.get('temperature', 0.73)
-            max_tokens = kwargs.get('max_tokens', 4096)
+            max_tokens = kwargs.get('max_tokens')
             top_p = kwargs.get('top_p', 0.9)
             top_k = kwargs.get('top_k', 40)
             typical_p = kwargs.get('typical_p', 0.8)
@@ -737,7 +737,7 @@ class ChutesProvider(AIProvider):
                     messages = self._replace_last_user_message(messages, last_user_message, vision_messages)
 
         temperature = kwargs.get('temperature', 0.73)
-        max_tokens = kwargs.get('max_tokens', 4096)
+        max_tokens = kwargs.get('max_tokens')
         top_p = kwargs.get('top_p', 0.9)
         top_k = kwargs.get('top_k', 45)
         stream = kwargs.get('stream', False)
@@ -763,7 +763,7 @@ class ChutesProvider(AIProvider):
         #     payload["tools"] = tools
 
         log_prefix = kwargs.pop('log_prefix', '[CHAT]')
-        logger.debug(f"{log_prefix} {model} | max_tokens={max_tokens}")
+        logger.debug(f"{log_prefix} {model} | max_tokens={max_tokens or 'unlimited'}")
 
         try:
             response = requests.post(
@@ -795,7 +795,7 @@ class ChutesProvider(AIProvider):
                     messages = self._replace_last_user_message(messages, last_user_message, vision_messages)
             
             temperature = kwargs.get('temperature', 0.73)
-            max_tokens = kwargs.get('max_tokens', 4096)
+            max_tokens = kwargs.get('max_tokens')
             top_p = kwargs.get('top_p', 0.9)
             top_k = kwargs.get('top_k', 45)
             typical_p = kwargs.get('typical_p', 0.85)
