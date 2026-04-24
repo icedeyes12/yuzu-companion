@@ -283,6 +283,24 @@ sequenceDiagram
 
 **Episodic (dynamic) facts decay via FSRS.**
 
+### Library Integration
+
+Uses `fsrs>=6.3.1` Python library for proper FSRS state transitions (aligned with plast-mem's `fsrs` crate).
+
+```python
+from fsrs import FSRS, Card, Rating
+
+# Default parameters (aligned with plast-mem)
+DEFAULT_PARAMETERS = [0.4, 0.6, 2.4, 5.8, 4.93, 0.94, 0.86, 0.01, 1.49, 0.14, 0.94, 2.18, 0.05, 0.34, 1.26, 0.29, 2.61]
+
+fsrs = FSRS(w=DEFAULT_PARAMETERS)
+card = Card(stability=current_stability, difficulty=current_difficulty)
+scheduling_cards = fsrs.repeat(card, now)
+
+# Get next state based on rating
+next_card = scheduling_cards[Rating.Good].card
+```
+
 ### Core Variables
 
 | Variable | Applies To | Description |
@@ -292,11 +310,11 @@ sequenceDiagram
 | `difficulty` | Episodic | How hard to memorize |
 | `access_count` | Both | Times retrieved |
 
-### Decay Formula
+### Decay Formula (Retrievability)
 
 ```
-importance = importance × exp(-hours_since_last_access / stability)
-stability = 24 × (1 + access_count × 0.5)
+retrievability = exp(-hours_since_last_access / stability)
+final_score = rrf_score * (0.5 + 0.5 * retrievability)
 ```
 
 ### Memory Review (LLM-based)

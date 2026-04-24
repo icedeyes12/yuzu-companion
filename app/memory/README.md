@@ -105,9 +105,15 @@ RRF_score = Σ 1.0 / (k + rank), k=60
 
 ## FSRS Retention (Episodic Only)
 
-```
-importance = importance × exp(-hours_since_last_access / stability)
-stability = 24 × (1 + access_count × 0.5)
+**Library**: `fsrs>=6.3.1` — Free Spaced Repetition Scheduler
+
+```python
+from fsrs import FSRS, Card, Rating
+
+# FSRS state transitions (aligned with plast-mem)
+fsrs = FSRS(w=DEFAULT_PARAMETERS)
+card = Card(stability=current_stability, difficulty=current_difficulty)
+next_card, _ = fsrs.repeat(card, rating)
 ```
 
 Semantic facts use `invalid_at` for temporal validity, no decay.
@@ -118,15 +124,18 @@ Semantic facts use `invalid_at` for temporal validity, no decay.
 
 - ✅ Database schema (PostgreSQL + pgvector)
 - ✅ Memory extraction (LLM-based)
-- ✅ Conversation segmentation (batch LLM)
+- ✅ Conversation segmentation (batch LLM + temporal fast-path)
 - ✅ Retrieval pipeline (RRF + hybrid)
 - ✅ Context builder integration
-- ✅ Review & decay system (FSRS)
+- ✅ Review & decay system (FSRS library)
 - ✅ Migration from SQLite
 - ✅ PCL pipeline + LLM review
 - ✅ SQL constants extracted (db_memory_queries.py)
 - ✅ Logging migration (all print() → logging)
 - ✅ plast-mem alignment verified
+- ✅ **FSRS library integration** (fsrs>=6.3.1)
+- ✅ **Temporal fast-path segmentation**
+- ✅ **Flashbulb memory boost**
 
 ---
 
