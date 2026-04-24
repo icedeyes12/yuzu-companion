@@ -1,9 +1,10 @@
 # ==========================================================
 # [FILE]        : requirements.txt
 # [VERSION]     : 2.2.0
-# [DATE]        : 2026-04-24
+# [DATE]        : 2026-04-25
 # [PROJECT]     : Yuzu Companion
 # [DESCRIPTION] : Project dependencies - based on actual imports
+# [PYTHON]      : 3.12+ (3.13 compatible)
 # [AUTHOR]      : Bani Baskara
 # [REPOSITORY]  : https://github.com/icedeyes12/yuzu-companion
 # [LICENSE]     : MIT

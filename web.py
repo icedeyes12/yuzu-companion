@@ -1,5 +1,7 @@
+from __future__ import annotations
 # FILE: web.py
 # DESCRIPTION: FastAPI web interface for yuzu-companion
+
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, FileResponse
@@ -22,6 +24,7 @@ from app.api.routes import set_session_tracker  # noqa: E402
 # FastAPI Application Setup
 # ---------------------------------------------------------------------------
 
+
 app = FastAPI(
     title="Yuzu Companion",
     description="AI companion system with memory, multimodal, and multi-provider support",
@@ -33,14 +36,18 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), na
 app.mount("/uploads", StaticFiles(directory=os.path.join(BASE_DIR, "static/uploads")), name="uploads")
 app.mount("/generated_images", StaticFiles(directory=os.path.join(BASE_DIR, "static/generated_images")), name="generated_images")
 
+
 # Jinja2 templates
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+
 
 # In-memory session tracking
 _web_session_tracker: Dict[str, bool] = {}
 
+
 # Share session tracker with API routes
 set_session_tracker(_web_session_tracker)
+
 
 
 def ensure_static_dirs():
@@ -65,11 +72,13 @@ ensure_static_dirs()
 # Register API Router
 # ---------------------------------------------------------------------------
 
+
 app.include_router(api_router, prefix="/api")
 
 # ---------------------------------------------------------------------------
 # Favicon
 # ---------------------------------------------------------------------------
+
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
@@ -78,6 +87,7 @@ async def favicon():
 # ---------------------------------------------------------------------------
 # HTML Page Routes
 # ---------------------------------------------------------------------------
+
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -149,6 +159,7 @@ async def serve_sidebar():
 # ---------------------------------------------------------------------------
 # Main Entry Point
 # ---------------------------------------------------------------------------
+
 
 if __name__ == "__main__":
     import uvicorn

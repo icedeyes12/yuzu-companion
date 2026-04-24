@@ -1,10 +1,11 @@
 # FILE: app/api/routes.py
 # DESCRIPTION: API endpoints for yuzu-companion web interface
 
+from __future__ import annotations
+
 from fastapi import APIRouter, Request, HTTPException, Form, File, UploadFile
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
 from datetime import datetime
 import json
 import os
@@ -37,10 +38,10 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 api_router = APIRouter()
 
 # Global session tracker (shared with web.py)
-_web_session_tracker: Dict[str, bool] = {}
+_web_session_tracker: dict[str, bool] = {}
 
 
-def set_session_tracker(tracker: Dict[str, bool]):
+def set_session_tracker(tracker: dict[str, bool]):
     global _web_session_tracker
     _web_session_tracker = tracker
 
@@ -60,8 +61,8 @@ class MessageRequest(BaseModel):
 
 class StreamMessageRequest(BaseModel):
     message: str = Field(..., min_length=1, description="User message text")
-    provider: Optional[str] = Field(None, description="AI provider to use")
-    model: Optional[str] = Field(None, description="AI model to use")
+    provider: str | None = Field(None, description="AI provider to use")
+    model: str | None = Field(None, description="AI model to use")
 
 
 class ApiKeyRequest(BaseModel):
@@ -92,7 +93,7 @@ class SessionDeleteRequest(BaseModel):
 
 class ProviderSetRequest(BaseModel):
     provider_name: str = Field(..., min_length=1, description="AI provider name")
-    model_name: Optional[str] = Field(None, description="Optional model name")
+    model_name: str | None = Field(None, description="Optional model name")
 
 
 class ProviderTestRequest(BaseModel):
@@ -285,7 +286,7 @@ async def api_send_message_stream(request: StreamMessageRequest):
 async def api_send_message_with_images(
     request: Request,
     message: str = Form(""),
-    images: List[UploadFile] = File(default=[])
+    images: list[UploadFile] = File(default=[])
 ):
     try:
         message_text = message.strip()

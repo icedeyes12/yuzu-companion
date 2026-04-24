@@ -1,8 +1,10 @@
+from __future__ import annotations
 # FILE: app/memory/retrieval.py
 # DESCRIPTION: Memory retrieval with PostgreSQL pgvector.
 #              Simplified to 2 types: static (global) and dynamic (per-session).
 #
 # No more semantic/episodic/segments - just static and dynamic.
+
 
 import logging
 import math
@@ -28,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 # ── Temporal cue helpers ──────────────────────────────────────────────────────
+
 
 _TEMPORAL_CUES = [
     "kemarin", "minggu lalu", "waktu itu", "terakhir", "pas aku",
@@ -309,6 +312,7 @@ def _parse_fact_content(r: dict) -> dict:
 
 # ── Retrieval functions ──────────────────────────────────────────────────────
 
+
 def _enrich_with_trgm_score(results: list[dict], keyword: str) -> list[dict]:
     """Add trigram similarity score to results for hybrid scoring."""
     if not results or not keyword:
@@ -458,6 +462,7 @@ def retrieve_dynamic_memories(session_id: int, query=None, limit=10):
 # Legacy aliases for backward compat
 retrieve_semantic_memories = retrieve_static_memories
 retrieve_episodic_memories = retrieve_dynamic_memories
+
 
 
 def retrieve_segments(session_id: int, query=None, limit: int = 10):
@@ -624,6 +629,7 @@ def format_memory(memory_bundle):
 # ═════════════════════════════════════════════════════════════════════════════
 # ASYNC FUNCTIONS (for FastAPI routes)
 # ═════════════════════════════════════════════════════════════════════════════
+
 
 async def retrieve_static_memories_async(query=None, limit=15):
     """

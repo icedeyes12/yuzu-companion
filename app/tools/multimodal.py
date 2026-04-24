@@ -1,5 +1,7 @@
+from __future__ import annotations
 # FILE: app/tools/multimodal.py
 # DESCRIPTION: Multimodal tools with image caching and vision support
+
 
 import logging
 import requests
