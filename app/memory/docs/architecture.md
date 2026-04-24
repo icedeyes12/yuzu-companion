@@ -193,7 +193,7 @@ sequenceDiagram
 | Action | When | Behavior |
 |--------|------|----------|
 | `new` | No duplicate found | Insert with embedding + source_episodic_ids |
-| `reinforce` | Duplicate (cosine < 0.05) | Append to source_episodic_ids, bump confidence |
+| `reinforce` | Duplicate (cosine distance < 0.05) | Append to source_episodic_ids, bump confidence |
 | `update` | Same fact, new nuance | Invalidate old, insert new version |
 | `invalidate` | Contradicted | Set invalid_at=NOW() on old fact |
 
