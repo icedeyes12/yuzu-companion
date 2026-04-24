@@ -498,15 +498,15 @@ class MultimodalTools:
             saved_provider = prefs.get('provider')
             saved_model = prefs.get('model')
             
-            logger.info(f"[Vision] Checking saved preference: provider={saved_provider}, model={saved_model}")
+            logger.debug(f"[Vision] Checking saved preference: provider={saved_provider}, model={saved_model}")
             
             if saved_provider and saved_model:
                 available = self.get_available_vision_models(saved_provider)
-                logger.info(f"[Vision] Available models for {saved_provider}: {available}")
-                logger.info(f"[Vision] Exact match check: '{saved_model}' in {available} = {saved_model in available}")
+                logger.debug(f"[Vision] Available models for {saved_provider}: {available}")
+                logger.debug(f"[Vision] Exact match check: '{saved_model}' in {available} = {saved_model in available}")
                 
                 if saved_model in available:
-                    logger.info(f"[Vision] Using saved preference: {saved_provider}/{saved_model}")
+                    logger.debug(f"[Vision] Using saved preference: {saved_provider}/{saved_model}")
                     return saved_provider, saved_model
                 else:
                     logger.warning(f"[Vision] Saved model '{saved_model}' not in available list, using default")
@@ -518,7 +518,7 @@ class MultimodalTools:
             chutes_models = self.get_available_vision_models('chutes')
             if chutes_models:
                 default_model = chutes_models[0]
-                logger.info(f"[Vision] Using default Chutes vision model: {default_model}")
+                logger.debug(f"[Vision] Using default Chutes vision model: {default_model}")
                 return 'chutes', default_model
         
         # 3. Fallback to OpenRouter
