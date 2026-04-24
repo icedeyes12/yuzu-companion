@@ -27,26 +27,28 @@ from app.memory.db_memory import (
 logger = logging.getLogger(__name__)
 
 # ── FSRS Library Integration ──────────────────────────────────────────────────
+# PyPI fsrs library: https://pypi.org/project/fsrs/
+# API: Scheduler.review_card(card, rating) -> (new_card, review_log)
 try:
-    from fsrs import FSRS, Card, Rating
+    from fsrs import Scheduler, Card, Rating
     FSRS_AVAILABLE = True
 except ImportError:
     FSRS_AVAILABLE = False
+    Scheduler = None
+    Card = None
+    Rating = None
     logger.warning("fsrs library not available, falling back to multipliers")
 
-# FSRS default parameters (aligned with plast-mem)
-DEFAULT_FSRS_W = [0.4, 0.6, 2.4, 5.8, 4.93, 0.94, 0.86, 0.01, 1.49, 0.14, 0.94, 2.18, 0.05, 0.34, 1.26, 0.29, 2.61]
-
-# Initialize FSRS instance (singleton)
-_fsrs_instance = None
+# Initialize Scheduler instance (singleton)
+_scheduler_instance = None
 
 
-def _get_fsrs() -> FSRS | None:
-    """Get or create FSRS instance."""
-    global _fsrs_instance
-    if _fsrs_instance is None and FSRS_AVAILABLE:
-        _fsrs_instance = FSRS(w=DEFAULT_FSRS_W)
-    return _fsrs_instance
+def _get_scheduler() -> Scheduler | None:
+    """Get or create FSRS Scheduler instance."""
+    global _scheduler_instance
+    if _scheduler_instance is None and FSRS_AVAILABLE:
+        _scheduler_instance = Scheduler()
+    return _scheduler_instance
 
 
 # ── Fallback multipliers (when fsrs not available) ─────────────────────────────
@@ -199,18 +201,21 @@ Rate each fact (respond with JSON array only):"""
 def _update_fsrs_params_fsrs(fact_id: int, rating: str, row: dict) -> bool:
     """Apply FSRS parameter update using the fsrs library.
 
-    This is the preferred method when fsrs is available.
+    Uses scheduler.review_card(card, rating) to get next state.
     """
-    fsrs = _get_fsrs()
-    if fsrs is None:
+    scheduler = _get_scheduler()
+    if scheduler is None or Card is None or Rating is None:
         return False
 
     meta = row.get("metadata") or {}
 
-    # Build Card from current state
+    # Current FSRS state from metadata
     current_stability = meta.get("stability", 1.0)
     current_difficulty = meta.get("difficulty", 1.0)
     last_reviewed = meta.get("last_reviewed_at")
+    current_reps = meta.get("reps", 0)
+    current_lapses = meta.get("lapses", 0)
+    current_state = meta.get("state", 2)  # 2 = review state
 
     # Calculate days since last review
     now = datetime.now(timezone.utc)
@@ -223,15 +228,15 @@ def _update_fsrs_params_fsrs(fact_id: int, rating: str, row: dict) -> bool:
     else:
         days_elapsed = 0.0
 
-    # Create card with current state
+    # Create Card with current state
     card = Card(
         stability=current_stability,
         difficulty=current_difficulty,
         elapsed_days=days_elapsed,
-        scheduled_days=current_stability,  # approximation
-        reps=meta.get("reps", 0) + 1,
-        lapses=meta.get("lapses", 0) + (1 if rating == "again" else 0),
-        state=meta.get("state", 2),  # 2 = review state
+        scheduled_days=current_stability,
+        reps=current_reps,
+        lapses=current_lapses,
+        state=current_state,
         last_review=last_reviewed,
     )
 
@@ -243,40 +248,31 @@ def _update_fsrs_params_fsrs(fact_id: int, rating: str, row: dict) -> bool:
         "easy": Rating.Easy,
     }
 
-    # Get next state from FSRS
     try:
         rating_enum = rating_map[rating]
-        # Use fsrs to get next card state
-        next_card = fsrs.next(card, rating_enum)
-        if next_card:
-            new_stability = next_card.stability
-            new_difficulty = next_card.difficulty
-            _ = next_card.state  # state is tracked in scheduled_days
-            new_scheduled_days = next_card.scheduled_days
-            new_reps = next_card.reps
-            new_lapses = next_card.lapses
-        else:
-            return False
+        # Use scheduler.review_card() to get next state
+        new_card, review_log = scheduler.review_card(card, rating_enum)
+
+        # Extract new state from returned card
+        meta["stability"] = new_card.stability
+        meta["difficulty"] = new_card.difficulty
+        meta["state"] = new_card.state
+        meta["reps"] = new_card.reps
+        meta["lapses"] = new_card.lapses
+        meta["scheduled_days"] = new_card.scheduled_days
+        meta["last_reviewed_at"] = now.isoformat()
+        meta["last_rating"] = rating
+        meta["pending_review"] = False
+
+        pg_execute(
+            "UPDATE semantic_facts SET metadata=%s, last_accessed=%s WHERE id=%s",
+            (Json(meta), now, fact_id),
+        )
+        return True
+
     except Exception as e:
-        logger.warning(f"FSRS next() failed: {e}")
+        logger.warning(f"Scheduler.review_card() failed: {e}")
         return False
-
-    # Update metadata
-    meta["stability"] = new_stability
-    meta["difficulty"] = new_difficulty
-    meta["state"] = new_scheduled_days
-    meta["reps"] = new_reps
-    meta["lapses"] = new_lapses
-    meta["scheduled_days"] = new_scheduled_days
-    meta["last_reviewed_at"] = now.isoformat()
-    meta["last_rating"] = rating
-    meta["pending_review"] = False
-
-    pg_execute(
-        "UPDATE semantic_facts SET metadata=%s, last_accessed=%s WHERE id=%s",
-        (Json(meta), now, fact_id),
-    )
-    return True
 
 
 def _update_fsrs_params_fallback(fact_id: int, rating: str, row: dict) -> bool:
