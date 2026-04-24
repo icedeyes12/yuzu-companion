@@ -26,7 +26,7 @@ from app.memory.db_memory import (
 
 logger = logging.getLogger(__name__)
 
-# ── FSRS Library Integration ──────────────────────────────────────────────────
+# ── FSRS Library Integration ───────────────
 # PyPI fsrs library: https://pypi.org/project/fsrs/
 # API: Scheduler.review_card(card, rating) -> (new_card, review_log)
 try:
