@@ -73,7 +73,7 @@ def auto_name_session_if_needed(
         return
 
     api_keys = Database.get_api_keys() or {}
-    api_key = api_keys.get("openrouter")
+    api_key = api_keys.get("chutes")
     summary = Database.get_session_conversation_summary(session_id, limit=15)
 
     name: str | None = None
@@ -82,7 +82,9 @@ def auto_name_session_if_needed(
     if not name:
         name = _auto_name_from_history(session_id)
     if not name:
-        name = f"Chat {session_id}"
+        # Fallback: use timestamp-based name
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        name = f"Chat {timestamp}"
 
     Database.rename_session(session_id, name)
 
