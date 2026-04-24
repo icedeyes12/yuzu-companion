@@ -69,7 +69,9 @@ All data lives in a single PostgreSQL database with the pgvector extension for v
 | `last_accessed` | TIMESTAMP | Last retrieval timestamp |
 | `invalid_at` | TIMESTAMP | Soft delete — `NULL` = active, set = invalidated |
 
-**Index:** IVFFlat on `embedding` for approximate nearest neighbor (ANN) search. Future goal: HNSW.
+**Index:** Primary key only. Vector indexing (HNSW/IVFFlat) intentionally omitted due to SIGILL on Termux ARM environment. Using Exact Nearest Neighbor (Sequential Scan) with perfect 100% recall. Performance is stable for current scale (< 50k rows).
+
+**Text Search:** GIN on `metadata` (jsonb_path_ops) for metadata queries. pg_trgm available for fuzzy matching.
 
 ---
 

@@ -164,3 +164,10 @@ Every semantic fact assigned one category:
 4. SQL constants go in `db_memory_queries.py`
 5. Semantic = `static`, Episodic/Segments = `dynamic`
 6. Use `logging` module, not `print()`
+
+### Performance
+
+- **Vector Search**: Exact Nearest Neighbor (Sequential Scan) — no HNSW/IVFFlat index due to SIGILL on Termux ARM
+- **Current Scale**: 3,500+ rows, ~36ms query time (acceptable for real-time chat)
+- **Max Scale**: ~50,000 rows before performance degradation
+- **Recall**: 100% perfect (no approximation from ANN index)
