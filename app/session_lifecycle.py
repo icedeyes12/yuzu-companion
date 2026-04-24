@@ -69,7 +69,7 @@ def auto_name_session_if_needed(
     """Rename a 'New Chat' session once it has reached the trigger count."""
     if active_session.get("name") != "New Chat":
         return
-    if Database.get_session_messages_count(session_id) != _AUTO_NAME_TRIGGER_COUNT:
+    if Database.get_session_messages_count(session_id) < _AUTO_NAME_TRIGGER_COUNT:
         return
 
     api_keys = Database.get_api_keys() or {}
