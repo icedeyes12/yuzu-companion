@@ -42,6 +42,49 @@ This is a **major refactor** focused on simplicity, clarity, and maintainability
 #### Stage 6: Scripts Cleanup
 - Scripts already clean (CLI utilities, `print()` is appropriate)
 
+#### Stage 7: API Routing Decomposition & Memory System Enhancement (PR #72)
+
+**API Routing:**
+- **`app/api/__init__.py`** (NEW): Package init, exports `api_router`
+- **`app/api/routes.py`** (NEW): All `/api/*` endpoints extracted from `web.py`
+  - `/api/config` — Single endpoint for frontend configuration (vision models, providers, API keys)
+  - `/api/send_message`, `/api/send_message_stream` — Message handling
+  - `/api/providers/*` — Provider management endpoints
+  - `/api/sessions/*` — Session CRUD operations
+  - `/api/memory_stats` — Structured memory statistics
+- **`web.py`**: Reduced from 1068 lines to minimal entry point (~70 lines)
+  - Imports and registers `api_router` via `app.include_router(api_router)`
+  - Retains only: FastAPI app setup, static mounts, template config, favicon route
+- **`static/js/config.js`**: Frontend now fetches config from `/api/config` (no hardcoded provider lists)
+
+**Memory System — FSRS Library Integration:**
+- **`requirements.txt`**: Added `fsrs>=6.3.1` — Free Spaced Repetition Scheduler library
+- **`app/memory/memory_review.py`**: Refactored to use `fsrs` library
+  - `Card` and `FSRS` classes for proper state transitions
+  - `fsrs.repeat(card, rating)` returns next state (stability, difficulty, scheduled_days)
+  - Removed manual multiplicative multipliers in favor of library's state machine
+- **`app/memory/retrieval.py`**: Updated `_fsrs_retrievability()` to use `fsrs` library
+  - Proper retrievability calculation via `card.get_retrievability()`
+  - Aligned with plast-mem's FSRS implementation
+
+**Memory System — Segmentation Improvements:**
+- **`app/memory/memory.py`**: Added temporal fast-path and flashbulb boost
+  - `_detect_time_gap()` — Fast-path detection (15-min gap) without LLM
+  - `_enhance_temporal_segments()` — Enhances LLM segments with time-gap detection
+  - `FLASHBULB_THRESHOLD = 0.85` — Surprise-based stability boost
+  - `create_episode_and_pcl()` now applies `stability *= 1.5` for flashbulb memories
+  - Aligned with plast-mem's dual-channel segmentation
+
+**Documentation:**
+- **`AGENTS.md`**: Updated architecture overview with `app/api/` package, added fsrs to Tech Stack
+- **`app/README.md`**: Updated Directory Structure with API routing, fixed Dependencies section
+- **`app/api/README.md`** (NEW): API routing package documentation
+- **`app/memory/README.md`**: Added fsrs library usage, updated implementation status
+- **`app/memory/docs/architecture.md`**: Added FSRS library section, updated segmentation docs
+- **`requirements.txt`**: Cleaned dependencies based on actual import audit
+  - Removed unused: SQLAlchemy (not used), beautifulsoup4 (grep=0), numpy/scipy (demo only)
+  - Added: fsrs>=6.3.1
+
 ### Security
 
 All **GitHub Advanced Security alerts resolved**:
