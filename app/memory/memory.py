@@ -678,6 +678,7 @@ def trigger_memory_pipeline_async(session_id: int, current_count: int) -> bool:
     Returns True if pipeline was triggered.
     """
     if should_trigger_segmentation(session_id, current_count):
+        mark_segmentation_done(session_id, current_count)
         enqueue_memory_pipeline(session_id)
         return True
     return False
