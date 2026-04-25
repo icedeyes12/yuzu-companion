@@ -43,12 +43,12 @@ function addBrainBox(content, planning, tools) {
     // Create thinking block element
     const thinkingEl = document.createElement("div");
     thinkingEl.className = "thinking-block";
-    thinkingEl.innerHTML = \`
+    thinkingEl.innerHTML = `
         <div class="thinking-header">💭 Thinking</div>
-        <div class="thinking-content">\${escapeHtml(content || "")}</div>
-        \${planning ? \`<div class="thinking-planning">📋 Planning: \${escapeHtml(planning)}</div>\` : ""}
-        \${tools && tools.length ? \`<div class="thinking-tools">🔧 Tools: \${tools.join(", ")}</div>\` : ""}
-    \`;
+        <div class="thinking-content">${escapeHtml(content || "")}</div>
+        ${planning ? `<div class="thinking-planning">📋 Planning: ${escapeHtml(planning)}</div>` : ""}
+        ${tools && tools.length ? `<div class="thinking-tools">🔧 Tools: ${tools.join(", ")}</div>` : ""}
+    `;
     document.getElementById("chatContainer").appendChild(thinkingEl);
     scrollToBottom();
 }
@@ -58,10 +58,10 @@ function showToolExecution(tool, args, iteration) {
     // Create tool execution block
     const toolEl = document.createElement("div");
     toolEl.className = "tool-execution-block";
-    toolEl.innerHTML = \`
-        <div class="tool-header">🔧 Executing: \${escapeHtml(tool)}</div>
-        <div class="tool-args">Args: \${escapeHtml(JSON.stringify(args, null, 2))}</div>
-    \`;
+    toolEl.innerHTML = `
+        <div class="tool-header">🔧 Executing: ${escapeHtml(tool)}</div>
+        <div class="tool-args">Args: ${escapeHtml(JSON.stringify(args, null, 2))}</div>
+    `;
     document.getElementById("chatContainer").appendChild(toolEl);
     scrollToBottom();
 }
@@ -72,10 +72,10 @@ function showToolResult(ok, output) {
     const resultEl = document.createElement("div");
     resultEl.className = "tool-result-block " + (ok ? "success" : "error");
     const renderedOutput = typeof renderer !== "undefined" ? renderer.renderSync(output || "") : escapeHtml(output || "");
-    resultEl.innerHTML = \`
-        <div class="result-header">\${ok ? "✅" : "❌"} Tool Result</div>
-        <div class="result-content">\${renderedOutput}</div>
-    \`;
+    resultEl.innerHTML = `
+        <div class="result-header">${ok ? "✅" : "❌"} Tool Result</div>
+        <div class="result-content">${renderedOutput}</div>
+    `;
     document.getElementById("chatContainer").appendChild(resultEl);
     scrollToBottom();
     // Initialize mermaid in result
