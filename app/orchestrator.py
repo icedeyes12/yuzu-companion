@@ -177,18 +177,38 @@ def _execute_bracket_command(
     tool_call: "ToolCall",  # type: ignore[name-defined]
     session_id: int | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    """Execute a bracket-format command directly from a ToolCall object.
+    """Execute a bracket-format command via HybridDispatcher (local + MCP).
     
-    Bypasses the string parsing in execute_command since the arguments
-    are already parsed.
+    Supports both local tools (imagine, memory_search) and MCP tools (zo_search, etc).
     """
-    from app.tools.registry import execute_tool
+    import asyncio
     
     tool_name = tool_call.tool_name
     arguments = tool_call.arguments
     
     log.info("bracket command: [%s(%s)]", tool_name, arguments)
-    result = execute_tool(tool_name, arguments, session_id=session_id)
+    
+    # Use HybridDispatcher for unified routing
+    async def _execute():
+        from app.dispatch.hybrid import HybridDispatcher
+        dispatcher = HybridDispatcher()
+        await dispatcher.initialize()
+        return await dispatcher.execute(tool_name, arguments, session_id=session_id)
+    
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    
+    if loop is not None:
+        # Already in async context - run in thread
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(asyncio.run, _execute())
+            result = future.result()
+    else:
+        result = asyncio.run(_execute())
+    
     return tool_name, result
 
 
