@@ -537,7 +537,50 @@ class MessageRenderer {
         return normalizedText;
     }
 
-    _renderThinkingBlock(thought) { /* ... */ }
+    _renderThinkingBlock(thought) {
+        // Create collapsible thinking block
+        const id = 'thought-' + Math.random().toString(36).substr(2, 9);
+        
+        // Parse thought content (Planning:, Tools:, etc.)
+        let planning = '';
+        let tools = [];
+        let content = thought;
+        
+        // Extract planning section
+        const planningMatch = thought.match(/Planning:\s*(.+?)(?:\n|$)/i);
+        if (planningMatch) {
+            planning = planningMatch[1];
+        }
+        
+        // Extract tools section
+        const toolsMatch = thought.match(/Tools:\s*(.+?)(?:\n|$)/i);
+        if (toolsMatch) {
+            tools = toolsMatch[1].split(',').map(t => t.trim()).filter(t => t);
+        }
+        
+        // Build HTML
+        let html = `
+            <div class="thinking-block">
+                <details>
+                    <summary class="thinking-summary">
+                        <span class="thinking-icon">💭</span>
+                        <span class="thinking-label">Thinking</span>
+                        ${planning ? `<span class="thinking-planning">${this.escapeHtml(planning)}</span>` : ''}
+                    </summary>
+                    <div class="thought-content">
+                        <div class="thought-text">${this.escapeHtml(content)}</div>
+                        ${tools.length > 0 ? `
+                            <div class="thought-tools">
+                                ${tools.map(t => `<span class="tool-badge">${this.escapeHtml(t)}</span>`).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+                </details>
+            </div>
+        `;
+        
+        return html;
+    }
     
     postProcessHTML(html) {
         const temp = document.createElement('div');
@@ -570,7 +613,17 @@ class MessageRenderer {
             }
         });
         
-        // 3. Apply highlight.js to unprocessed code blocks
+        // 3. Process thinking blocks
+        const thinkingBlocks = temp.querySelectorAll('thought');
+        thinkingBlocks.forEach(block => {
+            const thought = block.textContent;
+            const rendered = this._renderThinkingBlock(thought);
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = rendered;
+            block.replaceWith(wrapper.firstElementChild);
+        });
+        
+        // 4. Apply highlight.js to unprocessed code blocks
         if (this.isHighlightReady) {
             const codeBlocks = temp.querySelectorAll('pre code:not(.hljs)');
             codeBlocks.forEach(block => {
