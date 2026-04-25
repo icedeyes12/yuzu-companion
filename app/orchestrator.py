@@ -25,6 +25,7 @@ from app.logging_config import get_logger
 from app.tools import multimodal_tools
 from app.tools.registry import get_tool_role
 from app.visual_context import store_visual_context
+from app.agents.command_parser import parse_bracket_command, ToolCall
 
 log = get_logger(__name__)
 
@@ -145,6 +146,47 @@ def _load_image_base64(image_path: str) -> tuple[str | None, str | None]:
 
 def _clean(text: str) -> str:
     return _TIMESTAMP_SUFFIX.sub("", text).strip()
+
+
+def _detect_any_command(text: str) -> dict[str, str] | None:
+    """Detect command in either format: /slash or [COMMAND: ...].
+    
+    Priority:
+      1. [COMMAND: ...] bracket format (new)
+      2. /slash format (legacy)
+    
+    Returns dict with 'command', 'args', 'full_command' keys.
+    """
+    # Try bracket format first
+    bracket = parse_bracket_command(text)
+    if bracket:
+        return {
+            "command": bracket.tool_name,
+            "args": bracket.raw_arguments if hasattr(bracket, 'raw_arguments') else "",
+            "full_command": bracket.raw_text,
+        }
+    
+    # Fall back to slash format
+    return detect_command(text)
+
+
+def _execute_bracket_command(
+    tool_call: "ToolCall",  # type: ignore[name-defined]
+    session_id: int | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Execute a bracket-format command directly from a ToolCall object.
+    
+    Bypasses the string parsing in execute_command since the arguments
+    are already parsed.
+    """
+    from app.tools.registry import execute_tool
+    
+    tool_name = tool_call.tool_name
+    arguments = tool_call.arguments
+    
+    log.info("bracket command: [%s(%s)]", tool_name, arguments)
+    result = execute_tool(tool_name, arguments, session_id=session_id)
+    return tool_name, result
 
 
 def _persist_user(
@@ -339,14 +381,20 @@ def handle_user_message(user_message: str, interface: str = "terminal") -> str:
         )
         return IMAGE_SHORTCUT_WARNING
 
-    cmd_info = detect_command(raw_response)
+    cmd_info = _detect_any_command(raw_response)
     if not cmd_info:
         Database.add_message("assistant", raw_response, session_id=session_id)
         _post_turn(profile, user_message, raw_response, session_id, active_session)
         return raw_response
 
-    # Tool path
-    tool_name, tool_result = execute_command(cmd_info, session_id=session_id)
+    # Check if this is a bracket command
+    bracket = parse_bracket_command(raw_response)
+    if bracket:
+        # Use direct execution for bracket commands
+        tool_name, tool_result = _execute_bracket_command(bracket, session_id=session_id)
+    else:
+        # Use legacy execution for slash commands
+        tool_name, tool_result = execute_command(cmd_info, session_id=session_id)
     tool_markdown = tool_result.get("markdown", str(tool_result))
     _persist_tool_result(tool_name, tool_markdown, session_id)
 
@@ -422,6 +470,27 @@ def handle_user_message_streaming(
         return
 
     if not sf.command:
+        # Check for bracket format command after stream completes
+        bracket_cmd = parse_bracket_command(full_response)
+        if bracket_cmd:
+            # Execute bracket command directly
+            tool_name, tool_result = _execute_bracket_command(bracket_cmd, session_id=session_id)
+            tool_markdown = tool_result.get("markdown", str(tool_result))
+            _persist_tool_result(tool_name, tool_markdown, session_id)
+            yield "\n\n" + tool_markdown
+            
+            # Run synthesis
+            is_image_tool = parse_image_path(tool_markdown) is not None
+            synthesis = _run_synthesis(
+                profile, session_id, interface, tool_markdown, is_image_tool
+            )
+            if synthesis:
+                Database.add_message("assistant", synthesis, session_id=session_id)
+                _post_turn(profile, user_message, f"{tool_markdown}\n\n{synthesis}", session_id, active_session)
+            else:
+                _post_turn(profile, user_message, tool_markdown, session_id, active_session)
+            return
+        
         # Plain response - already streamed live. Persist and finish.
         text = visible_response or _EMPTY_RESPONSE_FALLBACK
         Database.add_message("assistant", text, session_id=session_id)
