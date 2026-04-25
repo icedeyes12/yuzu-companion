@@ -334,3 +334,84 @@ if (!document.querySelector('link[href*="agentic.css"]')) {
   `
   document.head.appendChild(style)
 }
+
+// Toggle functions
+function toggleBrainBox() {
+  if (brainBox.isVisible) {
+    brainBox.hide()
+  } else {
+    brainBox.show()
+  }
+}
+
+function toggleActivityFeed() {
+  activityFeed.toggle()
+}
+
+function toggleExecutionHistory() {
+  if (executionHistory.isVisible) {
+    executionHistory.hide()
+  } else {
+    executionHistory.show()
+  }
+}
+
+// Agentic Mode Toggle - Backend integration
+let agenticModeEnabled = false
+
+async function initAgenticMode() {
+  // Load state from backend
+  try {
+    const resp = await fetch('/api/agentic/status')
+    const data = await resp.json()
+    agenticModeEnabled = data.agentic_mode || false
+    updateAgenticModeUI()
+  } catch (e) {
+    // Default to off
+    agenticModeEnabled = false
+    updateAgenticModeUI()
+  }
+}
+
+async function toggleAgenticMode(enabled) {
+  try {
+    const resp = await fetch('/api/agentic/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled })
+    })
+    
+    const data = await resp.json()
+    
+    if (data.status === 'success') {
+      agenticModeEnabled = enabled
+      updateAgenticModeUI()
+      console.log('[Agentic] Mode:', enabled ? 'enabled' : 'disabled')
+    }
+  } catch (e) {
+    console.error('[Agentic] Toggle failed:', e)
+  }
+}
+
+function updateAgenticModeUI() {
+  const toggle = document.getElementById('agenticModeToggle')
+  const label = document.getElementById('agenticModeLabel')
+  const info = document.getElementById('agenticModeInfo')
+  
+  if (toggle) toggle.checked = agenticModeEnabled
+  if (label) label.textContent = agenticModeEnabled ? 'ON' : 'OFF'
+  if (info) info.textContent = agenticModeEnabled ? '56 MCP tools + local' : 'Local RPC tools'
+  
+  // Show/hide brain box based on mode
+  if (agenticModeEnabled) {
+    brainBox.init()
+  }
+}
+
+// Export for global access
+window.initAgenticMode = initAgenticMode
+window.toggleAgenticMode = toggleAgenticMode
+window.agenticModeEnabled = () => agenticModeEnabled
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', initAgenticMode)

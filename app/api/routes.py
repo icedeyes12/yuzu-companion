@@ -130,6 +130,10 @@ class AgenticChatResponse(BaseModel):
     elapsed_seconds: float
 
 
+class AgenticToggleRequest(BaseModel):
+    enabled: bool = Field(..., description="Enable or disable agentic mode")
+
+
 @api_router.post("/agentic/chat")
 async def api_agentic_chat(request: AgenticChatRequest):
     """Agentic chat endpoint with Plan-Execute-Observe loop.
@@ -198,6 +202,44 @@ async def api_agentic_tools():
             "count": len(tools),
         }
     
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/agentic/toggle")
+async def api_agentic_toggle(request: AgenticToggleRequest):
+    """Toggle agentic mode on/off.
+    
+    Stores preference in profile.providers_config.agentic_mode.
+    When enabled, MCP tools are lazy-initialized on next request.
+    """
+    try:
+        profile = await get_profile_async()
+        providers_config = profile.get("providers_config", {})
+        providers_config["agentic_mode"] = request.enabled
+        await update_profile_async({"providers_config": providers_config})
+        
+        return {
+            "status": "success",
+            "agentic_mode": request.enabled,
+            "message": f"Agentic mode {'enabled' if request.enabled else 'disabled'}",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/agentic/status")
+async def api_agentic_status():
+    """Get current agentic mode status."""
+    try:
+        profile = await get_profile_async()
+        providers_config = profile.get("providers_config", {})
+        agentic_mode = providers_config.get("agentic_mode", False)
+        
+        return {
+            "status": "success",
+            "agentic_mode": agentic_mode,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
