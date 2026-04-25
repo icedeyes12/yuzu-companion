@@ -29,11 +29,13 @@ def main():
         print("ERROR: ZO_ACCESS_TOKEN not set")
         print()
         print("Get your token from: https://yuzu.zo.computer/?t=settings&s=advanced")
-        print("Then run:")
+        print("Add it to your .env file as ZO_ACCESS_TOKEN=...")
+        print()
+        print("Or run with inline token:")
         print("    ZO_ACCESS_TOKEN=your_token python scripts/mcp_diagnostic.py")
         return
     
-    print(f"Token: {token[:15]}...")
+    print(f"Token: {token[:20]}...")
     print()
     
     asyncio.run(_diagnose(token))
@@ -52,7 +54,7 @@ async def _diagnose(token: str):
     print()
     
     print("[2] Testing MCP tool execution (web_search)...")
-    result = await client.execute("web_search", {"query": "MCP protocol", "time_range": "anytime"})
+    result = await client.call_tool("web_search", {"query": "MCP protocol", "time_range": "anytime"})
     print(f"   ok: {result.get('ok')}")
     print(f"   markdown length: {len(result.get('markdown', ''))}")
     print()
