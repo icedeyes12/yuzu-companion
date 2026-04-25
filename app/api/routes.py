@@ -144,18 +144,18 @@ async def api_agentic_chat(request: AgenticChatRequest):
         session_id = active_session["id"]
         
         if request.stream:
-            # Streaming response
+            # Streaming response with SSE format (already formatted by stream_agentic_loop)
             async def generate():
-                async for chunk in stream_agentic_loop(
+                async for sse_event in stream_agentic_loop(
                     request.message,
                     session_id,
                     interface="web",
                 ):
-                    yield chunk
+                    yield sse_event
             
             return StreamingResponse(
                 generate(),
-                media_type="text/plain",
+                media_type="text/event-stream",
             )
         else:
             # Non-streaming response

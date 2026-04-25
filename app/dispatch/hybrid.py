@@ -133,11 +133,16 @@ class HybridDispatcher:
             {"ok": True, "data": ..., "markdown": "..."}
             {"ok": False, "error": "...", "markdown": "..."}
         """
+        log.info(f"HybridDispatcher.execute: {tool_name} | local={self.is_local_tool(tool_name)} | mcp={self.is_mcp_tool(tool_name)}")
+        
         if self.is_local_tool(tool_name):
+            log.info(f"Executing local tool: {tool_name}")
             return await self._execute_local(tool_name, arguments, session_id)
         elif self.is_mcp_tool(tool_name):
+            log.info(f"Executing MCP tool: {tool_name}")
             return await self._execute_mcp(tool_name, arguments)
         else:
+            log.warning(f"Unknown tool: {tool_name}")
             return {
                 "ok": False,
                 "error": f"Unknown tool: {tool_name}",

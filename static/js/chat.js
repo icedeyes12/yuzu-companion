@@ -8,6 +8,50 @@ let currentPage = 0;
 const MESSAGES_PER_PAGE = 30;
 
 // ==================== MULTIMODAL MANAGER ====================
+
+// ========================================
+// Agentic SSE Helper Functions
+// ========================================
+
+let _streamingMessageEl = null;
+let _streamingContent = "";
+
+function streamToMessage(chunk) {
+    if (!_streamingMessageEl) {
+        _streamingMessageEl = createMessageElement("ai", "");
+        document.getElementById("chatContainer").appendChild(_streamingMessageEl);
+        _streamingContent = "";
+    }
+    _streamingContent += chunk;
+    const contentEl = _streamingMessageEl.querySelector(".message-content");
+    if (contentEl && typeof renderer !== "undefined") {
+        contentEl.innerHTML = renderMessageContent(_streamingContent);
+    }
+}
+
+function finalizeStreaming(iterations, elapsed, toolCalls) {
+    _streamingMessageEl = null;
+    _streamingContent = "";
+    scrollToBottom();
+}
+
+function addBrainBox(content, planning, tools) {
+    console.log("[Brain]", content);
+}
+
+function showToolExecution(tool, args, iteration) {
+    console.log("[Tool #" + iteration + "]", tool, args);
+}
+
+function showToolResult(ok, output) {
+    console.log("[Result]", ok ? "OK" : "FAIL", output?.substring(0, 100));
+}
+
+function showError(message) {
+    addMessage("ai", "Error: " + message);
+}
+
+
 class MultimodalManager {
     constructor() {
         this.currentMode = 'chat';
@@ -162,11 +206,17 @@ class MultimodalManager {
 ");
                 buffer = lines.pop() || "";
                 
+                let currentEvent = null;
                 for (const line of lines) {
+                    if (line.startsWith("event: ")) {
+                        currentEvent = line.slice(7).trim();
+                        continue;
+                    }
                     if (!line.startsWith("data: ")) continue;
                     
                     try {
-                        const event = JSON.parse(line.slice(6));
+                        const eventData = JSON.parse(line.slice(6));
+                        const event = { type: currentEvent || "text", data: eventData };
                         
                         switch (event.type) {
                             case "thought":
