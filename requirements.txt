@@ -48,6 +48,13 @@ requests>=2.33.0
 # Async HTTP client for MCP tools and agentic workflows
 httpx>=0.27.0
 
+# Agentic Loop & Checkpointing
+# -----------------------------
+# LangGraph for agentic workflows with checkpointing
+langgraph>=0.2.0
+# PostgreSQL checkpoint backend for LangGraph
+langgraph-checkpoint-postgres>=0.1.0
+
 # Development Tools (optional)
 # ----------------------------
 # Code formatting
