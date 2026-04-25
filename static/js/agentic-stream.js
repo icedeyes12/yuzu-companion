@@ -202,7 +202,6 @@ class AgenticStreamHandler {
         }
     }
     }
-}
 
 // Global instance for chat.js integration
 window.agenticStream = new AgenticStreamHandler({
