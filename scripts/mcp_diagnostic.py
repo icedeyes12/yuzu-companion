@@ -21,6 +21,14 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_SCRIPT_DIR)  # goes from scripts/ -> project root
 sys.path.insert(0, _PROJECT_ROOT)
 
+# Load .env file if it exists (supports ZO_ACCESS_TOKEN)
+_dotenv_path = os.path.join(_PROJECT_ROOT, ".env")
+if os.path.exists(_dotenv_path):
+    from dotenv import load_dotenv
+    load_dotenv(_dotenv_path)
+
+print(f"ZO_ACCESS_TOKEN in env: {'YES' if os.environ.get('ZO_ACCESS_TOKEN') else 'NO'}")
+
 
 def main():
     token = os.environ.get("ZO_ACCESS_TOKEN", "")
@@ -36,6 +44,8 @@ def main():
         return
     
     print(f"Token: {token[:20]}...")
+    print()
+    print(f"ZO_ACCESS_TOKEN in env: {'YES' if os.environ.get('ZO_ACCESS_TOKEN') else 'NO'}")
     print()
     
     asyncio.run(_diagnose(token))
