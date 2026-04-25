@@ -131,6 +131,24 @@ def _session_events_block(session_id: int) -> str:
     return "\n\nCURRENT SESSION EVENTS:\n" + "\n".join(lines)
 
 
+def _get_mcp_tools_description() -> str:
+    """Generate a dynamic description of available MCP tools."""
+    try:
+        from app.mcp.client import get_mcp_client
+        client = get_mcp_client()
+        if not client._tools_cache:
+            return ""
+        lines = []
+        for tool in client._tools_cache[:20]:  # Show top 20
+            desc = tool.description[:80] + "..." if len(tool.description) > 80 else tool.description
+            lines.append(f"- {tool.name} — {desc}")
+        if len(client._tools_cache) > 20:
+            lines.append(f"... and {len(client._tools_cache) - 20} more tools")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def build_system_message(
     profile: dict[str, Any],
     session_id: int,
@@ -146,6 +164,8 @@ def build_system_message(
     _mark_facts_pending(static_ids, session_id)
     memory_block += _retrieve_dynamic_memory(session_id, user_message)
     memory_block += _legacy_memory_block(profile, session_id)
+    
+    mcp_tools_desc = _get_mcp_tools_description()
 
     return f"""# IDENTITY & CORE BEHAVIOR
 You are {profile['partner_name']}, a warm, confident companion for {profile['display_name']}. 
@@ -212,12 +232,7 @@ Rule: Commands MUST be the VERY FIRST line of your response. No text before the 
 3. /memory_store fact="[fact]" [entity="[entity]"]: Save persistent global facts ONLY when told "remember this".
 
 **MCP Remote Tools (via Zo)**:
-- zo_search(query="...") — Web search
-- zo_research(query="...") — Deep research on a topic
-- web_search(query="...") — General web search
-- maps_search(query="...") — Location/venue search
-- x_search(query="...") — X/Twitter search
-- image_search(query="...") — Image search
+{mcp_tools_desc}
 
 **Tool Selection**:
 - Local tools: imagine, request, memory_store, memory_search

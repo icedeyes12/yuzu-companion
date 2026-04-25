@@ -29,6 +29,9 @@ _DEFAULT_HEADERS = {
     "HTTP-Referer": "https://github.com/icedeyes12/yuzu-companion",
 }
 
+_MCP_SCHEMAS_CACHE: list[dict[str, Any]] | None = None
+_MCP_DISCOVERED = False
+
 
 # ---------------------------------------------------------------------------
 # Shared Chutes HTTP helper (replaces three duplicated call sites)
@@ -161,15 +164,70 @@ def _inject_persistent_visual(
     log.info("re-injected persistent visual context")
 
 
+def _get_mcp_schemas() -> list[dict[str, Any]]:
+    """Lazy-load MCP tool schemas (cached for session lifetime)."""
+    global _MCP_SCHEMAS_CACHE, _MCP_DISCOVERED
+    
+    if _MCP_DISCOVERED:
+        return _MCP_SCHEMAS_CACHE or []
+    
+    _MCP_DISCOVERED = True
+    
+    try:
+        import asyncio
+        from app.mcp.client import get_mcp_client
+        
+        # Try to get cached tools first (sync)
+        client = get_mcp_client()
+        if client._tools_cache:
+            _MCP_SCHEMAS_CACHE = [t.to_llm_schema() for t in client._tools_cache]
+            return _MCP_SCHEMAS_CACHE
+        
+        # No cache - discover in background thread
+        def _discover():
+            global _MCP_SCHEMAS_CACHE
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                tools = loop.run_until_complete(client.discover_tools())
+                _MCP_SCHEMAS_CACHE = [t.to_llm_schema() for t in tools]
+                loop.close()
+            except Exception as e:
+                log.debug(f"MCP discovery failed: {e}")
+                _MCP_SCHEMAS_CACHE = []
+        
+        import threading
+        thread = threading.Thread(target=_discover, daemon=True)
+        thread.start()
+        thread.join(timeout=2.0)  # Wait up to 2s
+        
+        return _MCP_SCHEMAS_CACHE or []
+    except Exception as e:
+        log.debug(f"Failed to get MCP schemas: {e}")
+        return []
+
+
 def _unique_tool_schemas() -> list[dict[str, Any]]:
+    """Build a list of unique tool schemas from local + MCP tools."""
     seen: set[str] = set()
     schemas: list[dict[str, Any]] = []
+    
+    # Local tools
     for tool in get_tool_definitions():
         schema = tool.to_llm_schema()
         name = schema.get("function", {}).get("name", "")
         if name and name not in seen:
             seen.add(name)
             schemas.append(schema)
+    
+    # MCP tools (cached)
+    for schema in _get_mcp_schemas():
+        name = schema.get("function", {}).get("name", "")
+        if name and name not in seen:
+            seen.add(name)
+            schemas.append(schema)
+    
+    log.debug(f"Tool schemas: {len(schemas)} ({len(schemas) - len([s for s in schemas if s in [t.to_llm_schema() for t in get_tool_definitions()]])} MCP)")
     return schemas
 
 
