@@ -320,13 +320,109 @@ class MessageRenderer {
         }
         processedMarkdown = this.preprocessGeneratedImages(processedMarkdown);
         
-        // Use marked.parse with async: false for sync rendering
-        let html = marked.parse(processedMarkdown, { async: false });
-        html = this.postProcessHTML(html);
-        
-        setTimeout(() => this.initializeMermaidDiagrams(), 0);
-        
+        // marked v18: use marked.parse() without async flag (it's sync by default when not returning promise)
+        try {
+            let html = marked.parse(processedMarkdown);
+            // If it returns a promise, we need to handle it differently
+            if (html instanceof Promise) {
+                console.warn('[Renderer] marked.parse returned Promise in renderSync, falling back to sync mode');
+                // Use the internal lexer/parser directly for true sync
+                const tokens = marked.lexer(processedMarkdown);
+                html = this._renderTokensSync(tokens);
+            }
+            html = this.postProcessHTML(html);
+            setTimeout(() => this.initializeMermaidDiagrams(), 0);
+            return html;
+        } catch (e) {
+            console.error('[Renderer] renderSync error:', e);
+            return this.renderWithoutMarked(markdown);
+        }
+    }
+    
+    _renderTokensSync(tokens) {
+        // Manual sync rendering using marked's internal parser
+        let html = '';
+        for (const token of tokens) {
+            html += this._renderTokenSync(token);
+        }
         return html;
+    }
+    
+    _renderTokenSync(token) {
+        // Simplified token renderer for sync mode
+        switch (token.type) {
+            case 'heading':
+                return `<h${token.depth}>${token.text || ''}</h${token.depth}>`;
+            case 'paragraph':
+                return `<p>${token.text || ''}</p>`;
+            case 'code':
+                return this._renderCodeBlock(token);
+            case 'list':
+                return this._renderListSync(token);
+            case 'list_item':
+                return `<li>${token.text || ''}</li>`;
+            case 'space':
+                return '';
+            case 'hr':
+                return '<hr>';
+            case 'strong':
+                return `<strong>${token.text || ''}</strong>`;
+            case 'em':
+                return `<em>${token.text || ''}</em>`;
+            case 'codespan':
+                return `<code>${this.escapeHtml(token.text || '')}</code>`;
+            case 'br':
+                return '<br>';
+            case 'del':
+                return `<del>${token.text || ''}</del>`;
+            case 'link':
+                return `<a href="${token.href || '#'}">${token.text || ''}</a>`;
+            case 'image':
+                return `<img src="${token.href || ''}" alt="${token.text || ''}">`;
+            case 'html':
+            case 'text':
+            default:
+                return token.raw || '';
+        }
+    }
+    
+    _renderCodeBlock(token) {
+        const lang = token.lang || '';
+        const code = token.text || '';
+        
+        // Handle mermaid
+        if (lang === 'mermaid' && this.isMermaidReady) {
+            const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            return `<div class="mermaid-container"><pre class="mermaid" id="${id}">${this.escapeHtml(code)}</pre></div>`;
+        }
+        
+        // Highlight with hljs
+        const normalizedLang = this.normalizeLanguageAlias(lang);
+        const fallbackLang = 'plaintext';
+        let highlightLang = fallbackLang;
+        
+        if (normalizedLang && this.isHighlightReady && hljs.getLanguage(normalizedLang)) {
+            highlightLang = normalizedLang;
+        }
+        
+        const highlighted = this.isHighlightReady
+            ? hljs.highlight(code, { language: highlightLang, ignoreIllegals: true }).value
+            : this.escapeHtml(code);
+        
+        return `<div class="code-block-container"><div class="code-block-header"><span class="code-language">${lang || 'code'}</span><button class="copy-code-btn" onclick="renderer.copyCode(this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy</button></div><pre><code class="hljs language-${highlightLang}">${highlighted}</code></pre></div>`;
+    }
+    
+    _renderListSync(token) {
+        const tag = token.ordered ? 'ol' : 'ul';
+        let items = '';
+        
+        if (token.items && Array.isArray(token.items)) {
+            for (const item of token.items) {
+                items += `<li>${item.text || ''}</li>`;
+            }
+        }
+        
+        return `<${tag}>${items}</${tag}>`;
     }
 
     preprocessGeneratedImages(text) {
