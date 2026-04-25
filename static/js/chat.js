@@ -1012,9 +1012,6 @@ window.onload = function() {
 // AGENTIC STREAM HELPERS
 // ========================================
 
-// Execution history state
-let executionHistory = [];
-let historyToggleVisible = false;
 
 // Brain Box - thought display
 window.addBrainBox = function(content, planning, tools) {
