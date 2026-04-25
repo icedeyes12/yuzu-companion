@@ -224,7 +224,8 @@ class MultimodalManager {
             const response = await fetch("/api/agentic/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: text, stream: true }),
+                body: JSON.stringify({ message: text, stream: true })
+        console.log("[Chat] Starting agentic stream"),
             });
             
             if (!response.ok) {
@@ -246,6 +247,8 @@ class MultimodalManager {
                 
                 let currentEvent = null;
                 for (const line of lines) {
+                    if (!line.trim()) continue; // Skip empty lines
+                    console.log("[SSE]", line.substring(0, 100));
                     if (line.startsWith("event: ")) {
                         currentEvent = line.slice(7).trim();
                         continue;

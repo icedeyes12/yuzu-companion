@@ -275,7 +275,9 @@ class MessageRenderer {
             let html = await marked.parse(processedMarkdown);
             
             // Step 4: Post-process (tables, callouts, etc.)
-            html = this.postProcessHTML(html);
+            html = this._renderThinkingBlock(thought) { /* ... */ }
+    
+    postProcessHTML(html);
             
             // Step 5: Initialize mermaid diagrams (async)
             setTimeout(() => {
@@ -305,7 +307,11 @@ class MessageRenderer {
         });
         
         try {
-            await mermaid.run({ querySelector: '.mermaid[data-processed="true"]' });
+            // Remove data-processed attribute and let mermaid re-process
+            mermaidElements.forEach(el => {
+                el.removeAttribute('data-processed');
+            });
+            await mermaid.run({ querySelector: '.mermaid' });
             console.log('[Renderer] Mermaid diagrams initialized');
         } catch (error) {
             console.error('[Renderer] Mermaid initialization error:', error);
@@ -329,7 +335,9 @@ class MessageRenderer {
         try {
             const tokens = marked.lexer(processedMarkdown);
             let html = this._renderTokensSync(tokens);
-            html = this.postProcessHTML(html);
+            html = this._renderThinkingBlock(thought) { /* ... */ }
+    
+    postProcessHTML(html);
             setTimeout(() => this.initializeMermaidDiagrams(), 0);
             return html;
         } catch (e) {
@@ -465,7 +473,8 @@ class MessageRenderer {
         if (lang === 'mermaid' && this.isMermaidReady) {
             const codeStr = typeof code === 'string' ? code : String(code || '');
             const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-            return `<div class="mermaid-container"><pre class="mermaid" id="${id}">${this.escapeHtml(codeStr)}</pre></div>`;
+            // Mermaid needs raw text, not escaped HTML
+            return `<div class="mermaid-container"><pre class="mermaid" id="${id}">${codeStr}</pre></div>`;
         }
         
         // Highlight with hljs
@@ -514,6 +523,8 @@ class MessageRenderer {
         return normalizedText;
     }
 
+    _renderThinkingBlock(thought) { /* ... */ }
+    
     postProcessHTML(html) {
         const temp = document.createElement('div');
         temp.innerHTML = html;

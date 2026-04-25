@@ -454,3 +454,43 @@
     max-width: 100%;
     height: auto;
 }
+
+/* Thinking Block */
+.thinking-block {
+    background: var(--card-bg);
+    border-left: 3px solid var(--accent-color);
+    padding: 0.5rem 1rem;
+    margin: 0.5rem 0;
+    border-radius: 4px;
+}
+
+.thinking-header {
+    font-weight: bold;
+    font-size: 0.85rem;
+    opacity: 0.7;
+    margin-bottom: 0.25rem;
+}
+
+.thought-content {
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.thought-planning {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    opacity: 0.8;
+}
+
+.thought-tools {
+    margin-top: 0.5rem;
+}
+
+.tool-badge {
+    display: inline-block;
+    background: var(--button-bg);
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    margin-right: 0.25rem;
+}
