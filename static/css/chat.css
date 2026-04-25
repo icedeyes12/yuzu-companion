@@ -1132,3 +1132,220 @@ html, body {
 .console-line.error { color: #f85149; background: rgba(248,81,73,0.1); }
 .console-line.info { color: #58a6ff; }
 .console-empty { padding: 8px; color: #484f58; font-style: italic; font-family: sans-serif; font-size: 11px; }
+
+/* =========================
+   MARKDOWN INLINE STYLES
+   ========================= */
+
+/* Inline code - distinct from bold */
+.message-content code:not(pre code) {
+  background: var(--code-bg, rgba(147, 165, 255, 0.15));
+  color: var(--accent-lavender, #a8c8ff);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.85em;
+  border: 1px solid var(--code-border, rgba(147, 165, 255, 0.2));
+  word-break: break-word;
+}
+
+/* Bold - clearly different */
+.message-content strong {
+  color: var(--text-color);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Italic */
+.message-content em {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Strikethrough */
+.message-content del {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+/* =========================
+   NESTED LISTS
+   ========================= */
+
+/* Nested unordered lists */
+.message-content ul ul,
+.message-content ol ul {
+  list-style-type: circle;
+  margin-top: 0.25rem;
+}
+
+.message-content ul ul ul,
+.message-content ol ul ul {
+  list-style-type: square;
+}
+
+/* Nested ordered lists */
+.message-content ol ol {
+  list-style-type: lower-alpha;
+}
+
+.message-content ol ol ol {
+  list-style-type: lower-roman;
+}
+
+/* Nested list item spacing */
+.message-content li > ul,
+.message-content li > ol {
+  margin: 0.25rem 0 0.25rem 0.5rem;
+}
+
+/* Tight nested lists */
+.message-content ul.tight-list,
+.message-content ol.tight-list {
+  margin: 0.25rem 0;
+}
+
+/* =========================
+   QUOTES & CALLOUTS
+   ========================= */
+
+/* Nested blockquotes */
+.message-content blockquote blockquote {
+  margin-left: 0.5rem;
+  border-left-color: var(--border-lavender);
+  opacity: 0.9;
+}
+
+/* Callout variants */
+.message-content .callout-note {
+  border-color: var(--accent-lavender);
+  background: rgba(147, 165, 255, 0.1);
+}
+
+.message-content .callout-warning {
+  border-color: var(--accent-pink);
+  background: rgba(255, 133, 161, 0.1);
+}
+
+.message-content .callout-tip {
+  border-color: var(--accent-mint);
+  background: rgba(184, 225, 221, 0.1);
+}
+
+.message-content .callout-important {
+  border-color: var(--accent-color);
+  background: rgba(138, 109, 233, 0.1);
+}
+
+/* =========================
+   LINKS
+   ========================= */
+
+.message-content a {
+  color: var(--accent-lavender);
+  text-decoration: underline;
+  text-decoration-color: rgba(168, 200, 255, 0.4);
+  text-underline-offset: 2px;
+  transition: all 0.2s ease;
+}
+
+.message-content a:hover {
+  color: var(--accent-pink);
+  text-decoration-color: var(--accent-pink);
+}
+
+/* =========================
+   IMAGES
+   ========================= */
+
+.message-content img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 0.5rem 0;
+  box-shadow: var(--shadow-soft);
+}
+
+/* =========================
+   TABLES
+   ========================= */
+
+.message-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.8rem 0;
+  font-size: 0.9em;
+}
+
+.message-content th,
+.message-content td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-ai);
+  text-align: left;
+}
+
+.message-content th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+
+.message-content tr:nth-child(even) {
+  background: var(--code-bg);
+}
+
+/* =========================
+   HORIZONTAL RULE
+   ========================= */
+
+.message-content hr {
+  border: none;
+  border-top: 1px solid var(--border-ai);
+  margin: 1.5rem 0;
+  opacity: 0.5;
+}
+
+/* =========================
+   HEADINGS IN MESSAGES
+   ========================= */
+
+.message-content h1,
+.message-content h2,
+.message-content h3 {
+  margin: 1rem 0 0.5rem;
+  color: var(--text-color);
+}
+
+.message-content h1 { font-size: 1.4em; }
+.message-content h2 { font-size: 1.2em; }
+.message-content h3 { font-size: 1.1em; }
+
+/* =========================
+   DETAILS/SUMMARY (TOOL OUTPUT)
+   ========================= */
+
+.message-content details {
+  margin: 0.5rem 0;
+  border-radius: 8px;
+  background: var(--code-bg);
+  border: 1px solid var(--border-ai);
+  overflow: hidden;
+}
+
+.message-content summary {
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-weight: 500;
+  background: rgba(168, 200, 255, 0.05);
+}
+
+.message-content summary:hover {
+  background: rgba(168, 200, 255, 0.1);
+}
+
+.message-content details[open] summary {
+  border-bottom: 1px solid var(--border-ai);
+}
+
+.message-content details > *:not(summary) {
+  padding: 0.75rem 1rem;
+}
