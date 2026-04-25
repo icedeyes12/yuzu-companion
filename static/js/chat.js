@@ -136,35 +136,75 @@ class MultimodalManager {
         addMessage("user", text);
         this.clearInput();
         
-        const typingIndicator = document.getElementById('typingIndicator');
-        if (typingIndicator) typingIndicator.classList.remove("hidden");
-
+        // Use agentic SSE endpoint
         try {
-            const response = await fetch("/api/send_message", {
+            const response = await fetch("/api/agentic/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: text }),
+                body: JSON.stringify({ message: text, stream: true }),
             });
             
-            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
             
-            if (typingIndicator) typingIndicator.classList.add("hidden");
+            // Parse SSE stream
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
             
-            if (data.reply) {
-                // Detect tool markdown contract — render as tool message
-                const reply = String(data.reply);
-                if (reply.trimStart().startsWith("<details>")) {
-                    addMessage("tool", reply);
-                } else {
-                    addMessage("ai", reply);
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("
+");
+                buffer = lines.pop() || "";
+                
+                for (const line of lines) {
+                    if (!line.startsWith("data: ")) continue;
+                    
+                    try {
+                        const event = JSON.parse(line.slice(6));
+                        
+                        switch (event.type) {
+                            case "thought":
+                                if (event.data?.content) {
+                                    addBrainBox(event.data.content, event.data.planning, event.data.tools);
+                                }
+                                break;
+                            
+                            case "command":
+                                showToolExecution(event.data.tool, event.data.args, event.data.iteration);
+                                break;
+                            
+                            case "tool_result":
+                                showToolResult(event.data.ok, event.data.output);
+                                break;
+                            
+                            case "text":
+                                if (event.data?.chunk) {
+                                    streamToMessage(event.data.chunk);
+                                }
+                                break;
+                            
+                            case "done":
+                                finalizeStreaming(event.data.iterations, event.data.elapsed, event.data.tool_calls?.length || 0);
+                                break;
+                            
+                            case "error":
+                                showError(event.data.message);
+                                break;
+                        }
+                    } catch (e) {
+                        console.error("Parse error:", e);
+                    }
                 }
-            } else {
-                addMessage("ai", "No response from server");
             }
         } catch (error) {
             console.error("Error sending message:", error);
-            if (typingIndicator) typingIndicator.classList.add("hidden");
-            addMessage("ai", "Connection error. Please try again.");
+            showError(error.message);
         } finally {
             isProcessingMessage = false;
             this.isSending = false;
