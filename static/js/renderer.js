@@ -170,12 +170,15 @@ class MessageRenderer {
         marked.use({
             renderer: {
                 code(code, language) {
+                    // Ensure code is a string (marked v18 sometimes passes objects)
+                    code = typeof code === 'string' ? code : String(code || '');
                     const originalLabel = language ? language.trim() : '';
                     
                     // Handle mermaid diagrams
                     if (originalLabel === 'mermaid' && self.isMermaidReady) {
+                        const codeStr = typeof code === 'string' ? code : String(code || '');
                         const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-                        return `<div class="mermaid-container"><pre class="mermaid" id="${id}">${self.escapeHtml(code)}</pre></div>`;
+                        return `<div class="mermaid-container"><pre class="mermaid" id="${id}">${self.escapeHtml(codeStr)}</pre></div>`;
                     }
                     
                     const normalizedLang = self.normalizeLanguageAlias(language);
@@ -219,7 +222,9 @@ class MessageRenderer {
     }
 
     _isHtmlCode(code) {
-        const trimmed = (code || '').trim();
+        // Ensure code is a string (marked v18 sometimes passes objects)
+        const codeStr = typeof code === 'string' ? code : String(code || '');
+        const trimmed = codeStr.trim();
         return trimmed.startsWith('<!DOCTYPE') ||
                trimmed.startsWith('<html') ||
                (trimmed.startsWith('<head') && trimmed.includes('<body')) ||
@@ -392,8 +397,9 @@ class MessageRenderer {
         
         // Handle mermaid
         if (lang === 'mermaid' && this.isMermaidReady) {
+            const codeStr = typeof code === 'string' ? code : String(code || '');
             const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-            return `<div class="mermaid-container"><pre class="mermaid" id="${id}">${this.escapeHtml(code)}</pre></div>`;
+            return `<div class="mermaid-container"><pre class="mermaid" id="${id}">${this.escapeHtml(codeStr)}</pre></div>`;
         }
         
         // Highlight with hljs
