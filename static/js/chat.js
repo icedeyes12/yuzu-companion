@@ -225,8 +225,8 @@ class MultimodalManager {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ message: text, stream: true })
-        console.log("[Chat] Starting agentic stream"),
             });
+        console.log("[Chat] Starting agentic stream");
             
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);

@@ -275,9 +275,7 @@ class MessageRenderer {
             let html = await marked.parse(processedMarkdown);
             
             // Step 4: Post-process (tables, callouts, etc.)
-            html = this._renderThinkingBlock(thought) { /* ... */ }
-    
-    postProcessHTML(html);
+            html = this.postProcessHTML(html);
             
             // Step 5: Initialize mermaid diagrams (async)
             setTimeout(() => {
