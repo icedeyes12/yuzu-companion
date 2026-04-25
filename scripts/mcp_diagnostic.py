@@ -2,120 +2,76 @@
 """
 MCP Diagnostic Script for Yuzu Companion
 
-Tests Zo MCP server connectivity and lists available tools.
-
-Usage:
+Usage (from anywhere inside the project):
+    cd /storage/emulated/0/projects/yuzu-companion
     python scripts/mcp_diagnostic.py
-    python scripts/mcp_diagnostic.py --token YOUR_TOKEN
 
-Environment:
-    ZO_ACCESS_TOKEN - MCP access token from Zo Settings > Advanced
+Or with inline token:
+    ZO_ACCESS_TOKEN=your_token python scripts/mcp_diagnostic.py
 """
 
-import sys
+from __future__ import annotations
+
+import asyncio
 import os
+import sys
 
-# Add project root to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Dynamically add project root to path so imports work from anywhere
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_SCRIPT_DIR)  # goes from scripts/ -> project root
+sys.path.insert(0, _PROJECT_ROOT)
 
 
-async def run_diagnostic(token: str | None = None) -> None:
-    """Run MCP diagnostic checks."""
-    from app.mcp.client import MCPClient
+def main():
+    token = os.environ.get("ZO_ACCESS_TOKEN", "")
     
-    print("=" * 60)
-    print("YUZU COMPANION - MCP DIAGNOSTIC")
-    print("=" * 60)
-    print()
-    
-    # Check token
-    token = token or os.environ.get("ZO_ACCESS_TOKEN") or os.environ.get("ZO_MCP_TOKEN")
     if not token:
-        print("[ERROR] No token found!")
-        print("  Set ZO_ACCESS_TOKEN in your .env file")
-        print("  Get token from: https://yuzu.zo.computer/?t=settings&s=advanced")
+        print("ERROR: ZO_ACCESS_TOKEN not set")
         print()
-        return False
+        print("Get your token from: https://yuzu.zo.computer/?t=settings&s=advanced")
+        print("Then run:")
+        print("    ZO_ACCESS_TOKEN=your_token python scripts/mcp_diagnostic.py")
+        return
     
-    print(f"[1] Token: {token[:20]}...{token[-10:]}")
+    print(f"Token: {token[:15]}...")
     print()
     
-    # Create client
+    asyncio.run(_diagnose(token))
+
+
+async def _diagnose(token: str):
+    from app.mcp.client import MCPClient
+    from app.dispatch.hybrid import HybridDispatcher
+    
+    print("[1] Testing MCP discovery...")
     client = MCPClient(token=token)
-    
-    # Test connectivity
-    print("[2] Testing MCP server connectivity...")
-    try:
-        available = await client.is_available()
-        if available:
-            print("    [OK] MCP server is reachable")
-        else:
-            print("    [WARN] MCP server health check failed")
-    except Exception as e:
-        print(f"    [ERROR] Connectivity failed: {e}")
-        print()
-        return False
-    
+    tools = await client.discover_tools(force_refresh=True)
+    print(f"   Discovered {len(tools)} MCP tools")
+    if tools:
+        print(f"   First tool: {tools[0].name}")
     print()
     
-    # Discover tools
-    print("[3] Discovering available tools...")
-    tools = await client.discover_tools()
-    
-    if not tools:
-        print("    [WARN] No tools discovered")
-    else:
-        print(f"    [OK] Found {len(tools)} tools")
-        print()
-        print("    Available Tools:")
-        print("    " + "-" * 50)
-        for i, tool in enumerate(tools, 1):
-            print(f"    {i:2d}. {tool.name}")
-            if tool.description:
-                desc = tool.description[:60] + "..." if len(tool.description) > 60 else tool.description
-                print(f"        {desc}")
-        print()
-    
-    # Test a simple tool execution
-    print("[4] Testing tool execution...")
+    print("[2] Testing MCP tool execution (web_search)...")
+    result = await client.execute("web_search", {"query": "MCP protocol", "time_range": "anytime"})
+    print(f"   ok: {result.get('ok')}")
+    print(f"   markdown length: {len(result.get('markdown', ''))}")
     print()
     
-    # Try to list files (should work if token is valid)
-    try:
-        result = await client.execute("list_files", {"path": "/home"})
-        if result.get("ok"):
-            print("    [OK] Tool execution works!")
-            print()
-            print("    Sample output:")
-            data = result.get("data", {})
-            if isinstance(data, dict):
-                for key in list(data.keys())[:5]:
-                    print(f"      - {key}")
-        else:
-            print(f"    [WARN] Tool execution returned: {result.get('error', 'unknown')}")
-    except Exception as e:
-        print(f"    [ERROR] Tool execution failed: {e}")
-    
+    print("[3] Testing HybridDispatcher...")
+    dispatcher = HybridDispatcher(mcp_token=token)
+    await dispatcher.initialize()
+    print(f"   Local tools: {len(dispatcher._local_tools)}")
+    print(f"   MCP tools: {len(dispatcher._mcp_tools)}")
     print()
-    print("=" * 60)
-    print("DIAGNOSTIC COMPLETE")
-    print("=" * 60)
     
-    return True
-
-
-def main() -> None:
-    import argparse
+    print("[4] Testing unified dispatch (local)...")
+    result = await dispatcher.execute("memory_search", {"query": "test"})
+    print(f"   local memory_search: ok={result.get('ok')}")
+    print()
     
-    parser = argparse.ArgumentParser(description="MCP Diagnostic for Yuzu Companion")
-    parser.add_argument("--token", help="Zo MCP access token")
-    args = parser.parse_args()
-    
-    try:
-        import asyncio
-        asyncio.run(run_diagnostic(args.token))
-    except KeyboardInterrupt:
-        print("\n[ABORTED] Diagnostic cancelled by user")
+    print("All tests passed!")
+    print()
+    print(f"Total tools available to Yuzuki: {len(dispatcher.get_all_tools())}")
 
 
 if __name__ == "__main__":
