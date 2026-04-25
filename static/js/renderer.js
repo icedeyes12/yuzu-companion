@@ -1,9 +1,14 @@
 // FILE: static/js/renderer.js
-// DESCRIPTION: Markdown renderer using marked.js with syntax highlighting
+// DESCRIPTION: Markdown renderer using marked.js v18 with syntax highlighting
+//              Supports: mermaid diagrams, nested containers, async rendering
+
 class MessageRenderer {
     constructor() {
         this.isMarkedReady = false;
         this.isHighlightReady = false;
+        this.isMermaidReady = false;
+        this.nestedParser = null;
+        this.renderQueue = [];
         this.initializeLibraries();
     }
 
@@ -13,8 +18,7 @@ class MessageRenderer {
             this.isMarkedReady = true;
             this.configureMarked();
         } else {
-            console.warn('marked.js not loaded, attempting to load from CDN');
-            this.loadMarked();
+            console.warn('marked.js not loaded');
         }
 
         // Check if highlight.js is available
@@ -23,20 +27,51 @@ class MessageRenderer {
         } else {
             console.warn('highlight.js not loaded');
         }
+
+        // Check if mermaid is available
+        if (typeof mermaid !== 'undefined') {
+            this.isMermaidReady = true;
+            this.initializeMermaid();
+        } else {
+            console.warn('mermaid.js not loaded');
+        }
+
+        // Initialize nested container parser
+        if (typeof NestedContainerParser !== 'undefined') {
+            this.nestedParser = new NestedContainerParser();
+        }
     }
 
-    loadMarked() {
-        // Fallback to local if CDN fails
-        const script = document.createElement('script');
-        script.src = '/static/js/lib/marked.min.js';
-        script.onload = () => {
-            this.isMarkedReady = true;
-            this.configureMarked();
-        };
-        script.onerror = () => {
-            console.error('Failed to load marked.js from both CDN and local fallback');
-        };
-        document.head.appendChild(script);
+    initializeMermaid() {
+        if (typeof mermaid === 'undefined') return;
+        
+        // Determine theme based on current data-theme
+        const theme = this._getMermaidTheme();
+        
+        mermaid.initialize({
+            startOnLoad: false, // We'll call run() manually after render
+            theme: theme,
+            securityLevel: 'loose',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+            },
+            sequence: {
+                useMaxWidth: true,
+            },
+        });
+        
+        console.log('[Renderer] Mermaid initialized with theme:', theme);
+    }
+
+    _getMermaidTheme() {
+        const bodyTheme = document.body.getAttribute('data-theme') || 'dark';
+        // Dark themes
+        if (['dark', 'dark-lavender'].includes(bodyTheme)) {
+            return 'dark';
+        }
+        // Light themes
+        return 'default';
     }
 
     normalizeLanguageAlias(lang) {
@@ -68,7 +103,7 @@ class MessageRenderer {
             'env': 'json', 'dotenv': 'json',
             'terraform': 'json', 'hcl': 'json', 'tf': 'json',
 
-            // Markup family → xml
+            // Markup family → html
             'html': 'html', 'xhtml': 'html', 'svg': 'xml', 'rss': 'xml', 'atom': 'xml',
 
             // Python aliases → python
@@ -109,6 +144,9 @@ class MessageRenderer {
 
             // Assembly aliases → x86asm
             'asm': 'x86asm',
+            
+            // Mermaid → handled separately
+            'mermaid': 'mermaid',
         };
 
         return familyMap[lower] || lower;
@@ -116,53 +154,61 @@ class MessageRenderer {
 
     configureMarked() {
         if (typeof marked === 'undefined') return;
+        
+        const self = this;
 
-        // Configure marked renderer
-        const renderer = new marked.Renderer();
-
-        // Custom code block renderer
-        renderer.code = (code, language) => {
-            const originalLabel = language ? language.trim() : '';
-            const normalizedLang = this.normalizeLanguageAlias(language);
-            const fallbackLang = 'markdown';
-            let highlightLang = fallbackLang;
-            // Also keep xml for html content so preview button shows
-            const isHtmlContent = normalizedLang === 'xml';
-            if (normalizedLang && this.isHighlightReady && typeof hljs !== 'undefined' && hljs.getLanguage(normalizedLang)) {
-                highlightLang = normalizedLang;
-            }
-            const encodedCode = encodeURIComponent(code);
-        const btnRawCode = decodeURIComponent(encodedCode);
-            const isHtml = isHtmlContent || this._isHtmlCode(code);
-            const highlighted = this.isHighlightReady
-                ? hljs.highlight(code, { language: highlightLang }).value
-                : this.escapeHtml(code);
-            const displayLabel = originalLabel || fallbackLang;
-            const previewBtn = isHtml ? `<button class="preview-code-btn" data-code="${encodeURIComponent(btnRawCode)}" onclick="renderer.showHtmlPreviewModal(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button>` : '';
-            return `<div class="code-block-container"><div class="code-block-header"><span class="code-language">${displayLabel}</span>${previewBtn}<button class="copy-code-btn" onclick="renderer.copyCode(this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy</button></div><pre><code class="hljs language-${highlightLang}">${highlighted}</code></pre></div>`;
-        };
-
-        // Custom image renderer to ensure images render as <img> elements
-        renderer.image = (href, title, text) => {
-            const { href: resolvedHref, title: resolvedTitle, text: resolvedText } = this.resolveImageToken(href, title, text);
-            const normalizedHref = this.normalizeImagePath(resolvedHref);
-            const titleAttr = resolvedTitle ? ` title="${this.escapeHtml(resolvedTitle)}"` : '';
-            const altAttr = resolvedText ? ` alt="${this.escapeHtml(resolvedText)}"` : '';
-            const errorHandler = `onerror="this.onerror=null; this.outerHTML='<div class=\\'image-error\\'>⚠️ Image not found: ${this.escapeHtml(resolvedText || 'Image')}</div>';"`;
-            return `<img src="${this.escapeHtml(normalizedHref)}"${altAttr}${titleAttr} class="markdown-image" loading="lazy" ${errorHandler} />`;
-        };
-
-        // Configure marked with options
+        // marked.js v18 uses setOptions + custom extensions
         marked.setOptions({
-            renderer: renderer,
-            gfm: true, // GitHub Flavored Markdown
-            breaks: true, // Convert \n to <br>
+            gfm: true,
+            breaks: true,
             pedantic: false,
-            sanitize: false, // We trust our content
-            smartLists: true,
-            smartypants: true,
             headerIds: true,
-            mangle: false
+            mangle: false,
+        });
+
+        // Custom code block renderer using marked.use() for v18
+        marked.use({
+            renderer: {
+                code(code, language) {
+                    const originalLabel = language ? language.trim() : '';
+                    
+                    // Handle mermaid diagrams
+                    if (originalLabel === 'mermaid' && self.isMermaidReady) {
+                        const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                        return `<div class="mermaid-container"><pre class="mermaid" id="${id}">${self.escapeHtml(code)}</pre></div>`;
+                    }
+                    
+                    const normalizedLang = self.normalizeLanguageAlias(language);
+                    const fallbackLang = 'plaintext';
+                    let highlightLang = fallbackLang;
+                    
+                    const isHtmlContent = normalizedLang === 'xml' || normalizedLang === 'html';
+                    
+                    if (normalizedLang && self.isHighlightReady && typeof hljs !== 'undefined' && hljs.getLanguage(normalizedLang)) {
+                        highlightLang = normalizedLang;
+                    }
+                    
+                    const isHtml = isHtmlContent || self._isHtmlCode(code);
+                    const highlighted = self.isHighlightReady
+                        ? hljs.highlight(code, { language: highlightLang, ignoreIllegals: true }).value
+                        : self.escapeHtml(code);
+                    
+                    const displayLabel = originalLabel || 'code';
+                    const previewBtn = isHtml ? `<button class="preview-code-btn" data-code="${encodeURIComponent(code)}" onclick="renderer.showHtmlPreviewModal(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button>` : '';
+                    
+                    return `<div class="code-block-container"><div class="code-block-header"><span class="code-language">${displayLabel}</span>${previewBtn}<button class="copy-code-btn" onclick="renderer.copyCode(this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy</button></div><pre><code class="hljs language-${highlightLang}">${highlighted}</code></pre></div>`;
+                },
+                
+                image(href, title, text) {
+                    const resolved = self.resolveImageToken(href, title, text);
+                    const normalizedHref = self.normalizeImagePath(resolved.href);
+                    const titleAttr = resolved.title ? ` title="${self.escapeHtml(resolved.title)}"` : '';
+                    const altAttr = resolved.text ? ` alt="${self.escapeHtml(resolved.text)}"` : '';
+                    const errorHandler = `onerror="this.onerror=null; this.outerHTML='<div class=\\'image-error\\'>⚠️ Image not found</div>';"`;
+                    
+                    return `<img src="${self.escapeHtml(normalizedHref)}"${altAttr}${titleAttr} class="markdown-image" loading="lazy" ${errorHandler} />`;
+                }
+            }
         });
     }
 
@@ -177,83 +223,15 @@ class MessageRenderer {
         return trimmed.startsWith('<!DOCTYPE') ||
                trimmed.startsWith('<html') ||
                (trimmed.startsWith('<head') && trimmed.includes('<body')) ||
-               trimmed.includes('<html') && trimmed.includes('<body');
-    }
-
-    toggleHtmlPreview(btn) {
-        const rawCode = btn.getAttribute('data-code') || '';
-        const code = decodeURIComponent(rawCode);
-        const container = btn.closest('.code-block-container');
-        if (!container) return;
-        let previewWrap = container.querySelector('.html-preview-wrap');
-        if (!previewWrap) {
-            previewWrap = document.createElement('div');
-            previewWrap.className = 'html-preview-wrap hidden';
-            container.appendChild(previewWrap);
-        }
-        if (!previewWrap.classList.contains('hidden')) {
-            previewWrap.classList.add('hidden');
-            btn.classList.remove('active');
-            btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8z"/><circle cx="12" cy="12" r="3"/></svg>Preview`;
-            return;
-        }
-        previewWrap.classList.remove('hidden');
-        btn.classList.add('active');
-        btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>Hide`;
-        const sanitized = this._sanitizeHtml(code);
-        const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${this._extractInlineStyles(sanitized)}</style></head><body>${this._stripHtmlOuter(sanitized)}</body></html>`;
-        let iframe = previewWrap.querySelector('iframe');
-        if (!iframe) {
-            iframe = document.createElement('iframe');
-            iframe.className = 'preview-iframe';
-            iframe.setAttribute('sandbox', 'allow-scripts allow-modals');
-            previewWrap.appendChild(iframe);
-        }
-        iframe.style.display = 'block';
-        // Use srcdoc to bypass Android WebView cross-origin restrictions
-        try {
-            iframe.srcdoc = html;
-        } catch(e) {
-            iframe.style.display = 'none';
-            let err = previewWrap.querySelector('.preview-error');
-            if (!err) {
-                err = document.createElement('div');
-                err.className = 'preview-error';
-                previewWrap.appendChild(err);
-            }
-            err.textContent = 'Error: ' + e.message;
-        }
-    }
-    _extractInlineStyles(html) {
-        const match = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
-        return match ? match[1] : '';
-    }
-    _stripHtmlOuter(html) {
-        return html
-            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-            .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
-            .replace(/<!DOCTYPE[^>]*>/gi, '')
-            .replace(/<html[^>]*>/gi, '')
-            .replace(/<\/html>/gi, '')
-            .replace(/<body[^>]*>/gi, '')
-            .replace(/<\/body>/gi, '')
-            .trim();
-    }
-    _sanitizeHtml(html) {
-        // Only strip dangerous attributes, preserve scripts (iframe is sandboxed)
-        return html
-            .replace(/on\w+\s*=/gi, 'data-disabled-')
-            .replace(/javascript:/gi, '');
+               (trimmed.includes('<html') && trimmed.includes('<body'));
     }
 
     normalizeImagePath(path) {
         if (!path) return path;
-        const { href: rawPathValue } = this.resolveImageToken(path);
-        let rawPath = rawPathValue;
-        if (typeof rawPath !== 'string') {
-            rawPath = String(rawPath);
-        }
+        const resolved = this.resolveImageToken(path);
+        let rawPath = typeof resolved.href === 'string' ? resolved.href : String(resolved.href);
         const cleaned = rawPath.trim().replace(/\\/g, '/');
+        
         if (/^(https?:)?\/\//i.test(cleaned) || cleaned.startsWith('data:') || cleaned.startsWith('/')) {
             return cleaned;
         }
@@ -266,7 +244,10 @@ class MessageRenderer {
         return cleaned;
     }
 
-    render(markdown) {
+    /**
+     * Main render method - now async for marked.js v18
+     */
+    async render(markdown) {
         if (markdown === null || markdown === undefined) return '';
         const safeMarkdown = typeof markdown === 'string' ? markdown : String(markdown);
 
@@ -276,14 +257,25 @@ class MessageRenderer {
         }
 
         try {
-            // Pre-process: Convert plain text image patterns to markdown
-            let processedMarkdown = this.preprocessGeneratedImages(safeMarkdown);
+            // Step 1: Pre-process nested containers (protect nested codeblocks)
+            let processedMarkdown = safeMarkdown;
+            if (this.nestedParser) {
+                processedMarkdown = this.nestedParser.parse(safeMarkdown);
+            }
             
-            // Parse markdown
-            let html = marked.parse(processedMarkdown);
+            // Step 2: Pre-process image patterns
+            processedMarkdown = this.preprocessGeneratedImages(processedMarkdown);
             
-            // Post-process: Add table containers and callout styles
+            // Step 3: Parse markdown (marked v18 returns Promise by default)
+            let html = await marked.parse(processedMarkdown);
+            
+            // Step 4: Post-process (tables, callouts, etc.)
             html = this.postProcessHTML(html);
+            
+            // Step 5: Initialize mermaid diagrams (async)
+            setTimeout(() => {
+                this.initializeMermaidDiagrams();
+            }, 0);
             
             return html;
         } catch (error) {
@@ -292,51 +284,75 @@ class MessageRenderer {
         }
     }
 
-    preprocessGeneratedImages(text) {
-        // Convert plain text image patterns like:
-        // ! [Generated Image]
-        // (static/generated_images/xxx.png)
-        // These might appear on separate lines from backend output
-        // Note: Backend sometimes adds space after ! like "! [text]" instead of "![text]"
+    /**
+     * Initialize mermaid diagrams in rendered HTML
+     */
+    async initializeMermaidDiagrams() {
+        if (!this.isMermaidReady) return;
         
-        const sourceText = typeof text === 'string' ? text : String(text || '');
-        console.log('[Renderer] Preprocessing images, input length:', sourceText.length);
+        const mermaidElements = document.querySelectorAll('.mermaid:not([data-processed])');
+        if (mermaidElements.length === 0) return;
         
-        // Single comprehensive pattern: Handle all variations
-        // Matches: ! [alt] or ![alt] followed by optional whitespace/newlines then (url)
-        const imagePattern = /!\s*\[([^\]]*)\]\s*\n?\s*\(([^)]+)\)/g;
+        console.log('[Renderer] Initializing', mermaidElements.length, 'mermaid diagrams');
         
-        let matchCount = 0;
-        let normalizedText = sourceText.replace(/\r\n/g, '\n');
-        normalizedText = normalizedText.replace(imagePattern, (match, alt, src) => {
-            matchCount++;
-            const trimmedSrc = src.trim();
-            // Encode spaces in image paths so marked.js can parse them correctly
-            const encodedSrc = trimmedSrc.replace(/ /g, '%20');
-            console.log(`[Renderer] Found image #${matchCount}:`, { 
-                alt: alt, 
-                src: encodedSrc,
-                originalMatch: match.substring(0, 50) + (match.length > 50 ? '...' : '')
-            });
-            return `![${alt}](${encodedSrc})`;
+        mermaidElements.forEach(el => {
+            el.setAttribute('data-processed', 'true');
         });
         
-        if (matchCount > 0) {
-            console.log(`[Renderer] Preprocessed ${matchCount} images`);
+        try {
+            await mermaid.run({ querySelector: '.mermaid[data-processed="true"]' });
+            console.log('[Renderer] Mermaid diagrams initialized');
+        } catch (error) {
+            console.error('[Renderer] Mermaid initialization error:', error);
         }
+    }
+
+    // === Legacy sync render for backward compatibility ===
+    renderSync(markdown) {
+        // For code that expects sync rendering
+        if (!this.isMarkedReady) {
+            return this.renderWithoutMarked(markdown);
+        }
+        
+        let processedMarkdown = markdown;
+        if (this.nestedParser) {
+            processedMarkdown = this.nestedParser.parse(markdown);
+        }
+        processedMarkdown = this.preprocessGeneratedImages(processedMarkdown);
+        
+        // Use marked.parse with async: false for sync rendering
+        let html = marked.parse(processedMarkdown, { async: false });
+        html = this.postProcessHTML(html);
+        
+        setTimeout(() => this.initializeMermaidDiagrams(), 0);
+        
+        return html;
+    }
+
+    preprocessGeneratedImages(text) {
+        const sourceText = typeof text === 'string' ? text : String(text || '');
+        
+        // Match image patterns including space after !
+        const imagePattern = /!\s*\[([^\]]*)\]\s*\n?\s*\(([^)]+)\)/g;
+        
+        let normalizedText = sourceText.replace(/\r\n/g, '\n');
+        normalizedText = normalizedText.replace(imagePattern, (match, alt, src) => {
+            const trimmedSrc = src.trim();
+            const encodedSrc = trimmedSrc.replace(/ /g, '%20');
+            return `![${alt}](${encodedSrc})`;
+        });
         
         return normalizedText;
     }
 
     postProcessHTML(html) {
-        // Create a temporary container to manipulate HTML
         const temp = document.createElement('div');
         temp.innerHTML = html;
         
-        // 1. Wrap tables in scrollable containers
+        // 1. Wrap tables
         const tables = temp.querySelectorAll('table');
         tables.forEach(table => {
-            if (!table.parentElement.classList.contains('table-container')) {
+            if (!table.parentElement?.classList.contains('table-container')) {
                 const wrapper = document.createElement('div');
                 wrapper.className = 'table-container';
                 table.parentNode.insertBefore(wrapper, table);
@@ -344,25 +360,23 @@ class MessageRenderer {
             }
         });
         
-        // 2. Process callout blocks (blockquotes starting with [!TYPE])
+        // 2. Process callouts
         const blockquotes = temp.querySelectorAll('blockquote');
         blockquotes.forEach(blockquote => {
             const firstChild = blockquote.firstElementChild;
-            if (firstChild && firstChild.textContent) {
+            if (firstChild?.textContent) {
                 const text = firstChild.textContent.trim();
                 const calloutMatch = text.match(/^\[!(NOTE|WARNING|INFO|TIP|IMPORTANT|CAUTION)\]/i);
                 
                 if (calloutMatch) {
                     const calloutType = calloutMatch[1].toLowerCase();
                     blockquote.classList.add('callout', `callout-${calloutType}`);
-                    
-                    // Remove the [!TYPE] marker from content
                     firstChild.textContent = text.replace(/^\[!(?:NOTE|WARNING|INFO|TIP|IMPORTANT|CAUTION)\]\s*/i, '');
                 }
             }
         });
         
-        // 3. Apply highlight.js to any code blocks that weren't processed by marked
+        // 3. Apply highlight.js to unprocessed code blocks
         if (this.isHighlightReady) {
             const codeBlocks = temp.querySelectorAll('pre code:not(.hljs)');
             codeBlocks.forEach(block => {
@@ -376,25 +390,18 @@ class MessageRenderer {
     }
 
     renderWithoutMarked(markdown) {
-        try {
-            const processed = this.preprocessGeneratedImages(markdown);
-            let html = this.escapeHtml(processed);
+        const processed = this.preprocessGeneratedImages(markdown);
+        let html = this.escapeHtml(processed);
 
-            html = html.replace(/!\s*\[([^\]]*)\]\s*\(([^)]+)\)/g, (match, alt, src) => {
-                const normalizedHref = this.normalizeImagePath(src);
-                const safeAlt = this.escapeHtml(alt || 'Image');
-                const safeSrc = this.escapeHtml(normalizedHref);
-                return `<img src="${safeSrc}" alt="${safeAlt}" class="markdown-image" loading="lazy" />`;
-            });
+        html = html.replace(/!\s*\[([^\]]*)\]\s*\(([^)]+)\)/g, (match, alt, src) => {
+            const normalizedHref = this.normalizeImagePath(src);
+            return `<img src="${this.escapeHtml(normalizedHref)}" alt="${this.escapeHtml(alt || 'Image')}" class="markdown-image" loading="lazy" />`;
+        });
 
-            html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-            html = html.replace(/\n/g, '<br>');
+        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/\n/g, '<br>');
 
-            return html;
-        } catch (error) {
-            console.error('Render error:', error, markdown);
-            return `<pre class="render-error">${this.escapeHtml(markdown)}</pre>`;
-        }
+        return html;
     }
 
     copyCode(button) {
@@ -403,12 +410,7 @@ class MessageRenderer {
         
         navigator.clipboard.writeText(code).then(() => {
             const originalText = button.innerHTML;
-            button.innerHTML = `
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-                Copied!
-            `;
+            button.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>Copied!`;
             button.classList.add('copied');
             
             setTimeout(() => {
@@ -421,7 +423,8 @@ class MessageRenderer {
     }
 
     renderMessage(content, isUser = false) {
-        return this.render(content);
+        // Backward compatible sync render
+        return this.renderSync(content);
     }
 
     containsImageMarkdown(content) {
@@ -445,15 +448,14 @@ class MessageRenderer {
         const modal = document.getElementById('html-preview-modal');
         const iframe = document.getElementById('preview-iframe');
         if (!modal || !iframe || !rawCode) return;
-        // Unescape HTML entities (code may be double-encoded from marked.js escaping)
+        
         let code = rawCode
             .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
             .replace(/&amp;/g, '&').replace(/&quot;/g, '"')
             .replace(/&#39;/g, "'").replace(/&#x27;/g, "'");
-        // Allow srcdoc to handle the rest (don't over-unescape)
+        
         modal.classList.add('active');
         document.body.style.overflow = 'hidden';
-        // srcdoc handles HTML natively - just pass the unescaped code
         iframe.srcdoc = code;
     }
 
@@ -462,29 +464,33 @@ class MessageRenderer {
         if (modal) modal.classList.remove('active', 'fullscreen');
         document.body.style.overflow = '';
     }
+
     togglePreviewTheme() {
         const body = document.getElementById('preview-body');
         const btn = document.getElementById('theme-toggle-btn');
         if (!body || !btn) return;
+        
         const isLight = body.classList.toggle('preview-body-light');
         btn.classList.toggle('active', isLight);
-        const iframe = document.getElementById('preview-iframe');
-        if (iframe && iframe.contentWindow) {
-            iframe.contentWindow.postMessage(isLight ? 'light' : 'dark', '*');
-        }
     }
+
     togglePreviewFullscreen() {
         const modal = document.getElementById('html-preview-modal');
         const btn = document.getElementById('fullscreen-toggle-btn');
         if (!modal || !btn) return;
+        
         const isFull = modal.classList.toggle('fullscreen');
         btn.classList.toggle('active', isFull);
     }
-
 }
 
 // Create global renderer instance
 const renderer = new MessageRenderer();
+
+// Export for module systems
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { MessageRenderer, renderer };
+}
 
 // === HTML Preview Modal ===
 document.addEventListener('click', function(e) {

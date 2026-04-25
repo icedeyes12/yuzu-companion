@@ -2,6 +2,100 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.0] - 2026-04-25
+
+### Added - Agentic Loop Architecture
+
+**Backend (Phases 1-3)**:
+- Agentic Plan-Execute-Observe loop with multi-turn tool calling
+- Hybrid tool dispatcher routing local tools to `app/tools/` and remote tools to Zo MCP
+- `[COMMAND: tool_name(args)]` bracket format for structured tool invocation
+- `<thought>` block capture for chain-of-thought logging
+- SSE streaming with structured events (thought, tool_start, tool_result, iteration, done)
+- Buffer-based streaming parser for split-chunk command detection
+- MCP HTTP client for Zo remote tool ecosystem (`app/mcp/`)
+
+**Frontend (Phase 4)**:
+- Nested container rendering with stack-based delimiter matching
+- mermaid.js v11.4.0 diagram support
+- marked.js v18.0.2 async API with custom extensions
+- Brain Box UI for thought visualization (collapsible)
+- Tool execution timeline with status indicators
+- Execution history toggle in sidebar
+- Suisei theme (default) - blue-gray with white accents
+- Tokyo Night theme - dark purple-blue with neon accents
+
+### New API Endpoints
+
+- `POST /api/agentic/chat` - Agentic chat with streaming support
+- `GET /api/agentic/tools` - Discover all available tools (local + MCP)
+- `GET /api/agentic/config` - Agentic loop configuration
+
+### New Files
+
+```
+app/agents/
+├── config.py           # Loop config (max_iterations=50, timeout=30min)
+├── thought_parser.py   # <thought> block extraction
+├── command_parser.py   # [COMMAND: ...] + /command parsing
+├── stream_parser.py    # Buffer-based streaming shield
+└── __init__.py
+
+app/dispatch/
+├── hybrid.py           # Local + MCP tool routing
+└── __init__.py
+
+app/mcp/
+├── client.py           # httpx async client for Zo MCP
+└── __init__.py
+
+static/js/
+├── nested-parser.js    # Stack-based nested container parser
+├── agentic-stream.js   # SSE handler + Brain Box UI
+└── renderer.js         # Updated for marked v18 + mermaid
+
+static/css/
+└── renderer.css        # Brain Box, Tool Execution, Nested Container styles
+```
+
+### Changed
+
+- Default theme changed from `dark` to `suisei`
+- `renderer.js` upgraded to marked.js v18.0.2 async API
+- Added mermaid.js v11.4.0 CDN to chat.html
+- Theme count increased from 7 to 9
+
+### Dependencies
+
+- Added `httpx` for async MCP client
+
+## [2.2.0] - 2026-04-24
+
+### Added
+
+- API routing decomposition: extracted endpoints from `web.py` into `app/api/` package
+- `/api/config` endpoint as SSOT for frontend configuration
+- `app/README.md` documentation for application module
+
+### Changed
+
+- `web.py` now minimal - registers `api_router` only
+- `static/js/config.js` fetches configuration from `/api/config`
+
+## [2.1.0] - 2026-04-19
+
+### Added
+
+- Tool calling via OpenAI `function` format (primary)
+- Legacy `/command` detection as fallback
+- `ToolDefinition` and `ToolParam` dataclasses in `app/tools/schemas.py`
+- Markdown contract format for tool results
+
+### Changed
+
+- Tool results now use `<details>` block format
+- `execute_tool()` returns structured `{"ok": bool, "data": dict, "markdown": str}`
+
 ## [3.0.1] - 2026-04-25
 
 ### Changed — Python 3.13 Compatibility Upgrade

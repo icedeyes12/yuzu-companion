@@ -115,6 +115,121 @@ class GlobalKnowledgeUpdateRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Agentic Chat API - Phase 3
+# ---------------------------------------------------------------------------
+
+class AgenticChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, description="User message text")
+    stream: bool = Field(default=False, description="Enable streaming response")
+
+
+class AgenticChatResponse(BaseModel):
+    response: str
+    tool_calls: list[dict]
+    iterations: int
+    elapsed_seconds: float
+
+
+@api_router.post("/agentic/chat")
+async def api_agentic_chat(request: AgenticChatRequest):
+    """Agentic chat endpoint with Plan-Execute-Observe loop.
+    
+    Supports multi-turn tool calling with automatic synthesis.
+    """
+    try:
+        from app.orchestrator_agentic import run_agentic_loop, stream_agentic_loop
+        from app.database import Database
+        
+        active_session = Database.get_active_session()
+        session_id = active_session["id"]
+        
+        if request.stream:
+            # Streaming response
+            async def generate():
+                async for chunk in stream_agentic_loop(
+                    request.message,
+                    session_id,
+                    interface="web",
+                ):
+                    yield chunk
+            
+            return StreamingResponse(
+                generate(),
+                media_type="text/plain",
+            )
+        else:
+            # Non-streaming response
+            result = await run_agentic_loop(
+                request.message,
+                session_id,
+                interface="web",
+            )
+            
+            return AgenticChatResponse(
+                response=result.response_text,
+                tool_calls=[tc.to_dict() for tc in result.tool_calls],
+                iterations=result.iterations,
+                elapsed_seconds=result.elapsed_seconds,
+            )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/agentic/tools")
+async def api_agentic_tools():
+    """List all available tools (local + MCP)."""
+    try:
+        from app.dispatch import discover_all_tools
+        
+        tools = await discover_all_tools()
+        
+        return {
+            "status": "success",
+            "tools": [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "source": t.source,
+                    "parameters": t.parameters,
+                }
+                for t in tools
+            ],
+            "count": len(tools),
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/agentic/config")
+async def api_agentic_config():
+    """Get agentic loop configuration."""
+    try:
+        from app.agents import get_agent_config, DEFAULT_CONFIG
+        
+        config = get_agent_config()
+        
+        return {
+            "status": "success",
+            "config": {
+                "max_iterations": config.max_iterations,
+                "total_timeout_seconds": config.total_timeout_seconds,
+                "enable_thought_capture": config.enable_thought_capture,
+                "enable_mcp_tools": config.enable_mcp_tools,
+                "thought_format": config.thought_format,
+            },
+            "defaults": {
+                "max_iterations": DEFAULT_CONFIG.max_iterations,
+                "total_timeout_seconds": DEFAULT_CONFIG.total_timeout_seconds,
+            },
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
 # Config API - Frontend SSOT
 # ---------------------------------------------------------------------------
 

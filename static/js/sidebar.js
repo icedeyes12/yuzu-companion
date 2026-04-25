@@ -1,6 +1,8 @@
 // FILE: static/js/sidebar.js
 // DESCRIPTION: Unified sidebar management with session actions
-let currentTheme = 'dark';
+
+// Default theme is suisei
+let currentTheme = 'suisei';
 
 function toggleSidebar() {
     const sidebar = document.getElementById('mainSidebar');
@@ -360,8 +362,8 @@ function showNotification(message, type = 'info') {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Initializing sidebar...');
     
-    // Get saved theme or default to dark
-    const savedTheme = localStorage.getItem('yuzu-theme') || 'dark';
+    // Get saved theme or default to suisei
+    const savedTheme = localStorage.getItem('yuzu-theme') || 'suisei';
     console.log('Saved theme:', savedTheme);
     
     // Apply the theme immediately

@@ -1,5 +1,149 @@
 /* FILE: static/css/theme.css */
-/* DESCRIPTION: Theme system with multiple color schemes */
+/* DESCRIPTION: Theme system with multiple color schemes
+ * 
+ * Default theme: suisei (blue-gray with white accents)
+ * 
+ * Available themes:
+ *   - suisei (default) - Blue-gray with white accents
+ *   - tokyonight - Dark purple-blue with neon accents
+ *   - dark - Soft blue base
+ *   - light - Soft white base
+ *   - lavender - Pastel purple
+ *   - mint - Pastel green
+ *   - peach - Pastel orange
+ *   - dark-lavender - Dark purple
+ *   - vanilla-orange - Creamy vanilla
+ */
+
+/* ========================================
+   SUISEI THEME (DEFAULT)
+   Inspired by Suisei Hoshimachi
+   Blue-gray palette with white accents
+   ======================================== */
+:root,
+[data-theme="suisei"],
+[data-theme=""] {
+  /* Core Colors - Blue-gray base */
+  --bg-color: #0d1117;
+  --header-bg: #161b22;
+  --card-bg: #161b22;
+  --input-bg: #0d1117;
+  
+  /* Message Bubbles */
+  --user-bubble: #1f6feb;
+  --ai-bubble: #21262d;
+  --message-user-bg: #1f6feb;
+  --message-ai-bg: #21262d;
+  
+  /* Buttons & UI */
+  --button-bg: #388bfd;
+  --button-hover: #58a6ff;
+  --button-text: #f0f6fc;
+  
+  /* Text Colors */
+  --text-color: #f0f6fc;
+  --timestamp-color: rgba(240, 246, 252, 0.7);
+  --text-secondary: rgba(240, 246, 252, 0.8);
+  
+  /* Accent Colors - Cyan/Blue */
+  --accent-pink: #58a6ff;
+  --accent-mint: #39d353;
+  --accent-lavender: #388bfd;
+  --accent-color: #58a6ff;
+  
+  /* Border Colors */
+  --border-lavender: rgba(56, 139, 253, 0.4);
+  --border-pink: rgba(31, 111, 235, 0.6);
+  --border-ai: rgba(56, 139, 253, 0.3);
+  --border-user: rgba(31, 111, 235, 0.6);
+  
+  /* Shadow Colors */
+  --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --shadow-pink: rgba(31, 111, 235, 0.25);
+  --shadow-lavender: rgba(56, 139, 253, 0.25);
+  --shadow-dark: rgba(13, 17, 23, 0.6);
+  
+  /* Code Colors */
+  --code-bg: #0d1117;
+  --code-border: rgba(56, 139, 253, 0.2);
+  --copy-button-bg: rgba(56, 139, 253, 0.15);
+  --copy-button-hover: rgba(56, 139, 253, 0.25);
+  
+  /* Agentic Loop Colors */
+  --brain-box-bg: rgba(22, 27, 34, 0.95);
+  --brain-box-border: rgba(56, 139, 253, 0.4);
+  --brain-box-text: #58a6ff;
+  --tool-execution-bg: rgba(22, 27, 34, 0.9);
+  --tool-success: #39d353;
+  --tool-error: #f85149;
+  --status-bar-bg: #161b22;
+}
+
+/* ========================================
+   TOKYO NIGHT THEME
+   Dark purple-blue with neon accents
+   Inspired by Tokyo Night VSCode theme
+   ======================================== */
+[data-theme="tokyonight"] {
+  /* Core Colors - Dark purple-blue */
+  --bg-color: #1a1b26;
+  --header-bg: #24283b;
+  --card-bg: #24283b;
+  --input-bg: #1a1b26;
+  
+  /* Message Bubbles */
+  --user-bubble: #7aa2f7;
+  --ai-bubble: #292e42;
+  --message-user-bg: #7aa2f7;
+  --message-ai-bg: #292e42;
+  
+  /* Buttons & UI */
+  --button-bg: #7aa2f7;
+  --button-hover: #9acdff;
+  --button-text: #1a1b26;
+  
+  /* Text Colors */
+  --text-color: #c0caf5;
+  --timestamp-color: rgba(192, 202, 245, 0.7);
+  --text-secondary: rgba(192, 202, 245, 0.8);
+  
+  /* Accent Colors - Neon palette */
+  --accent-pink: #ff9e64;
+  --accent-mint: #9ece6a;
+  --accent-lavender: #bb9af7;
+  --accent-color: #7aa2f7;
+  
+  /* Border Colors */
+  --border-lavender: rgba(187, 154, 247, 0.4);
+  --border-pink: rgba(255, 158, 100, 0.4);
+  --border-ai: rgba(122, 162, 247, 0.3);
+  --border-user: rgba(122, 162, 247, 0.5);
+  
+  /* Shadow Colors */
+  --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --shadow-pink: rgba(255, 158, 100, 0.2);
+  --shadow-lavender: rgba(187, 154, 247, 0.2);
+  --shadow-dark: rgba(26, 27, 38, 0.6);
+  
+  /* Code Colors */
+  --code-bg: #16161e;
+  --code-border: rgba(122, 162, 247, 0.2);
+  --copy-button-bg: rgba(122, 162, 247, 0.15);
+  --copy-button-hover: rgba(122, 162, 247, 0.25);
+  
+  /* Agentic Loop Colors */
+  --brain-box-bg: rgba(36, 40, 59, 0.95);
+  --brain-box-border: rgba(122, 162, 247, 0.4);
+  --brain-box-text: #bb9af7;
+  --tool-execution-bg: rgba(36, 40, 59, 0.9);
+  --tool-success: #9ece6a;
+  --tool-error: #f7768e;
+  --status-bar-bg: #24283b;
+}
+
+/* ========================================
+   DARK BLUE THEME (LEGACY)
+   ======================================== */
 [data-theme="dark"] {
   /* Core Colors - Soft blue base */
   --bg-color: #1a1f2e;
@@ -48,7 +192,9 @@
   --copy-button-hover: rgba(168, 200, 255, 0.25);
 }
 
-/* Soft Light Theme */
+/* ========================================
+   SOFT LIGHT THEME
+   ======================================== */
 [data-theme="light"] {
   /* Core Colors - Soft white base */
   --bg-color: #f8f9fa;
@@ -97,7 +243,9 @@
   --copy-button-hover: rgba(147, 165, 255, 0.2);
 }
 
-/* Pastel Lavender Theme */
+/* ========================================
+   PASTEL LAVENDER THEME
+   ======================================== */
 [data-theme="lavender"] {
   /* Core Colors - Soft purple base */
   --bg-color: #f5f3ff;
@@ -146,7 +294,9 @@
   --copy-button-hover: rgba(167, 139, 250, 0.2);
 }
 
-/* Pastel Mint Theme */
+/* ========================================
+   PASTEL MINT THEME
+   ======================================== */
 [data-theme="mint"] {
   /* Core Colors - Soft green base */
   --bg-color: #f0fdf9;
@@ -195,7 +345,9 @@
   --copy-button-hover: rgba(52, 211, 153, 0.2);
 }
 
-/* Pastel Peach Theme */
+/* ========================================
+   PASTEL PEACH THEME
+   ======================================== */
 [data-theme="peach"] {
   /* Core Colors - Soft orange base */
   --bg-color: #fff7ed;
@@ -244,7 +396,9 @@
   --copy-button-hover: rgba(249, 115, 22, 0.2);
 }
 
-/* Dark Lavender Theme */
+/* ========================================
+   DARK LAVENDER THEME
+   ======================================== */
 [data-theme="dark-lavender"] {
   /* Core Colors - Dark purple base */
   --bg-color: #1e1b2e;
@@ -293,7 +447,9 @@
   --copy-button-hover: rgba(196, 181, 253, 0.25);
 }
 
-/* Vanilla Orange Theme */
+/* ========================================
+   VANILLA ORANGE THEME
+   ======================================== */
 [data-theme="vanilla-orange"] {
   /* Core Colors - Creamy vanilla base */
   --bg-color: #fff9f0;
@@ -342,7 +498,9 @@
   --copy-button-hover: rgba(255, 179, 102, 0.2);
 }
 
-/* Theme Transitions */
+/* ========================================
+   THEME TRANSITIONS
+   ======================================== */
 body {
   transition: background-color 0.5s ease, color 0.5s ease;
 }
@@ -358,11 +516,16 @@ body {
 .code-block-container,
 .message,
 .card,
-.config-section {
+.config-section,
+.brain-box,
+.tool-execution,
+.agentic-status-bar {
   transition: all 0.3s ease;
 }
 
-/* Theme Preview Styles */
+/* ========================================
+   THEME PREVIEW STYLES
+   ======================================== */
 .theme-preview {
   width: 20px;
   height: 20px;
@@ -371,6 +534,17 @@ body {
   margin-right: 8px;
   display: inline-block;
   vertical-align: middle;
+}
+
+/* Suisei preview */
+[data-theme="suisei"] .theme-preview.suisei-preview,
+[data-theme=""] .theme-preview.suisei-preview { 
+  background: linear-gradient(135deg, #0d1117, #1f6feb); 
+}
+
+/* Tokyo Night preview */
+[data-theme="tokyonight"] .theme-preview.tokyonight-preview { 
+  background: linear-gradient(135deg, #1a1b26, #7aa2f7); 
 }
 
 [data-theme="dark"] .theme-preview.dark-preview { 
@@ -400,3 +574,14 @@ body {
 [data-theme="vanilla-orange"] .theme-preview.vanilla-orange-preview { 
   background: linear-gradient(135deg, #fff9f0, #ffd8a8); 
 }
+
+/* Fallback previews for cross-theme display */
+.theme-preview.suisei-preview { background: linear-gradient(135deg, #0d1117, #1f6feb); }
+.theme-preview.tokyonight-preview { background: linear-gradient(135deg, #1a1b26, #7aa2f7); }
+.theme-preview.dark-preview { background: linear-gradient(135deg, #1a1f2e, #24283d); }
+.theme-preview.light-preview { background: linear-gradient(135deg, #f8f9fa, #ffffff); }
+.theme-preview.lavender-preview { background: linear-gradient(135deg, #f5f3ff, #d8b4fe); }
+.theme-preview.mint-preview { background: linear-gradient(135deg, #f0fdf9, #99f6e4); }
+.theme-preview.peach-preview { background: linear-gradient(135deg, #fff7ed, #fdba74); }
+.theme-preview.dark-lavender-preview { background: linear-gradient(135deg, #1e1b2e, #c4b5fd); }
+.theme-preview.vanilla-orange-preview { background: linear-gradient(135deg, #fff9f0, #ffd8a8); }

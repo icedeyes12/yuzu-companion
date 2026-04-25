@@ -919,6 +919,205 @@ window.onload = function() {
     initializeChat();
 };
 
+// ========================================
+// AGENTIC STREAM HELPERS
+// ========================================
+
+// Execution history state
+let executionHistory = [];
+let historyToggleVisible = false;
+
+// Brain Box - thought display
+window.addBrainBox = function(content, planning, tools) {
+    const chatContainer = document.getElementById('chatContainer');
+    if (!chatContainer) return;
+    
+    const brainBox = document.createElement('div');
+    brainBox.className = 'brain-box';
+    brainBox.innerHTML = `
+        <div class="brain-box-header" onclick="this.parentElement.classList.toggle('expanded')">
+            <span class="brain-box-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 16v-4M12 8h.01"/>
+                </svg>
+                Thinking...
+            </span>
+            ${planning ? `<span class="brain-box-planning">${escapeHtml(planning)}</span>` : ''}
+        </div>
+        <div class="brain-box-content">
+            ${escapeHtml(content)}
+            ${tools && tools.length > 0 ? `
+                <div class="brain-box-tools">
+                    ${tools.map(t => `<span class="brain-box-tool-tag">${escapeHtml(t)}</span>`).join('')}
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    chatContainer.appendChild(brainBox);
+    scrollToBottom();
+};
+
+// Tool execution indicator
+window.showToolExecution = function(tool, args, iteration) {
+    const chatContainer = document.getElementById('chatContainer');
+    if (!chatContainer) return;
+    
+    // Update status bar
+    updateAgenticStatusBar(iteration);
+    
+    const indicator = document.createElement('div');
+    indicator.className = 'tool-execution';
+    indicator.id = `tool-exec-${iteration}`;
+    indicator.innerHTML = `
+        <svg class="tool-execution-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 6v6l4 2"/>
+        </svg>
+        <span class="tool-execution-name">/${escapeHtml(tool)}</span>
+        <span class="tool-execution-args">${escapeHtml(JSON.stringify(args).slice(0, 50))}</span>
+    `;
+    
+    chatContainer.appendChild(indicator);
+    scrollToBottom();
+};
+
+// Tool result display
+window.showToolResult = function(ok, output) {
+    const chatContainer = document.getElementById('chatContainer');
+    if (!chatContainer) return;
+    
+    // Remove the last tool execution indicator
+    const indicators = chatContainer.querySelectorAll('.tool-execution');
+    if (indicators.length > 0) {
+        const last = indicators[indicators.length - 1];
+        last.remove();
+    }
+    
+    const result = document.createElement('div');
+    result.className = `tool-result ${ok ? '' : 'error'}`;
+    result.innerHTML = `
+        <div class="tool-result-header">
+            <span class="tool-result-status ${ok ? 'ok' : 'error'}">
+                ${ok ? '✓ Success' : '✗ Failed'}
+            </span>
+        </div>
+        <div class="tool-result-output">
+            ${typeof renderer !== 'undefined' ? renderer.render(output) : escapeHtml(output)}
+        </div>
+    `;
+    
+    chatContainer.appendChild(result);
+    scrollToBottom();
+};
+
+// Stream text to message (incremental)
+let streamingMessageEl = null;
+let streamingContent = '';
+
+window.streamToMessage = function(chunk) {
+    const chatContainer = document.getElementById('chatContainer');
+    if (!chatContainer) return;
+    
+    if (!streamingMessageEl) {
+        streamingMessageEl = createMessageElement('ai', '', null);
+        chatContainer.appendChild(streamingMessageEl);
+    }
+    
+    streamingContent += chunk;
+    
+    // Update content
+    const contentEl = streamingMessageEl.querySelector('.message-content');
+    if (contentEl) {
+        contentEl.innerHTML = typeof renderer !== 'undefined' 
+            ? renderer.render(streamingContent)
+            : escapeHtml(streamingContent);
+    }
+    
+    scrollToBottom();
+};
+
+// Finalize streaming
+window.finalizeStreaming = function(iterations, elapsed, toolsUsed) {
+    // Persist the streamed message
+    if (streamingMessageEl && streamingContent) {
+        // Already in DOM, just update timestamp
+        const footer = streamingMessageEl.querySelector('.message-footer .timestamp');
+        if (footer) {
+            footer.textContent = getCurrentTime24h();
+        }
+    }
+    
+    // Reset streaming state
+    streamingMessageEl = null;
+    streamingContent = '';
+    
+    // Hide status bar
+    hideAgenticStatusBar();
+    
+    console.log(`[agentic] Done: ${iterations} iterations, ${elapsed}s, ${toolsUsed} tools`);
+};
+
+// Timeout display
+window.showTimeout = function(elapsed) {
+    addMessage('ai', `*[Timeout reached after ${elapsed.toFixed(1)}s. Here's what I have so far.]*`);
+    hideAgenticStatusBar();
+};
+
+// Error display
+window.showError = function(message) {
+    addMessage('ai', `*Error: ${escapeHtml(message)}*`);
+    hideAgenticStatusBar();
+};
+
+// Agentic status bar
+function updateAgenticStatusBar(iteration) {
+    let statusBar = document.getElementById('agenticStatusBar');
+    if (!statusBar) {
+        statusBar = document.createElement('div');
+        statusBar.id = 'agenticStatusBar';
+        statusBar.className = 'agentic-status-bar';
+        statusBar.innerHTML = `
+            <span class="agentic-status-iterations">Iter: <span id="agenticIterCount">0</span></span>
+            <span class="agentic-status-elapsed"><span id="agenticElapsed">0.0</span>s</span>
+            <button class="agentic-stop-btn" onclick="window.agenticStream.abort()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="6" width="12" height="12"/>
+                </svg>
+                Stop
+            </button>
+        `;
+        document.body.appendChild(statusBar);
+    }
+    
+    statusBar.classList.remove('hidden');
+    document.getElementById('agenticIterCount').textContent = iteration;
+    
+    // Update elapsed time
+    if (!window._agenticStartTime) {
+        window._agenticStartTime = Date.now();
+    }
+    const elapsed = ((Date.now() - window._agenticStartTime) / 1000).toFixed(1);
+    document.getElementById('agenticElapsed').textContent = elapsed;
+}
+
+function hideAgenticStatusBar() {
+    const statusBar = document.getElementById('agenticStatusBar');
+    if (statusBar) {
+        statusBar.classList.add('hidden');
+    }
+    window._agenticStartTime = null;
+}
+
+// Helper
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // Global exports
 window.addMessage = addMessage;
 window.scrollToBottom = scrollToBottom;

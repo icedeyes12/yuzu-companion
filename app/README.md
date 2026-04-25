@@ -16,6 +16,7 @@ The `app/` directory is the core of Yuzu Companion — the AI companion system t
 - Database Layer
 - [AI Provider System](#ai-provider-system)
 - [Tool System](#tool-system)
+- [Agentic Loop Architecture](#agentic-loop-architecture)
 - [Memory System](#memory-system)
 - [Multimodal System](#multimodal-system)
 - [Encryption](#encryption)
@@ -60,6 +61,18 @@ graph LR
 
 ```
 app/
+├── agents/               # Agentic loop components (NEW)
+│   ├── config.py          # Loop config (max_iterations, timeout)
+│   ├── thought_parser.py  # <thought> block extraction
+│   ├── command_parser.py  # [COMMAND: ...] + /command parsing
+│   ├── stream_parser.py   # Buffer-based streaming shield
+│   └── __init__.py
+├── dispatch/             # Hybrid tool dispatcher (NEW)
+│   ├── hybrid.py          # Local + MCP tool routing
+│   └── __init__.py
+├── mcp/                  # Zo MCP client (NEW)
+│   ├── client.py          # httpx async client for remote tools
+│   └── __init__.py
 ├── api/
 │   ├── __init__.py           # Package init
 │   └── routes.py             # All /api/* endpoints
@@ -465,6 +478,89 @@ Each tool module exports a `TOOL_DEFINITION` dict alongside its `execute()` func
 |  | Persist semantic facts with LLM-guided categorization |
 |  | Hybrid retrieval across semantic + episodic memories |
 |  | Vision model routing and image caching (non-tool, helpers) |
+
+---
+
+## Agentic Loop Architecture
+
+Yuzu Companion supports autonomous multi-turn tool use via a **Plan-Execute-Observe** loop.
+
+### Overview
+
+The agentic loop enables the LLM to:
+
+1. **PLAN** — Parse commands and thoughts from response
+2. **EXECUTE** — Dispatch tools (local or remote MCP)
+3. **OBSERVE** — Feed results back and continue
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Agentic Loop                              │
+│                                                              │
+│   ┌─────────┐    ┌──────────┐    ┌──────────┐              │
+│   │  PLAN   │───▶│ EXECUTE  │───▶│ OBSERVE  │──┐           │
+│   └─────────┘    └──────────┘    └──────────┘  │           │
+│        ▲                                         │           │
+│        └─────────────────────────────────────────┘           │
+│                    (loop until done)                         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Components
+
+| Package | Purpose |
+|---------|---------|
+| `app/agents/` | Loop config, command parsing, thought capture, stream parser |
+| `app/dispatch/` | Hybrid dispatcher (local + MCP routing) |
+| `app/mcp/` | HTTP client for Zo MCP remote tools |
+
+### Command Formats
+
+**Bracket (preferred)**:
+```
+[COMMAND: imagine(prompt="a cute cat")]
+[COMMAND: zo_search(query="what is rust")]
+```
+
+**Legacy slash**:
+```
+/imagine a cute cat
+/request GET https://api.example.com
+```
+
+### Thought Blocks
+
+```
+<thought>
+Planning: Need to search for current Rust version
+Tools: zo_search
+</thought>
+
+[COMMAND: zo_search(query="rust latest version 2024")]
+```
+
+### Configuration
+
+```python
+from app.agents import get_agent_config
+
+config = get_agent_config()
+# max_iterations: 50
+# total_timeout_seconds: 1800 (30 min)
+# enable_mcp: True
+# prefer_local_tools: True
+```
+
+### Streaming Shield
+
+`AgenticStreamParser` handles split chunks during streaming:
+
+```
+Chunk 1: "[COMMAND: imag"
+Chunk 2: "ine(prompt='a cat')]"
+```
+
+Buffers until complete pattern detected, then emits metadata.
 
 ---
 
