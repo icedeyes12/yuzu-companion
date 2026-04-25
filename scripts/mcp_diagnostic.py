@@ -70,7 +70,7 @@ async def _diagnose(token: str):
     print()
     
     print("[3] Testing HybridDispatcher...")
-    dispatcher = HybridDispatcher(mcp_token=token)
+    dispatcher = HybridDispatcher()
     await dispatcher.initialize()
     print(f"   Local tools: {len(dispatcher._local_tools)}")
     print(f"   MCP tools: {len(dispatcher._mcp_tools)}")
