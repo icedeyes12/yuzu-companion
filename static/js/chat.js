@@ -1090,7 +1090,7 @@ window.showToolResult = function(ok, output) {
             </span>
         </div>
         <div class="tool-result-output">
-            ${typeof renderer !== 'undefined' ? renderer.render(output) : escapeHtml(output)}
+            ${typeof renderer !== 'undefined' ? renderer.renderSync(output) : escapeHtml(output)}
         </div>
     `;
     
@@ -1117,7 +1117,7 @@ window.streamToMessage = function(chunk) {
     const contentEl = streamingMessageEl.querySelector('.message-content');
     if (contentEl) {
         contentEl.innerHTML = typeof renderer !== 'undefined' 
-            ? renderer.render(streamingContent)
+            ? renderer.renderSync(streamingContent)
             : escapeHtml(streamingContent);
     }
     

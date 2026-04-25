@@ -574,10 +574,14 @@ class MessageRenderer {
     }
 
     copyCode(button) {
+        if (!button) return;
         const codeBlock = button.closest('.code-block-container');
-        const code = codeBlock.querySelector('code').textContent;
+        if (!codeBlock) return;
+        const code = codeBlock.querySelector('code');
+        if (!code) return;
+        const text = code.textContent;
         
-        navigator.clipboard.writeText(code).then(() => {
+        navigator.clipboard.writeText(text).then(() => {
             const originalText = button.innerHTML;
             button.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>Copied!`;
             button.classList.add('copied');
