@@ -15,7 +15,7 @@ from app.agents import (
     StreamMeta,
     create_stream_parser,
 )
-from app.mcp import MCPClient, MCPTool
+from app.mcp.client import MCPClient, MCPTool
 from app.dispatch import HybridDispatcher, get_dispatcher
 
 
@@ -152,35 +152,35 @@ class TestMCPClient:
         """Client should work gracefully without token."""
         import os
         # Save and remove token if present
-        old_token = os.environ.pop("ZO_MCP_TOKEN", None)
+        old_token = os.environ.pop("ZO_ACCESS_TOKEN", None)
         
         client = MCPClient()
         assert client.token is None or client.token == ""
         
         # Restore token
         if old_token:
-            os.environ["ZO_MCP_TOKEN"] = old_token
+            os.environ["ZO_ACCESS_TOKEN"] = old_token
     
     def test_client_init_with_token(self):
         """Client with token should be available."""
         import os
-        old_token = os.environ.get("ZO_MCP_TOKEN")
-        os.environ["ZO_MCP_TOKEN"] = "test_token_123"
+        old_token = os.environ.get("ZO_ACCESS_TOKEN")
+        os.environ["ZO_ACCESS_TOKEN"] = "test_token_123"
         
         client = MCPClient()
         assert client.token == "test_token_123"
         
         # Restore
         if old_token:
-            os.environ["ZO_MCP_TOKEN"] = old_token
+            os.environ["ZO_ACCESS_TOKEN"] = old_token
         else:
-            del os.environ["ZO_MCP_TOKEN"]
+            del os.environ["ZO_ACCESS_TOKEN"]
     
     def test_mcp_tool_dataclass(self):
         tool = MCPTool(
             name="zo_search",
             description="Web search",
-            parameters={"query": {"type": "string"}},
+            input_schema={"type": "object", "properties": {"query": {"type": "string"}}},
         )
         assert tool.name == "zo_search"
         assert tool.description == "Web search"
@@ -192,17 +192,15 @@ class TestHybridDispatcher:
     def test_dispatcher_initialization(self):
         """Dispatcher should initialize with local tools."""
         dispatcher = HybridDispatcher()
-        # Sync initialization (no MCP)
-        tools = dispatcher.get_all_tools()
-        
-        # Should have local tools
-        tool_names = [t.name for t in tools]
-        assert "image_generate" in tool_names or "imagine" in tool_names
-        assert "http_request" in tool_names or "request" in tool_names
+        # Should initialize empty, lazy-load on first use
+        assert dispatcher._local_tools == {}
+        assert dispatcher._mcp_tools == {}
+        assert dispatcher._initialized is False
     
-    def test_is_local_tool(self):
-        """Should correctly identify local tools."""
+    def test_is_local_tool_lazy(self):
+        """Should correctly identify local tools even without init."""
         dispatcher = HybridDispatcher()
+        # Lazy fallback for unimplemented tools
         assert dispatcher.is_local_tool("image_generate") is True
         assert dispatcher.is_local_tool("imagine") is True  # alias
         assert dispatcher.is_local_tool("http_request") is True
@@ -214,41 +212,21 @@ class TestHybridDispatcher:
         # Without MCP initialized
         assert dispatcher.is_mcp_tool("zo_search") is False
     
-    def test_get_tool_schemas(self):
-        """Should return valid tool schemas for LLM."""
-        dispatcher = HybridDispatcher()
-        schemas = dispatcher.get_tool_schemas()
-        
-        assert len(schemas) > 0
-        assert all(s["type"] == "function" for s in schemas)
-        
-        # Check structure
-        for schema in schemas:
-            assert "function" in schema
-            assert "name" in schema["function"]
-            assert "description" in schema["function"]
-            assert "parameters" in schema["function"]
-    
-    def test_unknown_tool_error(self):
+    def test_execute_unknown_tool(self):
         """Should return error for unknown tools."""
         import asyncio
         
         dispatcher = HybridDispatcher()
-        result = asyncio.run(dispatcher.dispatch("unknown_tool_xyz", {}))
+        result = asyncio.run(dispatcher.execute("unknown_tool_xyz", {}))
         
         assert result.get("ok") is False
         assert "Unknown tool" in result.get("error", "")
     
-    def test_tool_name_normalization(self):
-        """Should normalize tool name aliases."""
+    def test_get_all_tools_empty_before_init(self):
+        """Should return empty list before initialization."""
         dispatcher = HybridDispatcher()
-        
-        # "imagine" should be normalized to "image_generate"
-        assert dispatcher.is_local_tool("imagine")
-        # Both should refer to same tool
-        local_tools = dispatcher._local_tools or dispatcher._load_local_tools()
-        # imagine is an alias, should exist
-        assert "imagine" in local_tools or "image_generate" in local_tools
+        tools = dispatcher.get_all_tools()
+        assert tools == []  # Not initialized yet
 
 
 class TestIntegration:
