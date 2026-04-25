@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/marked@18.0.2/lib/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.min.js"></script>
+</head>
+<body>
+<script>
+const markdown = `# Render Test Markdown + Mermaid
+
+> Blockquote percobaan. Kalau ini muncul rapi, berarti parsernya sudah kembali normal.
+
+## Elemen Dasar
+
+Teks biasa dengan **bold**, *italic*, dan \`inline code\`.
+
+| Komponen | Status | Catatan |
+|----------|--------|---------|
+| Heading  | Tes    | H1, H2, H3 |
+| Tabel    | Tes    | Alignment default |
+| Code     | Tes    | Python syntax |
+
+\`\`\`python
+def render_check():
+    return "markdown_ok"
+\`\`\`
+
+## Diagram Alur
+
+\`\`\`mermaid
+graph LR
+    A[User Request] --> B{Renderer OK?}
+    B -->|Ya| C[Tampil Rapi]
+    B -->|Tidak| D[Muncul HTML Mentah]
+    D --> E[Fix Parser]
+    E --> B
+\`\`\`
+`;
+
+// Test marked.lexer() tokens
+const tokens = marked.lexer(markdown);
+console.log('TOKENS:', JSON.stringify(tokens.slice(0, 20), null, 2));
+</script>
+</body>
+</html>

@@ -348,41 +348,106 @@ class MessageRenderer {
     }
     
     _renderTokenSync(token) {
-        // Simplified token renderer for sync mode
+        // Token renderer for sync mode - handles all marked.js v18 token types
         switch (token.type) {
             case 'heading':
-                return `<h${token.depth}>${token.text || ''}</h${token.depth}>`;
+                return `<h${token.depth}>${this._renderInlineSync(token.tokens || token.text)}</h${token.depth}>`;
             case 'paragraph':
-                return `<p>${token.text || ''}</p>`;
+                return `<p>${this._renderInlineSync(token.tokens || token.text)}</p>`;
             case 'code':
                 return this._renderCodeBlock(token);
+            case 'blockquote':
+                return `<blockquote>${this._renderTokensSync(token.tokens || [])}</blockquote>`;
             case 'list':
                 return this._renderListSync(token);
             case 'list_item':
-                return `<li>${token.text || ''}</li>`;
+                return `<li>${this._renderInlineSync(token.tokens || token.text || '')}</li>`;
+            case 'table':
+                return this._renderTableSync(token);
             case 'space':
                 return '';
             case 'hr':
                 return '<hr>';
-            case 'strong':
-                return `<strong>${token.text || ''}</strong>`;
-            case 'em':
-                return `<em>${token.text || ''}</em>`;
-            case 'codespan':
-                return `<code>${this.escapeHtml(token.text || '')}</code>`;
-            case 'br':
-                return '<br>';
-            case 'del':
-                return `<del>${token.text || ''}</del>`;
-            case 'link':
-                return `<a href="${token.href || '#'}">${token.text || ''}</a>`;
-            case 'image':
-                return `<img src="${token.href || ''}" alt="${token.text || ''}">`;
             case 'html':
+                return token.raw || '';
             case 'text':
+                return token.raw || token.text || '';
             default:
                 return token.raw || '';
         }
+    }
+    
+    _renderInlineSync(tokensOrText) {
+        // Handle inline tokens (bold, italic, code, links, etc.)
+        if (typeof tokensOrText === 'string') {
+            return this.escapeHtml(tokensOrText);
+        }
+        
+        if (!Array.isArray(tokensOrText)) {
+            return this.escapeHtml(String(tokensOrText || ''));
+        }
+        
+        let html = '';
+        for (const token of tokensOrText) {
+            switch (token.type) {
+                case 'text':
+                    html += this.escapeHtml(token.text || '');
+                    break;
+                case 'strong':
+                    html += `<strong>${this._renderInlineSync(token.tokens || token.text || '')}</strong>`;
+                    break;
+                case 'em':
+                    html += `<em>${this._renderInlineSync(token.tokens || token.text || '')}</em>`;
+                    break;
+                case 'codespan':
+                    html += `<code>${this.escapeHtml(token.text || '')}</code>`;
+                    break;
+                case 'link':
+                    html += `<a href="${token.href || '#'}">${this._renderInlineSync(token.tokens || token.text || '')}</a>`;
+                    break;
+                case 'image':
+                    html += `<img src="${token.href || ''}" alt="${token.text || ''}">`;
+                    break;
+                case 'br':
+                    html += '<br>';
+                    break;
+                case 'del':
+                    html += `<del>${this._renderInlineSync(token.tokens || token.text || '')}</del>`;
+                    break;
+                case 'html':
+                    html += token.raw || '';
+                    break;
+                default:
+                    html += token.raw || token.text || '';
+            }
+        }
+        return html;
+    }
+    
+    _renderTableSync(token) {
+        if (!token.header || !token.rows) {
+            return '';
+        }
+        
+        let html = '<div class="table-container"><table><thead><tr>';
+        
+        // Header
+        for (const cell of token.header) {
+            html += `<th>${this._renderInlineSync(cell.tokens || cell.text || '')}</th>`;
+        }
+        html += '</tr></thead><tbody>';
+        
+        // Rows
+        for (const row of token.rows) {
+            html += '<tr>';
+            for (const cell of row) {
+                html += `<td>${this._renderInlineSync(cell.tokens || cell.text || '')}</td>`;
+            }
+            html += '</tr>';
+        }
+        
+        html += '</tbody></table></div>';
+        return html;
     }
     
     _renderCodeBlock(token) {
@@ -414,15 +479,16 @@ class MessageRenderer {
     
     _renderListSync(token) {
         const tag = token.ordered ? 'ol' : 'ul';
+        const start = token.start ? ` start="${token.start}"` : '';
         let items = '';
         
         if (token.items && Array.isArray(token.items)) {
             for (const item of token.items) {
-                items += `<li>${item.text || ''}</li>`;
+                items += `<li>${this._renderInlineSync(item.tokens || item.text || '')}</li>`;
             }
         }
         
-        return `<${tag}>${items}</${tag}>`;
+        return `<${tag}${start}>${items}</${tag}>`;
     }
 
     preprocessGeneratedImages(text) {
