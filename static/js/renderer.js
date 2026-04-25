@@ -364,6 +364,13 @@ class MessageRenderer {
                 return `<li>${this._renderInlineSync(token.tokens || token.text || '')}</li>`;
             case 'table':
                 return this._renderTableSync(token);
+            case 'image':
+                // Block-level image (standalone image on its own line)
+                const imgSrc = this.normalizeImagePath(token.href || '');
+                const imgAlt = token.text || '';
+                const imgTitle = token.title ? ` title="${this.escapeHtml(token.title)}"` : '';
+                const errorHandler = `onerror="this.onerror=null; this.outerHTML='<div class=\\'image-error\\'>⚠️ Image not found</div>';"`;
+                return `<img src="${this.escapeHtml(imgSrc)}" alt="${this.escapeHtml(imgAlt)}"${imgTitle} class="markdown-image" loading="lazy" ${errorHandler} />`;
             case 'space':
                 return '';
             case 'hr':
