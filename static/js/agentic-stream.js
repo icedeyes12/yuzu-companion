@@ -125,30 +125,82 @@ class AgenticStreamHandler {
     }
     
     _handleEvent(event) {
-        console.log('[agentic] Event:', event.type, event.data);
+        if (!event.data) return
         
-        switch (event.type) {
-            case 'thought':
-                this.onThought(event.data);
-                break;
-            case 'command':
-                this.onCommand(event.data);
-                break;
-            case 'tool_result':
-                this.onToolResult(event.data);
-                break;
-            case 'text':
-                this.onText(event.data);
-                break;
-            case 'done':
-                this.onDone(event.data);
-                break;
-            case 'timeout':
-                this.onTimeout(event.data);
-                break;
-            default:
-                console.warn('[agentic] Unknown event type:', event.type);
+        try {
+            const data = JSON.parse(event.data)
+            
+            // Update brainBox status
+            if (window.brainBox) {
+                switch (data.type) {
+                    case 'thought':
+                        window.brainBox.setStatus('thinking', data.thought || '')
+                        break
+                    case 'tool_start':
+                        window.brainBox.setCurrentTool(data.tool)
+                        window.brainBox.setIteration(data.iteration || 0)
+                        if (window.activityFeed) {
+                            this._currentActivityId = window.activityFeed.addItem(data.tool, 'running', data.args)
+                        }
+                        break
+                    case 'tool_result':
+                        if (window.activityFeed && this._currentActivityId) {
+                            window.activityFeed.updateItem(this._currentActivityId, data.ok ? 'done' : 'error', data)
+                        }
+                        break
+                    case 'iteration':
+                        window.brainBox.setIteration(data.iteration)
+                        break
+                    case 'done':
+                        window.brainBox.setStatus('done', `${data.tool_calls || 0} tools, ${data.elapsed || 0}s`)
+                        if (window.activityFeed) {
+                            window.activityFeed.clear()
+                        }
+                        break
+                    case 'error':
+                        window.brainBox.setStatus('error', data.error)
+                        break
+                }
+            }
+            
+            // Call original handler
+            this._originalHandleEvent(event)
+            
+        } catch (err) {
+            console.error('[AgenticStream] Parse error:', err)
         }
+    }
+    
+    _originalHandleEvent(event) {
+        if (!event.data) return
+        
+        try {
+            const data = JSON.parse(event.data)
+            
+            // Handle existing event types...
+            switch (data.type) {
+                case 'thought':
+                case 'tool_start':
+                case 'tool_result':
+                case 'iteration':
+                case 'text':
+                    if (data.chunk) {
+                        this.buffer += data.chunk
+                        this.callbacks.onChunk(data.chunk)
+                    }
+                    break
+                case 'done':
+                    this.callbacks.onComplete(this.buffer, data)
+                    break
+                case 'error':
+                    this.callbacks.onError(data.error)
+                    break
+            }
+            
+        } catch (err) {
+            console.error('[AgenticStream] Parse error:', err)
+        }
+    }
     }
 }
 
