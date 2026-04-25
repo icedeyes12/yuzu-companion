@@ -333,9 +333,6 @@ class MessageRenderer {
         try {
             const tokens = marked.lexer(processedMarkdown);
             let html = this._renderTokensSync(tokens);
-            html = this._renderThinkingBlock(thought) { /* ... */ }
-    
-    postProcessHTML(html);
             setTimeout(() => this.initializeMermaidDiagrams(), 0);
             return html;
         } catch (e) {
