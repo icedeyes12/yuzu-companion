@@ -131,8 +131,19 @@ def _session_events_block(session_id: int) -> str:
     return "\n\nCURRENT SESSION EVENTS:\n" + "\n".join(lines)
 
 
-def _get_mcp_tools_description() -> str:
-    """Generate a dynamic description of available MCP tools."""
+def _get_mcp_tools_description(profile: dict[str, Any] | None = None) -> str:
+    """Generate a dynamic description of available MCP tools.
+    
+    Returns empty string if:
+      - Agentic mode is disabled
+      - ZO_ACCESS_TOKEN not set
+      - MCP tools not available
+    """
+    from app.agentic_config import is_agentic_mode_enabled
+    
+    if not is_agentic_mode_enabled(profile):
+        return ""
+    
     try:
         from app.mcp.client import get_mcp_client
         client = get_mcp_client()
@@ -165,7 +176,7 @@ def build_system_message(
     memory_block += _retrieve_dynamic_memory(session_id, user_message)
     memory_block += _legacy_memory_block(profile, session_id)
     
-    mcp_tools_desc = _get_mcp_tools_description()
+    mcp_tools_desc = _get_mcp_tools_description(profile)
 
     return f"""# IDENTITY & CORE BEHAVIOR
 You are {profile['partner_name']}, a warm, confident companion for {profile['display_name']}. 

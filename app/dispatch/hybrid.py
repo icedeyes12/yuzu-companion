@@ -66,7 +66,7 @@ class HybridDispatcher:
         result = await dispatcher.execute("web_search", {"query": "hello", "time_range": "anytime"})
     """
     
-    def __init__(self):
+    def __init__(self, mcp_token: str | None = None):
         self._local_tools: dict[str, Any] = {}
         self._mcp_tools: dict[str, HybridTool] = {}
         self._initialized: bool = False
@@ -219,6 +219,58 @@ class HybridDispatcher:
             )
             for name, info in self._local_tools.items()
         ]
+    
+    def _get_mcp_tools_sync(self) -> list[HybridTool]:
+        """Sync wrapper for MCP tool discovery (for status checks)."""
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        
+        if loop is not None:
+            # Already in async context - run in thread
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(
+                    asyncio.run,
+                    self._mcp_client.discover_tools() if self._mcp_client else []
+                )
+                tools = future.result()
+        else:
+            # Not in async context
+            if self._mcp_client:
+                tools = asyncio.run(self._mcp_client.discover_tools())
+            else:
+                tools = []
+        
+        # Convert to HybridTool
+        return [
+            HybridTool(
+                name=tool.name,
+                description=tool.description,
+                is_local=False,
+                is_mcp=True,
+                input_schema=tool.input_schema,
+            )
+            for tool in tools
+        ]
+    
+    def get_tools_for_mode(self, profile: dict[str, Any] | None = None) -> list[HybridTool]:
+        """Get tools based on agentic mode setting.
+        
+        Returns:
+          - Local tools only if agentic mode is disabled
+          - Local + MCP tools if agentic mode is enabled
+        """
+        from app.agentic_config import is_agentic_mode_enabled
+        
+        local_tools = self.get_local_tools()
+        
+        if is_agentic_mode_enabled(profile):
+            return local_tools + list(self._mcp_tools.values())
+        
+        return local_tools
 
 
 # Singleton instance
