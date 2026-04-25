@@ -495,7 +495,26 @@ class MessageRenderer {
         
         if (token.items && Array.isArray(token.items)) {
             for (const item of token.items) {
-                items += `<li>${this._renderInlineSync(item.tokens || item.text || '')}</li>`;
+                // Check if item has nested tokens (could be a nested list)
+                let itemContent = '';
+                if (item.tokens && Array.isArray(item.tokens)) {
+                    // Render all tokens in the item (text, nested lists, etc.)
+                    for (const t of item.tokens) {
+                        if (t.type === 'list') {
+                            // Nested list - recurse
+                            itemContent += this._renderListSync(t);
+                        } else if (t.type === 'text') {
+                            itemContent += this.escapeHtml(t.text || '');
+                        } else {
+                            // Other inline elements
+                            itemContent += this._renderInlineSync([t]);
+                        }
+                    }
+                } else {
+                    // Fallback to text
+                    itemContent = this.escapeHtml(item.text || '');
+                }
+                items += `<li>${itemContent}</li>`;
             }
         }
         

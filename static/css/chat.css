@@ -242,6 +242,14 @@ html, body {
   padding-left: 1.5rem;
 }
 
+.message-content ul {
+  list-style-type: disc;
+}
+
+.message-content ol {
+  list-style-type: decimal;
+}
+
 .message-content li {
   margin: 0.3rem 0;
 }
