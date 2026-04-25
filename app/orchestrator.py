@@ -160,9 +160,12 @@ def _detect_any_command(text: str) -> dict[str, str] | None:
     # Try bracket format first
     bracket = parse_bracket_command(text)
     if bracket:
+        # Convert arguments dict to string for legacy compatibility
+        import json
+        args_str = json.dumps(bracket.arguments) if bracket.arguments else ""
         return {
             "command": bracket.tool_name,
-            "args": bracket.raw_arguments if hasattr(bracket, 'raw_arguments') else "",
+            "args": args_str,
             "full_command": bracket.raw_text,
         }
     
