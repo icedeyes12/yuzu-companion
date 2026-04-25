@@ -69,7 +69,7 @@ class AgenticOrchestrator:
         log.info(
             f"[agentic] Initialized | max_iter={self.config.max_iterations} | "
             f"timeout={self.config.total_timeout_seconds}s | "
-            f"mcp={self.dispatcher._mcp_available}"
+            f"mcp={len(self.dispatcher._mcp_tools) > 0}"
         )
     
     async def run(

@@ -325,16 +325,10 @@ class MessageRenderer {
         }
         processedMarkdown = this.preprocessGeneratedImages(processedMarkdown);
         
-        // marked v18: use marked.parse() without async flag (it's sync by default when not returning promise)
+        // marked v18: Use lexer + parser for true sync rendering
         try {
-            let html = marked.parse(processedMarkdown);
-            // If it returns a promise, we need to handle it differently
-            if (html instanceof Promise) {
-                console.warn('[Renderer] marked.parse returned Promise in renderSync, falling back to sync mode');
-                // Use the internal lexer/parser directly for true sync
-                const tokens = marked.lexer(processedMarkdown);
-                html = this._renderTokensSync(tokens);
-            }
+            const tokens = marked.lexer(processedMarkdown);
+            let html = this._renderTokensSync(tokens);
             html = this.postProcessHTML(html);
             setTimeout(() => this.initializeMermaidDiagrams(), 0);
             return html;
