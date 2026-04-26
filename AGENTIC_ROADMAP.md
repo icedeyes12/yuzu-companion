@@ -122,6 +122,8 @@ curl -X POST http://localhost:8000/api/chat/agentic/stream \
 
 **Goal**: Initialize MCP tools at server startup, not on first request
 
+**Status**: ✅ DONE - Lifespan handler in `web.py` already initializes HybridDispatcher
+
 **Files Changed**:
 ```
 web.py                      # Lifespan handler
