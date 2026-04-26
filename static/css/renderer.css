@@ -94,7 +94,7 @@ blockquote blockquote blockquote {
    ======================================== */
 
 .mermaid-diagram {
-  background: var(--card-bg, #24283d);
+  background: var(--hljs-bg, var(--card-bg, #24283d));
   border-radius: 8px;
   padding: 1rem;
   margin: 1rem 0;
@@ -115,6 +115,20 @@ blockquote blockquote blockquote {
   border-radius: 4px;
   font-family: monospace;
   font-size: 0.85rem;
+}
+
+/* Mermaid container for inline diagrams */
+.mermaid-container {
+  background: var(--hljs-bg, var(--card-bg, #24283d));
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+.mermaid-container pre.mermaid {
+  background: transparent;
+  margin: 0;
 }
 
 /* ========================================

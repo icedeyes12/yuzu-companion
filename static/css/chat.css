@@ -382,13 +382,13 @@ html, body {
 }
 
 /* ==================== CODE BLOCKS ==================== */
-/* Code block container - inherits from hljs theme */
+/* Code block container - dynamic, inherits from hljs theme */
 .code-block-container {
   margin: 1rem 0;
   border-radius: 8px;
   overflow: hidden;
-  /* Background comes from .hljs in the theme */
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: transparent; /* Let hljs theme background show through */
+  border: 1px solid rgba(114, 133, 183, 0.3);
 }
 
 .code-block-header {
@@ -396,14 +396,14 @@ html, body {
   justify-content: space-between;
   align-items: center;
   padding: 0.5rem 1rem;
-  background: rgba(0, 0, 0, 0.15);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid rgba(114, 133, 183, 0.3);
   backdrop-filter: blur(4px);
 }
 
 .code-language {
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.7);
   text-transform: uppercase;
   font-weight: 600;
 }
@@ -412,19 +412,19 @@ html, body {
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 4px;
   padding: 0.3rem 0.6rem;
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.85);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .copy-code-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.35);
   color: #fff;
 }
 
@@ -450,11 +450,11 @@ html, body {
   overflow-x: auto;
 }
 
-/* Ensure hljs theme background fills the container */
+/* hljs theme handles its own background */
 .code-block-container pre code.hljs {
   display: block;
   padding: 1rem;
-  /* Background comes from hljs theme - do not override */
+  /* background comes from hljs theme CSS */
 }
 
 /* ==================== SCROLL TO BOTTOM BUTTON ==================== */
@@ -1156,15 +1156,15 @@ html, body {
    MARKDOWN INLINE STYLES
    ========================= */
 
-/* Inline code - distinct from bold */
+/* Inline code - dynamic from hljs theme */
 .message-content code:not(pre code) {
-  background: var(--code-bg, rgba(147, 165, 255, 0.15));
-  color: var(--accent-lavender, #a8c8ff);
+  background: var(--hljs-bg, #002451);
+  color: #ffffff;
   padding: 0.15em 0.4em;
   border-radius: 4px;
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 0.85em;
-  border: 1px solid var(--code-border, rgba(147, 165, 255, 0.2));
+  border: 1px solid rgba(114, 133, 183, 0.3);
   word-break: break-word;
 }
 
@@ -1229,10 +1229,21 @@ html, body {
    QUOTES & CALLOUTS
    ========================= */
 
+/* Blockquote - dynamic from hljs theme */
+.message-content blockquote {
+  border-left: 4px solid #7285b7;
+  margin: 0.8rem 0;
+  padding: 0.5rem 1rem;
+  background: var(--hljs-bg, #002451);
+  border-radius: 4px;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.85);
+}
+
 /* Nested blockquotes */
 .message-content blockquote blockquote {
   margin-left: 0.5rem;
-  border-left-color: var(--border-lavender);
+  border-left-color: #7285b7;
   opacity: 0.9;
 }
 
@@ -1289,27 +1300,49 @@ html, body {
    TABLES
    ========================= */
 
+/* Table - dynamic from hljs theme */
 .message-content table {
   width: 100%;
   border-collapse: collapse;
   margin: 0.8rem 0;
   font-size: 0.9em;
+  background: var(--hljs-bg, #002451);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 .message-content th,
 .message-content td {
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border-ai);
+  border: 1px solid rgba(114, 133, 183, 0.3);
   text-align: left;
 }
 
 .message-content th {
-  background: var(--code-bg);
+  background: rgba(0, 0, 0, 0.25);
   font-weight: 600;
+  color: #ffffff;
 }
 
 .message-content tr:nth-child(even) {
-  background: var(--code-bg);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+/* Table container for horizontal scroll */
+.message-content .table-container {
+  overflow-x: auto;
+  margin: 0.8rem 0;
+  border-radius: 6px;
+  border: 1px solid rgba(114, 133, 183, 0.3);
+  background: var(--hljs-bg, #002451);
+}
+
+.message-content .table-container table {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  width: 100%;
+  display: table;
 }
 
 /* =========================

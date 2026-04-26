@@ -24,6 +24,7 @@ class MessageRenderer {
         // Check if highlight.js is available
         if (typeof hljs !== 'undefined') {
             this.isHighlightReady = true;
+            this.extractHljsThemeBackground();
         } else {
             console.warn('highlight.js not loaded');
         }
@@ -39,6 +40,45 @@ class MessageRenderer {
         // Initialize nested container parser
         if (typeof NestedContainerParser !== 'undefined') {
             this.nestedParser = new NestedContainerParser();
+        }
+    }
+
+    /**
+     * Extract background color from hljs theme and set as CSS variable.
+     * This makes inline code, blockquotes, tables sync with hljs theme.
+     */
+    extractHljsThemeBackground() {
+        // Create a temporary element to read computed style from hljs theme
+        const temp = document.createElement('div');
+        temp.className = 'hljs';
+        temp.style.display = 'none';
+        document.body.appendChild(temp);
+        
+        try {
+            const computedStyle = window.getComputedStyle(temp);
+            const bgColor = computedStyle.backgroundColor || computedStyle.background;
+            
+            if (bgColor && bgColor !== 'transparent' && bgColor !== 'rgba(0, 0, 0, 0)') {
+                // Convert to hex if it's rgb/rgba
+                let hexColor = bgColor;
+                if (bgColor.startsWith('rgb')) {
+                    const match = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+                    if (match) {
+                        const r = parseInt(match[1]).toString(16).padStart(2, '0');
+                        const g = parseInt(match[2]).toString(16).padStart(2, '0');
+                        const b = parseInt(match[3]).toString(16).padStart(2, '0');
+                        hexColor = `#${r}${g}${b}`;
+                    }
+                }
+                
+                // Set as CSS variable on root
+                document.documentElement.style.setProperty('--hljs-bg', hexColor);
+                console.log('[Renderer] HLJS theme background extracted:', hexColor);
+            }
+        } catch (e) {
+            console.warn('[Renderer] Could not extract hljs background:', e);
+        } finally {
+            document.body.removeChild(temp);
         }
     }
 
