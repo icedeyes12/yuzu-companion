@@ -643,3 +643,83 @@
         margin-right: 6px;
     }
 }
+
+/* === Agentic Mode Toggle === */
+.agentic-toggle-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 26px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #3a4568;
+  transition: 0.3s;
+  border-radius: 26px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: var(--accent-pink, #ffb8c6);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(24px);
+}
+
+.toggle-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.agentic-info {
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: rgba(168, 200, 255, 0.1);
+  border-radius: 4px;
+}
+
+.agentic-info small {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+/* Agentic mode active state */
+[data-agentic="true"] .agentic-info {
+  background: rgba(255, 184, 198, 0.2);
+}
+
+[data-agentic="true"] .agentic-info small {
+  color: var(--accent-pink);
+}

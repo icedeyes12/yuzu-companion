@@ -101,6 +101,22 @@
         </div>
         
         <!-- Session Management -->
+        
+        <!-- Agentic Mode Toggle -->
+        <div class="sidebar-section">
+          <h3>Agentic Mode</h3>
+          <div class="agentic-toggle-container">
+            <label class="toggle-switch">
+              <input type="checkbox" id="agenticModeToggle" onchange="toggleAgenticMode(this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label" id="agenticModeLabel">OFF</span>
+          </div>
+          <div class="agentic-info">
+            <small id="agenticModeInfo">Local RPC tools</small>
+          </div>
+        </div>
+        
         <div class="sidebar-section" id="sessionSection">
           <h3>Sessions</h3>
           <button class="sidebar-btn" onclick="createNewSession()">
