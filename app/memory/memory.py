@@ -50,7 +50,8 @@ _pending_sessions: set[int] = set()  # Sessions queued for processing
 def _get_session_memory_dict(session_id: int) -> dict:
     """Get the memory_json dict for a session."""
     try:
-        from app.db_queries import pg_fetchone, parse_json
+        from app.db_pg import pg_fetchone
+        from app.db_queries import parse_json
         row = pg_fetchone(
             "SELECT memory_json FROM chat_sessions WHERE id = %s",
             (session_id,)
@@ -66,7 +67,7 @@ def _set_session_memory_dict(session_id: int, memory_dict: dict) -> bool:
     """Update the memory_json dict for a session."""
     try:
         import json
-        from app.db_queries import pg_execute
+        from app.db_pg import pg_execute
         from datetime import datetime
         pg_execute(
             "UPDATE chat_sessions SET memory_json = %s, updated_at = %s WHERE id = %s",
