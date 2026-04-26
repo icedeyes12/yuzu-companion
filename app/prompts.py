@@ -131,7 +131,7 @@ def _session_events_block(session_id: int) -> str:
     return "\n\nCURRENT SESSION EVENTS:\n" + "\n".join(lines)
 
 
-def _get_mcp_tools_description(profile: dict[str, Any] | None = None) -> str:
+def get_mcp_tools_description(profile: dict[str, Any] | None = None) -> str:
     """Generate a dynamic description of available MCP tools.
     
     Returns empty string if:
@@ -176,7 +176,7 @@ def build_system_message(
     memory_block += _retrieve_dynamic_memory(session_id, user_message)
     memory_block += _legacy_memory_block(profile, session_id)
     
-    mcp_tools_desc = _get_mcp_tools_description(profile)
+    mcp_tools_desc = get_mcp_tools_description(profile)
 
     return f"""# IDENTITY & CORE BEHAVIOR
 You are {profile['partner_name']}, a warm, confident companion for {profile['display_name']}. 
