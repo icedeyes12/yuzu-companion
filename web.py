@@ -8,7 +8,9 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from typing import Dict
+from contextlib import asynccontextmanager
 import os
+import logging
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -21,6 +23,32 @@ from app.api import api_router  # noqa: E402
 from app.api.routes import set_session_tracker  # noqa: E402
 
 # ---------------------------------------------------------------------------
+# Lifespan Handler (replaces deprecated on_event)
+# ---------------------------------------------------------------------------
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Modern lifespan handler for startup/shutdown events."""
+    log = logging.getLogger(__name__)
+    
+    # Startup
+    try:
+        from app.dispatch import get_dispatcher
+        
+        dispatcher = get_dispatcher()
+        await dispatcher.initialize()
+        log.info("[lifespan] HybridDispatcher initialized")
+    except Exception as e:
+        log.warning("[lifespan] Failed to initialize dispatcher: %s", e)
+    
+    yield
+    
+    # Shutdown (cleanup if needed)
+    log.info("[lifespan] Shutting down")
+
+
+# ---------------------------------------------------------------------------
 # FastAPI Application Setup
 # ---------------------------------------------------------------------------
 
@@ -28,7 +56,8 @@ from app.api.routes import set_session_tracker  # noqa: E402
 app = FastAPI(
     title="Yuzu Companion",
     description="AI companion system with memory, multimodal, and multi-provider support",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Mount static directories
@@ -72,28 +101,6 @@ ensure_static_dirs()
 # Startup: Initialize HybridDispatcher (MCP tool discovery)
 # ---------------------------------------------------------------------------
 
-
-@app.on_event("startup")
-async def startup_initialize_dispatcher():
-    """Initialize the hybrid dispatcher at startup.
-    
-    This triggers MCP tool discovery early so the first request
-    doesn't have to wait for the discovery process.
-    """
-    import asyncio
-    import logging
-    log = logging.getLogger(__name__)
-    
-    try:
-        from app.dispatch import get_dispatcher
-        
-        dispatcher = get_dispatcher()
-        # Run initialization in background to not block startup
-        loop = asyncio.get_event_loop()
-        loop.create_task(dispatcher.initialize())
-        log.info("[startup] HybridDispatcher initialization scheduled")
-    except Exception as e:
-        log.warning("[startup] Failed to initialize dispatcher: %s", e)
 
 # ---------------------------------------------------------------------------
 # Register API Router
