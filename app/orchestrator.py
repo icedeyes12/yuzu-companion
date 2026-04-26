@@ -351,11 +351,13 @@ def _post_turn(
 
 
 def _trigger_memory_pipeline(session_id: int) -> None:
+    """Trigger memory pipeline based on TURN count (not message count)."""
     try:
-        from app.memory.memory import trigger_memory_pipeline_async
-        count = Database.get_session_messages_count(session_id)
-        if not trigger_memory_pipeline_async(session_id, count):
-            log.info("memory pipeline skipped (count=%s)", count)
+        from app.memory.memory import trigger_memory_pipeline_async, _count_turns
+        messages = Database.get_messages(session_id, limit=10000)
+        turn_count = _count_turns(messages)
+        if not trigger_memory_pipeline_async(session_id, turn_count):
+            log.info("memory pipeline skipped (turns=%s)", turn_count)
     except Exception as e:  # noqa: BLE001
         log.warning("memory pipeline trigger failed: %s", e)
 

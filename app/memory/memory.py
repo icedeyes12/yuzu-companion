@@ -8,7 +8,8 @@
 #   2. PCL → create_episode_and_pcl() extracts semantic facts
 #   3. Memory Review → run_memory_review() updates FSRS parameters
 #
-# Trigger: After every N messages (WINDOW_BASE=20) or time-gated per session.
+# Trigger: After every N TURNS (WINDOW_BASE=30) or time-gated per session.
+#         A TURN = one user message + one assistant response.
 
 from __future__ import annotations
 
@@ -30,10 +31,11 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-# Segmentation constants (aligned with plast-mem)
-WINDOW_BASE = 20  # trigger count
-WINDOW_MAX = 40  # force process
-MIN_MESSAGES = 5
+# Segmentation constants (turn-based, not message-based)
+# 1 TURN = 1 user message + 1 assistant response
+WINDOW_BASE = 30  # trigger every 30 turns
+WINDOW_MAX = 50   # force trigger at 50 turns
+MIN_MESSAGES = 10 # minimum messages to segment
 TIME_GAP_MINUTES = 15
 
 # ── Background thread state ───────────────────────────────────────────────────
@@ -43,35 +45,102 @@ _pipeline_lock = threading.Lock()
 _pending_sessions: set[int] = set()  # Sessions queued for processing
 
 
-# ── Message counter tracking (per-session) ─────────────────────────────────────
+# ── Database-backed turn tracking ───────────────────────────────────────────────
 
-_last_processed_count: dict[int, int] = {}  # session_id -> last processed count
+def _get_session_memory_dict(session_id: int) -> dict:
+    """Get the memory_json dict for a session."""
+    try:
+        from app.db_queries import pg_fetchone, parse_json
+        row = pg_fetchone(
+            "SELECT memory_json FROM chat_sessions WHERE id = %s",
+            (session_id,)
+        )
+        if row:
+            return parse_json(row.get("memory_json", "{}"))
+    except Exception as e:
+        logger.debug(f"Failed to get session memory: {e}")
+    return {}
 
 
-def should_trigger_segmentation(session_id: int, current_count: int) -> bool:
-    """Check if segmentation should trigger based on message count.
+def _set_session_memory_dict(session_id: int, memory_dict: dict) -> bool:
+    """Update the memory_json dict for a session."""
+    try:
+        import json
+        from app.db_queries import pg_execute
+        from datetime import datetime
+        pg_execute(
+            "UPDATE chat_sessions SET memory_json = %s, updated_at = %s WHERE id = %s",
+            (json.dumps(memory_dict), datetime.now(), session_id)
+        )
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to persist session memory: {e}")
+        return False
+
+
+def _get_last_processed_turn(session_id: int) -> int:
+    """Get last processed turn count from database (session memory_json)."""
+    memory = _get_session_memory_dict(session_id)
+    return memory.get("_last_processed_turn", 0)
+
+
+def _set_last_processed_turn(session_id: int, turn_count: int) -> None:
+    """Persist last processed turn count to database."""
+    memory = _get_session_memory_dict(session_id)
+    memory["_last_processed_turn"] = turn_count
+    _set_session_memory_dict(session_id, memory)
+
+
+def _count_turns(messages: list[dict]) -> int:
+    """Count turns (user+assistant pairs) in messages.
+    
+    A turn = one complete user-assistant exchange.
+    Incomplete turns (user without assistant) count as 0.5.
+    """
+    turns = 0.0
+    for i, msg in enumerate(messages):
+        if msg.get("role") == "user":
+            # Check if next message is assistant
+            if i + 1 < len(messages) and messages[i + 1].get("role") == "assistant":
+                turns += 1
+            else:
+                turns += 0.5  # incomplete turn
+    return int(turns)
+
+
+def should_trigger_segmentation(session_id: int, current_turn_count: int) -> bool:
+    """Check if segmentation should trigger based on TURN count.
     
     Returns True if:
-    - Count reaches WINDOW_MAX (force trigger)
-    - Count reaches multiple of WINDOW_BASE (periodic trigger)
+    - Turn count reaches WINDOW_MAX (force trigger)
+    - Delta from last processed >= WINDOW_BASE (periodic trigger)
+    
+    Uses database-backed tracking to persist across restarts.
     """
-    last_count = _last_processed_count.get(session_id, 0)
-    delta = current_count - last_count
+    last_turn = _get_last_processed_turn(session_id)
+    delta = current_turn_count - last_turn
+    
+    logger.debug(
+        f"Turn check: session={session_id} current={current_turn_count} "
+        f"last={last_turn} delta={delta}"
+    )
     
     # Force trigger at WINDOW_MAX
-    if current_count >= WINDOW_MAX and delta >= WINDOW_MAX:
+    if current_turn_count >= WINDOW_MAX and delta >= WINDOW_MAX:
+        logger.info(f"Force trigger: {current_turn_count} turns (max={WINDOW_MAX})")
         return True
     
     # Periodic trigger every WINDOW_BASE
     if delta >= WINDOW_BASE:
+        logger.info(f"Periodic trigger: delta={delta} >= base={WINDOW_BASE}")
         return True
     
     return False
 
 
-def mark_segmentation_done(session_id: int, count: int) -> None:
-    """Mark that segmentation completed for this session at this count."""
-    _last_processed_count[session_id] = count
+def mark_segmentation_done(session_id: int, turn_count: int) -> None:
+    """Persist that segmentation completed for this session at this turn count."""
+    _set_last_processed_turn(session_id, turn_count)
 
 
 # ── Batch segmentation (single LLM call) ───────────────────────────────────────
@@ -672,13 +741,16 @@ def enqueue_memory_pipeline(session_id: int) -> None:
     logger.info(f"Queued session {session_id} for background processing")
 
 
-def trigger_memory_pipeline_async(session_id: int, current_count: int) -> bool:
+def trigger_memory_pipeline_async(session_id: int, current_turn_count: int) -> bool:
     """Check and trigger memory pipeline in background if threshold met.
+    
+    Uses TURN count (not message count) for threshold.
+    Persists tracking to database for restart resilience.
     
     Returns True if pipeline was triggered.
     """
-    if should_trigger_segmentation(session_id, current_count):
-        mark_segmentation_done(session_id, current_count)
+    if should_trigger_segmentation(session_id, current_turn_count):
+        mark_segmentation_done(session_id, current_turn_count)
         enqueue_memory_pipeline(session_id)
         return True
     return False
