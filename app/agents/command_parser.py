@@ -32,13 +32,8 @@ _SLASH_COMMAND_PATTERN = re.compile(
     re.MULTILINE,
 )
 
-# Tool aliases for normalization
-_TOOL_ALIASES: dict[str, str] = {
-    "imagine": "image_generate",
-    "search": "zo_search",
-    "web_search": "zo_search",
-    "request": "http_request",
-}
+# Note: Tool aliases for normalization are defined in app/commands._TOOL_ALIASES
+# and applied in orchestrator._execute_bracket_command and commands.execute_command.
 
 
 @dataclass

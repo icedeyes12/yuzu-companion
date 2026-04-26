@@ -15,6 +15,7 @@ from app.commands import (
     extract_markdown_image_path,
     is_markdown_image_shortcut,
     parse_image_path,
+    _TOOL_ALIASES,
 )
 from app.database import Database
 from app.llm_client import (
@@ -183,7 +184,8 @@ def _execute_bracket_command(
     """
     import asyncio
     
-    tool_name = tool_call.tool_name
+    # Normalize tool name via aliases
+    tool_name = _TOOL_ALIASES.get(tool_call.tool_name, tool_call.tool_name)
     arguments = tool_call.arguments
     
     log.info("bracket command: [%s(%s)]", tool_name, arguments)

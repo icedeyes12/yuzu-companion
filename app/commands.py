@@ -21,8 +21,19 @@ _STRING_ARG_TOOLS: dict[str, str] = {
 }
 
 # Aliases the model uses for tool routing.
+# Maps common/short names to actual tool names (local or MCP).
 _TOOL_ALIASES: dict[str, str] = {
+    # Local tool aliases
     "imagine": "image_generate",
+    "request": "http_request",
+    
+    # MCP tool aliases (map to actual Zo MCP tool names)
+    "search": "web_search",
+    "zo_search": "web_search",
+    "research": "web_research",
+    "zo_research": "web_research",
+    "x_search": "x_search",  # already correct
+    "maps_search": "maps_search",  # already correct
 }
 
 _MARKDOWN_IMAGE_PATH = re.compile(
