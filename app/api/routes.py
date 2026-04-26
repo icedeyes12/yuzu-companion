@@ -134,6 +134,9 @@ class AgenticToggleRequest(BaseModel):
     enabled: bool = Field(..., description="Enable or disable agentic mode")
 
 
+class ThinkToggleRequest(BaseModel):
+    enabled: bool = Field(..., description="Enable or disable think mode")
+
 @api_router.post("/agentic/chat")
 async def api_agentic_chat(request: AgenticChatRequest):
     """Agentic chat endpoint with Plan-Execute-Observe loop.
@@ -243,6 +246,43 @@ async def api_agentic_status():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@api_router.post("/think/toggle")
+async def api_think_toggle(request: ThinkToggleRequest):
+    """Toggle think mode on/off.
+    
+    Stores preference in profile.providers_config.think_mode.
+    When enabled, thinking instructions are injected into system prompt.
+    """
+    try:
+        profile = await get_profile_async()
+        providers_config = profile.get("providers_config", {})
+        providers_config["think_mode"] = request.enabled
+        await update_profile_async({"providers_config": providers_config})
+        
+        return {
+            "status": "success",
+            "think_mode": request.enabled,
+            "message": f"Think mode {"enabled" if request.enabled else "disabled"}",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/think/status")
+async def api_think_status():
+    """Get current think mode status."""
+    try:
+        profile = await get_profile_async()
+        providers_config = profile.get("providers_config", {})
+        think_mode = providers_config.get("think_mode", False)
+        
+        return {
+            "status": "success",
+            "think_mode": think_mode,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/agentic/config")
 async def api_agentic_config():

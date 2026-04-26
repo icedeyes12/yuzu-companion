@@ -160,6 +160,50 @@ def get_mcp_tools_description(profile: dict[str, Any] | None = None) -> str:
         return ""
 
 
+
+
+def get_thinking_instructions(profile: dict[str, Any] | None = None) -> str:
+    """Generate thinking mode instructions if enabled.
+    
+    Returns empty string if think_mode is disabled.
+    """
+    if profile is None:
+        try:
+            from app.database import Database
+            profile = Database.get_profile()
+        except Exception:
+            return ""
+    
+    if not profile:
+        return ""
+    
+    providers_config = profile.get("providers_config") or {}
+    think_mode = providers_config.get("think_mode", False)
+    
+    if not think_mode:
+        return ""
+    
+    return """
+# AGENTIC REASONING MODE
+You are in thinking mode. Show your reasoning process for complex problems.
+
+**Format:**
+1. Wrap your internal reasoning in <thought>...</thought> tags
+2. Inside thought block, include:
+   - Planning: What approach will you take?
+   - Tools: Which tools might help? (list if applicable)
+3. Then proceed with your response as normal
+4. Use [COMMAND: tool(args)] for tool execution
+
+**Example:**
+<thought>
+Planning: User wants to find recent news about X. I'll search and summarize.
+Tools: zo_search, zo_research
+</thought>
+
+[COMMAND: zo_search(query="recent news about X")]
+"""
+
 def build_system_message(
     profile: dict[str, Any],
     session_id: int,
@@ -177,6 +221,7 @@ def build_system_message(
     memory_block += _legacy_memory_block(profile, session_id)
     
     mcp_tools_desc = get_mcp_tools_description(profile)
+    thinking_desc = get_thinking_instructions(profile)
 
     return f"""# IDENTITY & CORE BEHAVIOR
 You are {profile['partner_name']}, a warm, confident companion for {profile['display_name']}. 
@@ -244,6 +289,7 @@ Rule: Commands MUST be the VERY FIRST line of your response. No text before the 
 
 **MCP Remote Tools (via Zo)**:
 {mcp_tools_desc}
+{thinking_desc}
 
 **Tool Selection**:
 - Local tools: imagine, request, memory_store, memory_search

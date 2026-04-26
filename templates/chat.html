@@ -23,7 +23,7 @@
     <link rel="stylesheet" href="{{ url_for('static', path='css/renderer.css') }}">
     
     <!-- Highlight.js CSS -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/tomorrow-night-blue.min.css">
 </head>
 <body>
     <!-- Unified Sidebar -->
@@ -114,6 +114,21 @@
           </div>
           <div class="agentic-info">
             <small id="agenticModeInfo">Local RPC tools</small>
+          </div>
+        </div>
+        
+        <!-- Think Mode Toggle -->
+        <div class="sidebar-section">
+          <h3>Think Mode</h3>
+          <div class="think-toggle-container">
+            <label class="toggle-switch">
+              <input type="checkbox" id="thinkModeToggle" onchange="toggleThinkMode(this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label" id="thinkModeLabel">OFF</span>
+          </div>
+          <div class="think-info">
+            <small id="thinkModeInfo">Show reasoning</small>
           </div>
         </div>
         

@@ -723,3 +723,32 @@
 [data-agentic="true"] .agentic-info small {
   color: var(--accent-pink);
 }
+
+/* === Think Mode Toggle === */
+.think-toggle-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.think-info {
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: rgba(147, 165, 255, 0.1);
+  border-radius: 4px;
+}
+
+.think-info small {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+/* Think mode active state */
+[data-think="true"] .think-info {
+  background: rgba(167, 139, 250, 0.2);
+}
+
+[data-think="true"] .think-info small {
+  color: var(--accent-lavender);
+}
