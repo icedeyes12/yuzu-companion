@@ -306,6 +306,8 @@ async def run_streaming(self, user_message, session_id, interface="web"):
 
 **Goal**: User-facing controls for agentic mode
 
+**Status**: 🟡 PARTIAL - SSE handlers and status bar CSS exist, settings toggle pending
+
 **Files Changed**:
 ```
 templates/settings.html       # Agentic mode toggle
