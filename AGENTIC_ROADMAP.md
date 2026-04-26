@@ -19,6 +19,8 @@
 
 **Goal**: Make the existing `orchestrator_agentic.py` accessible via web API
 
+**Status**: ✅ DONE - API endpoint `/api/agentic/chat` already exists in `app/api/routes.py`
+
 **Files Changed**:
 ```
 app/api/routes.py           # New agentic streaming endpoint
@@ -223,6 +225,8 @@ python web.py 2>&1 | grep -E "(lifespan|hybrid|mcp)"
 ## Phase 3: Stream Parser Integration (P1)
 
 **Goal**: Handle commands split across streaming chunks correctly
+
+**Status**: ✅ DONE - AgenticStreamParser integrated into `run_streaming()` in `app/orchestrator_agentic.py`
 
 **Files Changed**:
 ```

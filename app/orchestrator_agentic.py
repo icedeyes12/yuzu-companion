@@ -30,6 +30,7 @@ from app.agents import (
     parse_thought,
     strip_command,
 )
+from app.agents.stream_parser import AgenticStreamParser
 from app.dispatch import get_dispatcher
 from app.logging_config import get_logger
 
@@ -194,6 +195,8 @@ class AgenticOrchestrator:
     ) -> AsyncIterator[dict[str, Any]]:
         """Execute the loop and yield structured SSE events.
         
+        Uses AgenticStreamParser to handle commands split across chunks.
+        
         Yields dicts with 'type' and 'data' keys:
           {"type": "thought", "data": {"content": "..."}}
           {"type": "command", "data": {"tool": "...", "args": {...}}}
@@ -203,43 +206,137 @@ class AgenticOrchestrator:
         """
         start_time = time.time()
         iterations = 0
-        all_tool_calls: list[ToolCall] = []
         all_tool_results: list[dict[str, Any]] = []
         
         if not self._initialized:
             await self.initialize()
         
-        # Stream initial LLM response
+        # Stream initial LLM response with parser
+        parser = AgenticStreamParser()
         current_text = ""
-        async for chunk in self._stream_llm(user_message, session_id, interface, 0):
-            current_text += chunk
-            yield {"type": "text", "data": {"chunk": chunk}}
         
-        # Main loop
-        while iterations < self.config.max_iterations:
+        async for chunk in self._stream_llm(user_message, session_id, interface, 0):
+            for safe_chunk, meta in parser.feed(chunk):
+                current_text += safe_chunk
+                
+                if meta.thought:
+                    yield {
+                        "type": "thought",
+                        "data": {
+                            "content": meta.thought.content,
+                            "planning": meta.thought.planning,
+                            "tools": meta.thought.tools_mentioned,
+                        },
+                    }
+                
+                if meta.command:
+                    yield {
+                        "type": "command",
+                        "data": {
+                            "tool": meta.command.tool_name,
+                            "args": meta.command.arguments,
+                            "iteration": iterations + 1,
+                        },
+                    }
+                    iterations += 1
+                    
+                    # Execute tool immediately
+                    result = await self.dispatcher.dispatch(
+                        meta.command.tool_name,
+                        meta.command.arguments,
+                        session_id=session_id,
+                    )
+                    all_tool_results.append(result)
+                    
+                    yield {
+                        "type": "tool_result",
+                        "data": {
+                            "ok": result.get("ok", False),
+                            "output": result.get("markdown", result.get("error", "")),
+                        },
+                    }
+                    
+                    # Check if tool is terminal
+                    if self.dispatcher.is_terminal_tool(meta.command.tool_name) and result.get("ok"):
+                        # Terminal tool success, end here
+                        elapsed = time.time() - start_time
+                        yield {
+                            "type": "done",
+                            "data": {
+                                "iterations": iterations,
+                                "elapsed": round(elapsed, 2),
+                                "tools_used": iterations,
+                            },
+                        }
+                        return
+                
+                # Yield safe text chunk
+                if safe_chunk:
+                    yield {"type": "text", "data": {"chunk": safe_chunk}}
+        
+        # Final flush
+        for safe_chunk, meta in parser.flush():
+            current_text += safe_chunk
+            
+            if meta.thought:
+                yield {
+                    "type": "thought",
+                    "data": {
+                        "content": meta.thought.content,
+                        "planning": meta.thought.planning,
+                        "tools": meta.thought.tools_mentioned,
+                    },
+                }
+            
+            if meta.command:
+                yield {
+                    "type": "command",
+                    "data": {
+                        "tool": meta.command.tool_name,
+                        "args": meta.command.arguments,
+                        "iteration": iterations + 1,
+                    },
+                }
+                iterations += 1
+                
+                result = await self.dispatcher.dispatch(
+                    meta.command.tool_name,
+                    meta.command.arguments,
+                    session_id=session_id,
+                )
+                all_tool_results.append(result)
+                
+                yield {
+                    "type": "tool_result",
+                    "data": {
+                        "ok": result.get("ok", False),
+                        "output": result.get("markdown", result.get("error", "")),
+                    },
+                }
+                
+                if self.dispatcher.is_terminal_tool(meta.command.tool_name) and result.get("ok"):
+                    elapsed = time.time() - start_time
+                    yield {
+                        "type": "done",
+                        "data": {
+                            "iterations": iterations,
+                            "elapsed": round(elapsed, 2),
+                            "tools_used": iterations,
+                        },
+                    }
+                    return
+            
+            if safe_chunk:
+                yield {"type": "text", "data": {"chunk": safe_chunk}}
+        
+        # Check for more commands (fallback to old parser for compatibility)
+        command = parse_command(current_text)
+        while command and iterations < self.config.max_iterations:
             elapsed = time.time() - start_time
             if elapsed > self.config.total_timeout_seconds:
                 yield {"type": "timeout", "data": {"elapsed": elapsed}}
                 break
             
-            # Parse thought
-            thought = parse_thought(current_text)
-            if thought:
-                yield {
-                    "type": "thought",
-                    "data": {
-                        "content": thought.content,
-                        "planning": thought.planning,
-                        "tools": thought.tools_mentioned,
-                    },
-                }
-            
-            # Check for command
-            command = parse_command(current_text)
-            if not command:
-                break
-            
-            # Emit command event
             yield {
                 "type": "command",
                 "data": {
@@ -248,10 +345,8 @@ class AgenticOrchestrator:
                     "iteration": iterations + 1,
                 },
             }
-            
             iterations += 1
             
-            # Execute tool
             result = await self.dispatcher.dispatch(
                 command.tool_name,
                 command.arguments,
@@ -259,7 +354,6 @@ class AgenticOrchestrator:
             )
             all_tool_results.append(result)
             
-            # Emit tool result event
             yield {
                 "type": "tool_result",
                 "data": {
@@ -268,7 +362,6 @@ class AgenticOrchestrator:
                 },
             }
             
-            # Check terminal
             if self.dispatcher.is_terminal_tool(command.tool_name) and result.get("ok"):
                 break
             
@@ -278,12 +371,24 @@ class AgenticOrchestrator:
                 clean_text, command.tool_name, result
             )
             
+            # Stream synthesis
+            parser = AgenticStreamParser()
             current_text = ""
             async for chunk in self._stream_llm(
                 synthesis_prompt, session_id, interface, iterations
             ):
-                current_text += chunk
-                yield {"type": "text", "data": {"chunk": chunk}}
+                for safe_chunk, meta in parser.feed(chunk):
+                    current_text += safe_chunk
+                    
+                    if safe_chunk:
+                        yield {"type": "text", "data": {"chunk": safe_chunk}}
+            
+            for safe_chunk, meta in parser.flush():
+                current_text += safe_chunk
+                if safe_chunk:
+                    yield {"type": "text", "data": {"chunk": safe_chunk}}
+            
+            command = parse_command(current_text)
         
         elapsed = time.time() - start_time
         yield {
@@ -291,7 +396,7 @@ class AgenticOrchestrator:
             "data": {
                 "iterations": iterations,
                 "elapsed": round(elapsed, 2),
-                "tools_used": len(all_tool_calls),
+                "tools_used": len(all_tool_results),
             },
         }
     
