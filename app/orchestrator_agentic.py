@@ -416,16 +416,35 @@ async def _stream_llm_response(
     interface: str,
     iteration: int,
 ) -> AsyncIterator[str]:
-    """Stream LLM response using existing sync streaming under the hood."""
+    """Stream LLM response using existing sync streaming under the hood.
+    
+    Uses queue.SimpleQueue for thread-safe communication.
+    """
     from app.orchestrator import handle_user_message_streaming
+    import queue
+    import threading
     
-    loop = asyncio.get_event_loop()
+    # SimpleQueue is thread-safe and doesn't require asyncio
+    chunk_queue: queue.SimpleQueue[str | None] = queue.SimpleQueue()
     
-    # Run the sync generator in a thread
     def _collect_chunks():
-        return list(handle_user_message_streaming(message, interface))
+        try:
+            for chunk in handle_user_message_streaming(message, interface):
+                chunk_queue.put(chunk)
+        finally:
+            chunk_queue.put(None)  # Signal end
     
-    chunks = await loop.run_in_executor(None, _collect_chunks)
+    # Start thread
+    thread = threading.Thread(target=_collect_chunks, daemon=True)
+    thread.start()
     
-    for chunk in chunks:
+    # Yield chunks as they arrive
+    while True:
+        # Use run_in_executor to avoid blocking
+        chunk = await asyncio.get_event_loop().run_in_executor(None, chunk_queue.get)
+        if chunk is None:
+            break
         yield chunk
+    
+    # Wait for thread to finish
+    thread.join(timeout=1.0)
