@@ -92,14 +92,21 @@ class HybridDispatcher:
         
         log.info("Initializing hybrid dispatcher...")
         
-        # Load local tools from registry
-        from app.tools.registry import get_tool_definitions, execute_tool as exec_local
-        for tool_def in get_tool_definitions():
-            self._local_tools[tool_def.name] = {
+        # Load local tools from registry (including aliases)
+        from app.tools.registry import (
+            execute_tool as exec_local,
+            _TOOL_DEFINITIONS,
+            _collect_definitions,
+        )
+        _collect_definitions()
+        
+        # Register all tools including aliases
+        for name, tool_def in _TOOL_DEFINITIONS.items():
+            self._local_tools[name] = {
                 "def": tool_def,
                 "execute": exec_local,
             }
-        log.info(f"Loaded {len(self._local_tools)} local tools")
+        log.info(f"Loaded {len(self._local_tools)} local tools (with aliases)")
         
         # Discover Zo MCP tools
         self._mcp_client = get_mcp_client()
