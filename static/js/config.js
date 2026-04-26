@@ -1171,3 +1171,123 @@ document.addEventListener('DOMContentLoaded', loadImageModel);
 
 // Load vision model on page load
 document.addEventListener('DOMContentLoaded', loadVisionModel);
+
+// Load agentic mode on page load
+document.addEventListener('DOMContentLoaded', loadAgenticMode);
+
+// Load agentic mode status and settings
+async function loadAgenticMode() {
+    try {
+        // Load agentic mode status
+        const statusResponse = await fetch('/api/agentic/status');
+        const statusData = await statusResponse.json();
+        
+        if (statusData.status === 'success') {
+            const toggle = document.getElementById('agentic-mode-toggle');
+            if (toggle) {
+                toggle.checked = statusData.agentic_mode || false;
+            }
+        }
+        
+        // Load think mode status
+        const thinkResponse = await fetch('/api/think/status');
+        const thinkData = await thinkResponse.json();
+        
+        if (thinkData.status === 'success') {
+            const thinkToggle = document.getElementById('think-mode-toggle');
+            if (thinkToggle) {
+                thinkToggle.checked = thinkData.think_mode || false;
+            }
+        }
+        
+        // Load agentic config (tool counts, MCP token status)
+        const configResponse = await fetch('/api/agentic/config');
+        const configData = await configResponse.json();
+        
+        if (configData.status === 'success') {
+            const tokenStatus = document.getElementById('mcp-token-status');
+            const localCount = document.getElementById('local-tools-count');
+            const mcpCount = document.getElementById('mcp-tools-count');
+            
+            if (tokenStatus) {
+                tokenStatus.textContent = configData.has_mcp_token ? 'Available' : 'Not configured';
+                tokenStatus.style.color = configData.has_mcp_token ? '#10b981' : '#f59e0b';
+            }
+            
+            if (localCount) {
+                localCount.textContent = configData.local_tools_count || '0';
+            }
+            
+            if (mcpCount) {
+                mcpCount.textContent = configData.mcp_tools_count || '0';
+                if (!configData.has_mcp_token) {
+                    mcpCount.textContent += ' (requires token)';
+                }
+            }
+        }
+        
+        console.log('Agentic mode loaded');
+    } catch (error) {
+        console.error('Error loading agentic mode:', error);
+    }
+}
+
+// Setup agentic mode toggle handlers
+document.addEventListener('DOMContentLoaded', function() {
+    const agenticToggle = document.getElementById('agentic-mode-toggle');
+    const thinkToggle = document.getElementById('think-mode-toggle');
+    
+    if (agenticToggle) {
+        agenticToggle.addEventListener('change', async function() {
+            const enabled = this.checked;
+            
+            try {
+                const response = await fetch('/api/agentic/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: enabled })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    showSuccess(result.message);
+                } else {
+                    showError('Failed to toggle agentic mode');
+                    this.checked = !enabled; // Revert
+                }
+            } catch (error) {
+                console.error('Error toggling agentic mode:', error);
+                showError('Error toggling agentic mode');
+                this.checked = !enabled; // Revert
+            }
+        });
+    }
+    
+    if (thinkToggle) {
+        thinkToggle.addEventListener('change', async function() {
+            const enabled = this.checked;
+            
+            try {
+                const response = await fetch('/api/think/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: enabled })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    showSuccess(result.message);
+                } else {
+                    showError('Failed to toggle think mode');
+                    this.checked = !enabled; // Revert
+                }
+            } catch (error) {
+                console.error('Error toggling think mode:', error);
+                showError('Error toggling think mode');
+                this.checked = !enabled; // Revert
+            }
+        });
+    }
+});

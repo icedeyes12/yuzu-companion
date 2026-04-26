@@ -164,6 +164,41 @@
             <button id="save-image-model" class="btn btn-primary">Save Image Model</button>
         </div>
 
+        <!-- Agentic Mode Section -->
+        <div class="config-section">
+            <h2>Agentic Mode</h2>
+            <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
+                Enable autonomous multi-turn tool execution with Zo MCP tools. 
+                When enabled, Yuzuki can plan, execute tools, and iterate automatically.
+            </p>
+            
+            <div class="provider-status" id="agentic-status">
+                <p><strong>MCP Token:</strong> <span id="mcp-token-status">Checking...</span></p>
+                <p><strong>Local Tools:</strong> <span id="local-tools-count">Loading...</span></p>
+                <p><strong>MCP Tools:</strong> <span id="mcp-tools-count">Loading...</span></p>
+            </div>
+            
+            <div class="form-group" style="margin-top: 1rem;">
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                    <input type="checkbox" id="agentic-mode-toggle" style="width: 20px; height: 20px; cursor: pointer;">
+                    <span>Enable Agentic Mode</span>
+                </label>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.3rem;">
+                    Allows Yuzuki to use remote Zo MCP tools (zo_search, maps_search, etc.)
+                </p>
+            </div>
+            
+            <div class="form-group" style="margin-top: 1rem;">
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                    <input type="checkbox" id="think-mode-toggle" style="width: 20px; height: 20px; cursor: pointer;">
+                    <span>Enable Think Mode</span>
+                </label>
+                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.3rem;">
+                    Shows reasoning process with &lt;thought&gt; blocks for complex problems
+                </p>
+            </div>
+        </div>
+
         <!-- Vision Model Section -->
         <div class="config-section">
             <h2>Vision Model (Image Processing)</h2>

@@ -306,13 +306,13 @@ async def run_streaming(self, user_message, session_id, interface="web"):
 
 **Goal**: User-facing controls for agentic mode
 
-**Status**: 🟡 PARTIAL - SSE handlers and status bar CSS exist, settings toggle pending
+**Status**: ✅ DONE - Settings toggle added to config.html, JavaScript handlers in config.js, API endpoints for agentic/think mode toggle
 
 **Files Changed**:
 ```
-templates/settings.html       # Agentic mode toggle
-static/js/config.js          # Toggle handler
-static/css/chat.css          # Status bar styles
+templates/config.html        # Agentic mode section with toggles
+static/js/config.js         # Toggle handlers for agentic/think mode
+app/api/routes.py           # Enhanced /api/agentic/config with MCP token status
 ```
 
 ### Tasks

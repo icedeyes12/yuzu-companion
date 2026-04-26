@@ -344,11 +344,13 @@ async def api_think_status():
 
 @api_router.get("/agentic/config")
 async def api_agentic_config():
-    """Get agentic loop configuration."""
+    """Get agentic loop configuration including MCP token and tool counts."""
     try:
         from app.agents import get_agent_config, DEFAULT_CONFIG
+        from app.agentic_config import get_agentic_status
         
         config = get_agent_config()
+        status = get_agentic_status()
         
         return {
             "status": "success",
@@ -363,6 +365,10 @@ async def api_agentic_config():
                 "max_iterations": DEFAULT_CONFIG.max_iterations,
                 "total_timeout_seconds": DEFAULT_CONFIG.total_timeout_seconds,
             },
+            "has_mcp_token": status.get("has_mcp_token", False),
+            "local_tools_count": status.get("local_tools_count", 0),
+            "mcp_tools_count": status.get("mcp_tools_count", 0),
+            "agentic_mode": status.get("enabled", False),
         }
     
     except Exception as e:
