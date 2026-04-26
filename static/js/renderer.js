@@ -268,8 +268,12 @@ class MessageRenderer {
                 processedMarkdown = this.nestedParser.parse(safeMarkdown);
             }
             
-            // Step 2: Pre-process image patterns
-            processedMarkdown = this.preprocessGeneratedImages(processedMarkdown);
+            // Step 2: Pre-process thought blocks
+            processedMarkdown = this.preprocessThoughtBlocks(processedMarkdown);
+            
+            // Step 3: Pre-process image patterns
+            processedMarkdown = this.preprocessThoughtBlocks(processedMarkdown);
+        processedMarkdown = this.preprocessGeneratedImages(processedMarkdown);
             
             // Step 3: Parse markdown (marked v18 returns Promise by default)
             let html = await marked.parse(processedMarkdown);
@@ -327,6 +331,7 @@ class MessageRenderer {
         if (this.nestedParser) {
             processedMarkdown = this.nestedParser.parse(markdown);
         }
+        processedMarkdown = this.preprocessThoughtBlocks(processedMarkdown);
         processedMarkdown = this.preprocessGeneratedImages(processedMarkdown);
         
         // marked v18: Use lexer + parser for true sync rendering
@@ -521,6 +526,22 @@ class MessageRenderer {
         return `<${tag}${start}>${items}</${tag}>`;
     }
 
+    preprocessThoughtBlocks(text) {
+        // Convert <thought>...</thought> to a div that survives marked.js
+        const sourceText = typeof text === 'string' ? text : String(text || '');
+        
+        // Match <thought>...</thought> blocks (multiline)
+        const thoughtPattern = /<thought>([\s\S]*?)<\/thought>/gi;
+        
+        let processed = sourceText.replace(thoughtPattern, (match, content) => {
+            // Wrap in a div that will be processed by postProcessHTML
+            const trimmedContent = content.trim();
+            return `<div class="thought-block-raw" data-thought="${encodeURIComponent(trimmedContent)}"></div>`;
+        });
+        
+        return processed;
+    }
+
     preprocessGeneratedImages(text) {
         const sourceText = typeof text === 'string' ? text : String(text || '');
         
@@ -613,14 +634,21 @@ class MessageRenderer {
             }
         });
         
-        // 3. Process thinking blocks
-        const thinkingBlocks = temp.querySelectorAll('thought');
+        // 3. Process thinking blocks (from preprocessThoughtBlocks)
+        const thinkingBlocks = temp.querySelectorAll('.thought-block-raw');
         thinkingBlocks.forEach(block => {
-            const thought = block.textContent;
-            const rendered = this._renderThinkingBlock(thought);
-            const wrapper = document.createElement('div');
-            wrapper.innerHTML = rendered;
-            block.replaceWith(wrapper.firstElementChild);
+            const encoded = block.getAttribute('data-thought') || '';
+            try {
+                const thought = decodeURIComponent(encoded);
+                const rendered = this._renderThinkingBlock(thought);
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = rendered;
+                if (wrapper.firstElementChild) {
+                    block.replaceWith(wrapper.firstElementChild);
+                }
+            } catch (e) {
+                console.error('[Renderer] Failed to process thought block:', e);
+            }
         });
         
         // 4. Apply highlight.js to unprocessed code blocks
