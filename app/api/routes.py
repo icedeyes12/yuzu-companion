@@ -139,47 +139,105 @@ class ThinkToggleRequest(BaseModel):
 
 @api_router.post("/agentic/chat")
 async def api_agentic_chat(request: AgenticChatRequest):
-    """Agentic chat endpoint with Plan-Execute-Observe loop.
+    """Unified chat endpoint with automatic mode detection.
     
-    Supports multi-turn tool calling with automatic synthesis.
+    Behavior:
+    - If agentic mode enabled: Use Plan-Execute-Observe loop with MCP tools
+    - If agentic mode disabled: Use single-pass with local tools only
+    
+    Both modes support streaming via SSE format.
     """
+    from app.agentic_config import is_agentic_mode_enabled
+    from app.logging_config import get_logger
+    import asyncio
+    
+    log = get_logger(__name__)
+    
     try:
-        from app.orchestrator_agentic import run_agentic_loop, stream_agentic_loop
-        from app.database import Database
-        
         active_session = Database.get_active_session()
         session_id = active_session["id"]
+        profile = Database.get_profile()
+        
+        # Check if agentic mode is enabled
+        agentic_enabled = is_agentic_mode_enabled(profile)
         
         if request.stream:
-            # Streaming response with SSE format (already formatted by stream_agentic_loop)
-            async def generate():
-                async for sse_event in stream_agentic_loop(
+            if agentic_enabled:
+                # Agentic streaming with structured SSE events
+                from app.orchestrator_agentic import stream_agentic_loop
+                
+                log.info("[agentic] Starting agentic streaming loop")
+                
+                async def generate():
+                    async for sse_event in stream_agentic_loop(
+                        request.message,
+                        session_id,
+                        interface="web",
+                    ):
+                        yield sse_event
+                
+                return StreamingResponse(
+                    generate(),
+                    media_type="text/event-stream",
+                )
+            else:
+                # Single-pass streaming (simple text chunks)
+                log.info("[agentic] Using single-pass streaming (agentic mode disabled)")
+                
+                async def generate_simple():
+                    # Stream chunks as SSE text events
+                    for chunk in handle_user_message_streaming(
+                        request.message,
+                        interface="web",
+                    ):
+                        yield f"event: text\ndata: {{\"chunk\": {json.dumps(chunk)}}}\n\n"
+                    yield "event: done\ndata: {\"iterations\": 0, \"elapsed\": 0}\n\n"
+                
+                return StreamingResponse(
+                    generate_simple(),
+                    media_type="text/event-stream",
+                )
+        else:
+            # Non-streaming response
+            if agentic_enabled:
+                from app.orchestrator_agentic import run_agentic_loop
+                
+                log.info("[agentic] Starting agentic loop (non-streaming)")
+                
+                result = await run_agentic_loop(
                     request.message,
                     session_id,
                     interface="web",
-                ):
-                    yield sse_event
-            
-            return StreamingResponse(
-                generate(),
-                media_type="text/event-stream",
-            )
-        else:
-            # Non-streaming response
-            result = await run_agentic_loop(
-                request.message,
-                session_id,
-                interface="web",
-            )
-            
-            return AgenticChatResponse(
-                response=result.response_text,
-                tool_calls=[tc.to_dict() for tc in result.tool_calls],
-                iterations=result.iterations,
-                elapsed_seconds=result.elapsed_seconds,
-            )
+                )
+                
+                return AgenticChatResponse(
+                    response=result.response_text,
+                    tool_calls=[tc.to_dict() for tc in result.tool_calls],
+                    iterations=result.iterations,
+                    elapsed_seconds=result.elapsed_seconds,
+                )
+            else:
+                # Single-pass fallback
+                log.info("[agentic] Using single-pass (agentic mode disabled)")
+                
+                response = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    handle_user_message,
+                    request.message,
+                    "web",
+                )
+                
+                return AgenticChatResponse(
+                    response=response,
+                    tool_calls=[],
+                    iterations=0,
+                    elapsed_seconds=0.0,
+                )
     
     except Exception as e:
+        log.error("[agentic] Error: %s", e)
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -263,7 +321,7 @@ async def api_think_toggle(request: ThinkToggleRequest):
         return {
             "status": "success",
             "think_mode": request.enabled,
-            "message": f"Think mode {"enabled" if request.enabled else "disabled"}",
+            "message": f"Think mode {'enabled' if request.enabled else 'disabled'}",
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -298,8 +356,8 @@ async def api_agentic_config():
                 "max_iterations": config.max_iterations,
                 "total_timeout_seconds": config.total_timeout_seconds,
                 "enable_thought_capture": config.enable_thought_capture,
-                "enable_mcp_tools": config.enable_mcp_tools,
-                "thought_format": config.thought_format,
+                "enable_mcp_tools": config.enable_mcp,
+                "tool_timeout_seconds": config.tool_timeout_seconds,
             },
             "defaults": {
                 "max_iterations": DEFAULT_CONFIG.max_iterations,

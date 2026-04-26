@@ -37,7 +37,6 @@ def _load_tool_module(tool_name: str):
             from app.tools import image_generate
             _TOOL_MODULES[tool_name] = image_generate
         elif tool_name == "imagine":
-            # Alias for image_generate
             from app.tools import image_generate
             _TOOL_MODULES[tool_name] = image_generate
         elif tool_name == "request" or tool_name == "http_request":
@@ -52,6 +51,12 @@ def _load_tool_module(tool_name: str):
         elif tool_name == "multimodal":
             from app.tools import multimodal
             _TOOL_MODULES[tool_name] = multimodal
+        elif tool_name == "file_read":
+            from app.tools import file_read
+            _TOOL_MODULES[tool_name] = file_read
+        elif tool_name == "list_dir":
+            from app.tools import list_dir
+            _TOOL_MODULES[tool_name] = list_dir
         else:
             return None
     return _TOOL_MODULES.get(tool_name)
@@ -88,6 +93,18 @@ def _collect_definitions():
         _TOOL_DEFINITIONS["memory_search"] = memory_search.TOOL_DEFINITION
     except Exception as e:
         logger.info(f"[registry] Failed to load memory_search definition: {e}")
+
+    try:
+        from app.tools import file_read
+        _TOOL_DEFINITIONS["file_read"] = file_read.TOOL_DEFINITION
+    except Exception as e:
+        logger.info(f"[registry] Failed to load file_read definition: {e}")
+
+    try:
+        from app.tools import list_dir
+        _TOOL_DEFINITIONS["list_dir"] = list_dir.TOOL_DEFINITION
+    except Exception as e:
+        logger.info(f"[registry] Failed to load list_dir definition: {e}")
 
     _DEFINITIONS_INITIALIZED = True
 

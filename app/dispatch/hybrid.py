@@ -127,7 +127,7 @@ class HybridDispatcher:
         # Lazy fallback for common local tools before init
         return tool_name in (
             "imagine", "image_generate", "request", "http_request",
-            "memory_store", "memory_search"
+            "memory_store", "memory_search", "file_read", "list_dir"
         )
     
     def is_mcp_tool(self, tool_name: str) -> bool:

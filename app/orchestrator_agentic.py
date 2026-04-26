@@ -302,9 +302,40 @@ class AgenticOrchestrator:
         interface: str,
         iteration: int,
     ) -> AsyncIterator[str]:
-        """Stream LLM response chunks."""
-        async for chunk in _stream_llm_response(message, session_id, interface, iteration):
+        """Stream LLM response chunks.
+        
+        Uses queue.SimpleQueue for thread-safe communication between
+        sync generator (generate_ai_response_streaming) and async iterator.
+        """
+        import queue
+        import threading
+        from app.llm_client import generate_ai_response_streaming
+        from app.database import Database
+        
+        profile = Database.get_profile()
+        chunk_queue: queue.SimpleQueue[str | None] = queue.SimpleQueue()
+        
+        def _collect_chunks():
+            try:
+                for chunk in generate_ai_response_streaming(
+                    profile, message, interface, session_id
+                ):
+                    chunk_queue.put(chunk)
+            finally:
+                chunk_queue.put(None)
+        
+        thread = threading.Thread(target=_collect_chunks, daemon=True)
+        thread.start()
+        
+        while True:
+            chunk = await asyncio.get_event_loop().run_in_executor(
+                None, chunk_queue.get
+            )
+            if chunk is None:
+                break
             yield chunk
+        
+        thread.join(timeout=1.0)
     
     async def _get_llm_response(
         self,
@@ -316,25 +347,26 @@ class AgenticOrchestrator:
     ) -> str:
         """Get LLM response, optionally with tool result injected.
         
-        For now, uses the existing sync orchestrator under the hood.
-        Phase 3 will add proper async streaming.
+        Calls generate_ai_response() directly to avoid recursive
+        command execution through handle_user_message().
         """
-        # Fall back to sync orchestrator for now
-        # This is a bridge implementation until we refactor llm_client to async
-        from app.orchestrator import handle_user_message
+        from app.llm_client import generate_ai_response
+        from app.database import Database
+        
+        profile = Database.get_profile()
         
         # If we have a tool result, prepend it to the message
         if tool_result:
             tool_markdown = tool_result.get("markdown", str(tool_result))
             message = f"{message}\n\nTool result:\n{tool_markdown}"
         
-        # Run sync function in thread pool
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
+        response, _ = await asyncio.get_event_loop().run_in_executor(
             None,
-            handle_user_message,
+            generate_ai_response,
+            profile,
             message,
             interface,
+            session_id,
         )
         
         return response or ""
@@ -408,43 +440,3 @@ async def stream_agentic_loop(
     
     async for event in orchestrator.run_streaming(user_message, session_id, interface):
         yield f"event: {event['type']}\ndata: {json.dumps(event['data'])}\n\n"
-
-
-async def _stream_llm_response(
-    message: str,
-    session_id: int,
-    interface: str,
-    iteration: int,
-) -> AsyncIterator[str]:
-    """Stream LLM response using existing sync streaming under the hood.
-    
-    Uses queue.SimpleQueue for thread-safe communication.
-    """
-    from app.orchestrator import handle_user_message_streaming
-    import queue
-    import threading
-    
-    # SimpleQueue is thread-safe and doesn't require asyncio
-    chunk_queue: queue.SimpleQueue[str | None] = queue.SimpleQueue()
-    
-    def _collect_chunks():
-        try:
-            for chunk in handle_user_message_streaming(message, interface):
-                chunk_queue.put(chunk)
-        finally:
-            chunk_queue.put(None)  # Signal end
-    
-    # Start thread
-    thread = threading.Thread(target=_collect_chunks, daemon=True)
-    thread.start()
-    
-    # Yield chunks as they arrive
-    while True:
-        # Use run_in_executor to avoid blocking
-        chunk = await asyncio.get_event_loop().run_in_executor(None, chunk_queue.get)
-        if chunk is None:
-            break
-        yield chunk
-    
-    # Wait for thread to finish
-    thread.join(timeout=1.0)

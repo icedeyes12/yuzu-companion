@@ -201,7 +201,7 @@ class AgenticStreamHandler {
             console.error('[AgenticStream] Parse error:', err)
         }
     }
-    }
+}
 
 // Global instance for chat.js integration
 window.agenticStream = new AgenticStreamHandler({

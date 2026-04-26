@@ -69,6 +69,33 @@ def _get_session_id(request: Request) -> str:
 ensure_static_dirs()
 
 # ---------------------------------------------------------------------------
+# Startup: Initialize HybridDispatcher (MCP tool discovery)
+# ---------------------------------------------------------------------------
+
+
+@app.on_event("startup")
+async def startup_initialize_dispatcher():
+    """Initialize the hybrid dispatcher at startup.
+    
+    This triggers MCP tool discovery early so the first request
+    doesn't have to wait for the discovery process.
+    """
+    import asyncio
+    import logging
+    log = logging.getLogger(__name__)
+    
+    try:
+        from app.dispatch import get_dispatcher
+        
+        dispatcher = get_dispatcher()
+        # Run initialization in background to not block startup
+        loop = asyncio.get_event_loop()
+        loop.create_task(dispatcher.initialize())
+        log.info("[startup] HybridDispatcher initialization scheduled")
+    except Exception as e:
+        log.warning("[startup] Failed to initialize dispatcher: %s", e)
+
+# ---------------------------------------------------------------------------
 # Register API Router
 # ---------------------------------------------------------------------------
 
