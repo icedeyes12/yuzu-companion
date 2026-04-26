@@ -81,6 +81,7 @@ class MCPClient:
         self._client: httpx.AsyncClient | None = None
         self._tools_cache: list[MCPTool] | None = None
         self._rpc_id: int = 0
+        self._client_loop_id: int | None = None  # Track which loop created client
     
     def _next_id(self) -> int:
         """Generate unique RPC request ID."""
@@ -88,7 +89,21 @@ class MCPClient:
         return self._rpc_id
     
     async def _get_client(self) -> httpx.AsyncClient:
-        """Lazy-init the async HTTP client."""
+        """Lazy-init the async HTTP client with event loop awareness."""
+        import asyncio
+        
+        current_loop = asyncio.get_running_loop()
+        current_loop_id = id(current_loop)
+        
+        # Check if we need to recreate client (different event loop)
+        if self._client is not None and self._client_loop_id != current_loop_id:
+            log.debug(f"Event loop changed ({self._client_loop_id} -> {current_loop_id}), recreating HTTP client")
+            try:
+                await self._client.aclose()
+            except Exception:
+                pass
+            self._client = None
+        
         if self._client is None:
             headers = {"Content-Type": "application/json"}
             if self.token:
@@ -98,6 +113,8 @@ class MCPClient:
                 headers=headers,
                 timeout=httpx.Timeout(self.timeout),
             )
+            self._client_loop_id = current_loop_id
+        
         return self._client
     
     async def _rpc_request(self, method: str, params: dict[str, Any] | None = None) -> dict:

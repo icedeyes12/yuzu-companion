@@ -38,6 +38,19 @@ class HybridTool:
     is_local: bool
     is_mcp: bool = False
     input_schema: dict[str, Any] = field(default_factory=dict)
+    source: str = "local"  # "local" or "mcp"
+    
+    @property
+    def parameters(self) -> dict[str, Any]:
+        """Alias for input_schema for API compatibility."""
+        return self.input_schema
+    
+    def __post_init__(self):
+        # Auto-set source based on is_local/is_mcp
+        if self.is_mcp:
+            self.source = "mcp"
+        else:
+            self.source = "local"
     
     def to_llm_schema(self) -> dict:
         """Convert to OpenAI function-calling schema."""
@@ -118,8 +131,26 @@ class HybridDispatcher:
         )
     
     def is_mcp_tool(self, tool_name: str) -> bool:
-        """Check if tool is a Zo MCP tool."""
-        return tool_name in self._mcp_tools
+        """Check if tool is a Zo MCP tool.
+        
+        Handles both prefixed (zo_search) and non-prefixed (web_search) names.
+        """
+        # Strip zo_ prefix if present
+        base_name = tool_name[3:] if tool_name.startswith("zo_") else tool_name
+        return base_name in self._mcp_tools or tool_name in self._mcp_tools
+    
+    # Terminal tools that should end the agentic loop when successful
+    TERMINAL_TOOLS = frozenset([
+        "complete",
+        "finish",
+        "submit",
+        "final_answer",
+    ])
+    
+    def is_terminal_tool(self, tool_name: str) -> bool:
+        """Check if tool should terminate the agentic loop."""
+        base_name = tool_name[3:] if tool_name.startswith("zo_") else tool_name
+        return base_name in self.TERMINAL_TOOLS
     
     async def execute(
         self,
@@ -149,6 +180,27 @@ class HybridDispatcher:
                 "markdown": f"<details><summary>Unknown Tool</summary>\n\nTool '{tool_name}' not found.\n</details>",
             }
     
+    async def dispatch(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        session_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Alias for execute() - called by orchestrator.
+        
+        Also handles zo_ prefix normalization for MCP tools.
+        """
+        # Normalize tool name: strip zo_ prefix for MCP tools
+        base_name = tool_name[3:] if tool_name.startswith("zo_") else tool_name
+        
+        # Use base name for MCP tools, original for local
+        if base_name in self._mcp_tools:
+            return await self._execute_mcp(base_name, arguments)
+        elif tool_name in self._local_tools:
+            return await self._execute_local(tool_name, arguments, session_id)
+        else:
+            return await self.execute(tool_name, arguments, session_id)
+    
     async def _execute_local(
         self,
         tool_name: str,
@@ -172,7 +224,10 @@ class HybridDispatcher:
         tool_name: str,
         arguments: dict[str, Any],
     ) -> dict[str, Any]:
-        """Execute a Zo MCP tool."""
+        """Execute a Zo MCP tool.
+        
+        Normalizes zo_ prefix if present.
+        """
         if not self._mcp_client:
             return {
                 "ok": False,
@@ -180,8 +235,11 @@ class HybridDispatcher:
                 "markdown": "<details><summary>MCP Error</summary>\n\nMCP client not available.\n</details>",
             }
         
+        # Normalize tool name: strip zo_ prefix for actual MCP call
+        base_name = tool_name[3:] if tool_name.startswith("zo_") else tool_name
+        
         try:
-            result = await self._mcp_client.call_tool(tool_name, arguments)
+            result = await self._mcp_client.call_tool(base_name, arguments)
             return result
         except Exception as e:
             log.error(f"MCP tool error: {tool_name} - {e}")
