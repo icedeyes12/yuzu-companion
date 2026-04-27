@@ -662,8 +662,14 @@ class MultimodalManager {
             input.value = '';
             input.style.height = 'auto';
             input.style.height = '42px'; // Reset to min-height
-            // Trigger position updates
-            input.dispatchEvent(new Event('input'));
+            // Directly update positions without triggering oninput (which would recalculate height)
+            if (typeof updateScrollButtonPosition === 'function') {
+                updateScrollButtonPosition();
+            }
+            if (typeof updateChatContainerPadding === 'function') {
+                updateChatContainerPadding();
+            }
+            scrollToBottom();
         }
     }
 }
@@ -1063,11 +1069,16 @@ function initializeInputBehavior() {
     // Auto-resize textarea and update positions
     input.oninput = () => {
         input.style.height = 'auto';
-        input.style.height = Math.min(input.scrollHeight, 400) + 'px';
+        const newHeight = Math.max(42, Math.min(input.scrollHeight, 400)); // Respect min-height of 42px
+        input.style.height = newHeight + 'px';
         updateScrollButtonPosition();
         updateChatContainerPadding();
         scrollToBottom();
     };
+    
+    // Make functions globally accessible
+    window.updateScrollButtonPosition = updateScrollButtonPosition;
+    window.updateChatContainerPadding = updateChatContainerPadding;
     
     // Initial updates
     updateScrollButtonPosition();
