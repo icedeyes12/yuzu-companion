@@ -192,6 +192,7 @@ class AgenticOrchestrator:
         user_message: str,
         session_id: int,
         interface: str = "web",
+        base64_images: list[str] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Execute the loop and yield structured SSE events.
         
@@ -215,7 +216,7 @@ class AgenticOrchestrator:
         parser = AgenticStreamParser()
         current_text = ""
         
-        async for chunk in self._stream_llm(user_message, session_id, interface, 0):
+        async for chunk in self._stream_llm(user_message, session_id, interface, 0, base64_images):
             for safe_chunk, meta in parser.feed(chunk):
                 current_text += safe_chunk
                 
@@ -406,6 +407,7 @@ class AgenticOrchestrator:
         session_id: int,
         interface: str,
         iteration: int,
+        base64_images: list[str] | None = None,
     ) -> AsyncIterator[str]:
         """Stream LLM response chunks.
         
@@ -420,10 +422,19 @@ class AgenticOrchestrator:
         profile = Database.get_profile()
         chunk_queue: queue.SimpleQueue[str | None] = queue.SimpleQueue()
         
+        # Convert base64 data URLs to vision format for first iteration
+        image_content = None
+        if base64_images and iteration == 0:
+            image_content = [
+                {"type": "image_url", "image_url": {"url": url}}
+                for url in base64_images
+            ]
+        
         def _collect_chunks():
             try:
                 for chunk in generate_ai_response_streaming(
-                    profile, message, interface, session_id
+                    profile, message, interface, session_id,
+                    image_content_for_context=image_content,
                 ):
                     chunk_queue.put(chunk)
             finally:
@@ -522,6 +533,7 @@ async def stream_agentic_loop(
     user_message: str,
     session_id: int,
     interface: str = "web",
+    base64_images: list[str] | None = None,
 ) -> AsyncIterator[str]:
     """Stream agentic loop with structured SSE events.
     
@@ -543,5 +555,5 @@ async def stream_agentic_loop(
     """
     orchestrator = get_agentic_orchestrator()
     
-    async for event in orchestrator.run_streaming(user_message, session_id, interface):
+    async for event in orchestrator.run_streaming(user_message, session_id, interface, base64_images):
         yield f"event: {event['type']}\ndata: {json.dumps(event['data'])}\n\n"

@@ -108,8 +108,38 @@ def _apply_vision_routing(
     model: str,
     image_content_for_context: list[dict[str, Any]] | None,
 ) -> tuple[list[dict[str, Any]], str, str]:
-    """Switch to vision provider/model when needed and rewrite the last user msg."""
-    if image_content_for_context is not None:
+    """Switch to vision provider/model when needed and rewrite the last user msg.
+    
+    Handles two cases:
+    1. User-uploaded images (user_message non-empty): Inject images INTO the user message
+    2. Generated images for synthesis (user_message empty): Append as separate message
+    """
+    has_user_images = image_content_for_context is not None and user_message and user_message.strip()
+    is_synthesis_pass = image_content_for_context is not None and not (user_message and user_message.strip())
+    
+    if has_user_images:
+        # User uploaded images - inject into main user message
+        vision_provider, vision_model = multimodal_tools.get_best_vision_provider()
+        if vision_provider and vision_model:
+            log.info(
+                "injecting %d user images into message, switching to vision %s/%s",
+                len(image_content_for_context),
+                vision_provider,
+                vision_model,
+            )
+            # Replace last user message with multimodal version
+            if messages and messages[-1].get("role") == "user":
+                messages[-1] = {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": user_message},
+                        *image_content_for_context,
+                    ],
+                }
+            return messages, vision_provider, vision_model
+    
+    if is_synthesis_pass:
+        # Generated image for synthesis - append as separate message
         vision_provider, vision_model = multimodal_tools.get_best_vision_provider()
         if vision_provider and vision_model:
             log.info(
@@ -330,10 +360,8 @@ def generate_ai_response(
         messages, user_message, provider, model, image_content_for_context
     )
     _inject_persistent_visual(messages, user_message, session_id)
-
-    if image_content_for_context:
-        messages.append({"role": "user", "content": image_content_for_context})
-        log.info("injected base64 image context for second pass")
+    # Note: image_content_for_context is now handled inside _apply_vision_routing
+    # for both user-uploaded and synthesis cases - no need to append separately
 
     text = _send_to_provider(
         provider, model, messages, image_context=image_content_for_context
@@ -417,9 +445,8 @@ def generate_ai_response_streaming(
         messages, user_message, resolved_provider, resolved_model, image_content_for_context
     )
     _inject_persistent_visual(messages, user_message, session_id)
-
-    if image_content_for_context:
-        messages.append({"role": "user", "content": image_content_for_context})
+    # Note: image_content_for_context is now handled inside _apply_vision_routing
+    # for both user-uploaded and synthesis cases - no need to append separately
 
     yield from _stream_from_provider(
         resolved_provider,

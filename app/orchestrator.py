@@ -447,6 +447,7 @@ def handle_user_message_streaming(
     interface: str = "terminal",
     provider: str | None = None,
     model: str | None = None,
+    base64_images: list[str] | None = None,
 ) -> Iterator[str]:
     """Streaming entrypoint with true incremental chunk delivery.
 
@@ -469,9 +470,20 @@ def handle_user_message_streaming(
 
     sf = StreamFilter()
     visible_chunks: list[str] = []
+    
+    # Convert base64 data URLs to vision format
+    image_content = None
+    if base64_images:
+        image_content = [
+            {"type": "image_url", "image_url": {"url": url}}
+            for url in base64_images
+        ]
+        log.info("injecting %d user images, switching to vision...", len(base64_images))
+    
     try:
         for chunk in generate_ai_response_streaming(
-            profile, user_message, interface, session_id, provider, model
+            profile, user_message, interface, session_id, provider, model,
+            image_content_for_context=image_content,
         ):
             for safe in sf.feed(chunk):
                 visible_chunks.append(safe)

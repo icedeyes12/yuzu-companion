@@ -121,6 +121,7 @@ class GlobalKnowledgeUpdateRequest(BaseModel):
 class AgenticChatRequest(BaseModel):
     message: str = Field(..., min_length=1, description="User message text")
     stream: bool = Field(default=False, description="Enable streaming response")
+    images: list[str] | None = Field(default=None, description="Base64 encoded images as data URLs")
 
 
 class AgenticChatResponse(BaseModel):
@@ -173,6 +174,7 @@ async def api_agentic_chat(request: AgenticChatRequest):
                         request.message,
                         session_id,
                         interface="web",
+                        base64_images=request.images,
                     ):
                         yield sse_event
                 
@@ -189,6 +191,7 @@ async def api_agentic_chat(request: AgenticChatRequest):
                     for chunk in handle_user_message_streaming(
                         request.message,
                         interface="web",
+                        base64_images=request.images,
                     ):
                         yield f"event: text\ndata: {{\"chunk\": {json.dumps(chunk)}}}\n\n"
                     yield "event: done\ndata: {\"iterations\": 0, \"elapsed\": 0}\n\n"
