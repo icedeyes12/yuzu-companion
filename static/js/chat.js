@@ -1050,7 +1050,7 @@ function initializeInputBehavior() {
         const inputArea = input.closest('.input-area');
         if (chatContainer && inputArea) {
             const inputAreaHeight = inputArea.offsetHeight;
-            chatContainer.style.paddingBottom = (inputAreaHeight + 20) + 'px';
+            chatContainer.style.paddingBottom = (inputAreaHeight + 40) + 'px';
         }
     }
 
