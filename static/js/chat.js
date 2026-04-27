@@ -219,6 +219,9 @@ class MultimodalManager {
         addMessage("user", text);
         this.clearInput();
         
+        // Show typing indicator while waiting for response
+        showTypingIndicator();
+        
         // Use agentic SSE endpoint
         try {
             const response = await fetch("/api/agentic/chat", {
@@ -276,6 +279,7 @@ class MultimodalManager {
                             
                             case "text":
                                 if (event.data?.chunk) {
+                                    hideTypingIndicator(); // Hide when first chunk arrives
                                     streamToMessage(event.data.chunk);
                                 }
                                 break;
@@ -285,6 +289,7 @@ class MultimodalManager {
                                 break;
                             
                             case "error":
+                                hideTypingIndicator();
                                 showError(event.data.message);
                                 break;
                         }
@@ -295,8 +300,10 @@ class MultimodalManager {
             }
         } catch (error) {
             console.error("Error sending message:", error);
+            hideTypingIndicator();
             showError(error.message);
         } finally {
+            hideTypingIndicator();
             isProcessingMessage = false;
             this.isSending = false;
         }
@@ -362,23 +369,33 @@ class MultimodalManager {
         this.isSending = true;
         this.setSendButtonState('sending');
 
+        // Save images reference before clearing
+        const imagesToSend = [...this.selectedImages];
+        
+        // Clear input immediately (before sending)
+        this.clearInput();
+        this.clearImages();
+
         try {
-            // Show temporary preview with blob URLs while uploading
+            // Build preview with blob URLs for immediate display
             let previewMarkdown = "";
             if (text && text.trim()) {
                 previewMarkdown += text.trim() + "\n\n";
             }
-            this.selectedImages.forEach((image) => {
+            imagesToSend.forEach((image) => {
                 const imageUrl = URL.createObjectURL(image);
                 previewMarkdown += `![Uploading...](${imageUrl})\n\n`;
             });
             addMessage("user", previewMarkdown.trim());
 
+            // Show typing indicator
+            showTypingIndicator();
+
             // Send to server which saves images and returns persistent paths
             const formData = new FormData();
             if (text) formData.append('message', text);
             
-            this.selectedImages.forEach((image) => {
+            imagesToSend.forEach((image) => {
                 formData.append('images', image);
             });
 
@@ -388,6 +405,9 @@ class MultimodalManager {
             });
             
             const data = await response.json();
+            
+            // Hide typing indicator
+            hideTypingIndicator();
             
             if (data.reply) {
                 // Update user message with persistent image paths from server
@@ -410,8 +430,6 @@ class MultimodalManager {
                 }
                 
                 addMessage("ai", data.reply);
-                this.clearInput();
-                this.clearImages();
                 
                 if (this.currentMode !== 'chat') {
                     this.switchMode('chat');
@@ -422,6 +440,7 @@ class MultimodalManager {
             
         } catch (error) {
             console.error('Image message failed:', error);
+            hideTypingIndicator();
             addMessage("ai", `Error: ${error.message}`);
         } finally {
             this.isSending = false;
@@ -642,6 +661,8 @@ class MultimodalManager {
         if (input) {
             input.value = '';
             input.style.height = 'auto';
+            // Trigger scroll button position update
+            input.dispatchEvent(new Event('input'));
         }
     }
 }
@@ -1033,6 +1054,8 @@ function initializeInputBehavior() {
         input.style.height = 'auto';
         input.style.height = Math.min(input.scrollHeight, 400) + 'px';
         updateScrollButtonPosition();
+        // Scroll chat so last message stays visible above growing input
+        scrollToBottom();
     };
     
     // Initial position update
