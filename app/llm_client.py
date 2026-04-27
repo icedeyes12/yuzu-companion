@@ -299,18 +299,20 @@ def _send_to_provider(
     model: str,
     messages: list[dict[str, Any]],
     *,
-    image_context: list[dict[str, Any]] | None,
+    image_context: list[dict[str, Any]] | None = None,
 ) -> str | None:
-    """Single LLM dispatch with timing log. Returns text or None."""
+    """Single LLM dispatch with timing log. Returns text or None.
+    
+    Vision switching is handled by _apply_vision_routing before this is called.
+    This function just sends to the already-resolved provider/model.
+    """
     ai_manager = get_ai_manager()
     schemas = _unique_tool_schemas()
-
-    if image_context and provider in ai_manager.providers:
-        v_provider, v_model = multimodal_tools.get_best_vision_provider()
-        if v_provider and v_model:
-            log.info("2nd-pass vision: %s/%s", v_provider, v_model)
-            provider, model = v_provider, v_model
-            schemas = []  # vision models don't accept tool schemas
+    
+    # Strip tool schemas if this is a vision model (detected by checking if it's the configured vision provider)
+    v_provider, v_model = multimodal_tools.get_best_vision_provider()
+    if v_provider and v_model and provider == v_provider and model == v_model:
+        schemas = []  # vision models don't accept tool schemas
 
     started = time.time()
     try:
@@ -374,24 +376,16 @@ def _stream_from_provider(
     model: str,
     messages: list[dict[str, Any]],
     *,
-    image_context: list[dict[str, Any]] | None,
+    image_context: list[dict[str, Any]] | None = None,
 ) -> Iterator[str]:
     """Yield raw chunks from the provider's streaming API.
-
-    Honors the same vision-routing override as the non-streaming path:
-    when an image context is present we force-switch to the best vision
-    provider and strip tool schemas (vision endpoints typically reject them).
+    
+    Vision switching is handled by _apply_vision_routing before this is called.
+    This function just streams from the already-resolved provider/model.
     """
-    ai_manager = get_ai_manager()
-
-    if image_context and provider in ai_manager.providers:
-        v_provider, v_model = multimodal_tools.get_best_vision_provider()
-        if v_provider and v_model:
-            log.info("streaming 2nd-pass vision: %s/%s", v_provider, v_model)
-            provider, model = v_provider, v_model
-
     started = time.time()
     received = 0
+    ai_manager = get_ai_manager()
     try:
         for chunk in ai_manager.send_message_streaming(
             provider, model, messages, timeout=180

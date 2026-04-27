@@ -363,17 +363,18 @@ class MultimodalManager {
         this.setSendButtonState('sending');
 
         try {
-            // Build a single unified message containing text + images
-            let combinedMarkdown = "";
+            // Show temporary preview with blob URLs while uploading
+            let previewMarkdown = "";
             if (text && text.trim()) {
-                combinedMarkdown += text.trim() + "\n\n";
+                previewMarkdown += text.trim() + "\n\n";
             }
             this.selectedImages.forEach((image) => {
                 const imageUrl = URL.createObjectURL(image);
-                combinedMarkdown += `![Uploaded Image](${imageUrl})\n\n`;
+                previewMarkdown += `![Uploading...](${imageUrl})\n\n`;
             });
-            addMessage("user", combinedMarkdown.trim());
+            addMessage("user", previewMarkdown.trim());
 
+            // Send to server which saves images and returns persistent paths
             const formData = new FormData();
             if (text) formData.append('message', text);
             
@@ -389,6 +390,25 @@ class MultimodalManager {
             const data = await response.json();
             
             if (data.reply) {
+                // Update user message with persistent image paths from server
+                if (data.uploaded_images && data.uploaded_images.length > 0) {
+                    let persistedMarkdown = "";
+                    if (text && text.trim()) {
+                        persistedMarkdown += text.trim() + "\n\n";
+                    }
+                    data.uploaded_images.forEach((img) => {
+                        persistedMarkdown += `![Uploaded Image](${img.web_url})\n\n`;
+                    });
+                    // Update the last user message with persisted paths
+                    const chatContainer = document.getElementById('chatContainer');
+                    const lastUserMsg = chatContainer.querySelector('.message.user:last-child .message-content');
+                    if (lastUserMsg) {
+                        lastUserMsg.innerHTML = typeof renderer !== 'undefined' 
+                            ? renderer.renderSync(persistedMarkdown.trim())
+                            : escapeHtml(persistedMarkdown.trim());
+                    }
+                }
+                
                 addMessage("ai", data.reply);
                 this.clearInput();
                 this.clearImages();
@@ -1464,8 +1484,9 @@ MultimodalManager.prototype.handleSend = function() {
   if (this.currentMode === 'generate') {
     this.handleImageGeneration(text);
   } else if (this.currentMode === 'image' || this.selectedImages.length > 0) {
-    unifiedSend(text, this.selectedImages);
-    this.clearImages();
+    // Use handleImageMessage which sends FormData to /api/send_message_with_images
+    // This saves images to disk and creates markdown for persistence
+    this.handleImageMessage(text);
   } else {
     unifiedSend(text);
   }
