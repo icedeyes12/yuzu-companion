@@ -661,7 +661,8 @@ class MultimodalManager {
         if (input) {
             input.value = '';
             input.style.height = 'auto';
-            // Trigger scroll button position update
+            input.style.height = '42px'; // Reset to min-height
+            // Trigger position updates
             input.dispatchEvent(new Event('input'));
         }
     }
@@ -1034,8 +1035,18 @@ function addScrollLoadListener(fullHistory) {
 function initializeInputBehavior() {
     const input = document.getElementById('messageInput');
     const scrollBtn = document.getElementById('scrollToBottomBtn');
+    const chatContainer = document.getElementById('chatContainer');
     
     if (!input) return;
+
+    // Update chat container bottom padding based on input area height
+    function updateChatContainerPadding() {
+        const inputArea = input.closest('.input-area');
+        if (chatContainer && inputArea) {
+            const inputAreaHeight = inputArea.offsetHeight;
+            chatContainer.style.paddingBottom = (inputAreaHeight + 20) + 'px';
+        }
+    }
 
     // Function to update scroll button position based on input area height
     function updateScrollButtonPosition() {
@@ -1049,20 +1060,24 @@ function initializeInputBehavior() {
         }
     }
 
-    // Auto-resize textarea and update scroll button position
+    // Auto-resize textarea and update positions
     input.oninput = () => {
         input.style.height = 'auto';
         input.style.height = Math.min(input.scrollHeight, 400) + 'px';
         updateScrollButtonPosition();
-        // Scroll chat so last message stays visible above growing input
+        updateChatContainerPadding();
         scrollToBottom();
     };
     
-    // Initial position update
+    // Initial updates
     updateScrollButtonPosition();
+    updateChatContainerPadding();
     
     // Update on window resize
-    window.addEventListener('resize', updateScrollButtonPosition);
+    window.addEventListener('resize', () => {
+        updateScrollButtonPosition();
+        updateChatContainerPadding();
+    });
 }
 
 // ==================== INITIALIZATION ====================
