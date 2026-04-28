@@ -85,12 +85,13 @@ class MessageRenderer {
     initializeMermaid() {
         if (typeof mermaid === 'undefined') return;
         
-        // Determine theme based on current data-theme
-        const theme = this._getMermaidTheme();
+        // Get theme variables based on current color scheme
+        const themeVars = this._getMermaidThemeVariables();
         
         mermaid.initialize({
-            startOnLoad: false, // We'll call run() manually after render
-            theme: theme,
+            startOnLoad: false,
+            theme: 'base',  // Always use base for customization
+            themeVariables: themeVars,
             securityLevel: 'loose',
             flowchart: {
                 useMaxWidth: true,
@@ -101,7 +102,7 @@ class MessageRenderer {
             },
         });
         
-        console.log('[Renderer] Mermaid initialized with theme:', theme);
+        console.log('[Renderer] Mermaid initialized with theme variables');
     }
 
     _getMermaidTheme() {
@@ -112,6 +113,55 @@ class MessageRenderer {
         }
         // Light themes
         return 'default';
+    }
+    
+    _getMermaidThemeVariables() {
+        const bodyTheme = document.body.getAttribute('data-theme') || 'suisei';
+        
+        // Dark themes - use dark mode with blue/purple accents
+        const darkThemes = ['dark', 'dark-lavender', 'tokyonight'];
+        if (darkThemes.includes(bodyTheme)) {
+            return {
+                darkMode: true,
+                background: '#1a1f2e',
+                fontFamily: 'JetBrains Mono, monospace',
+                primaryColor: '#a8c8ff',
+                primaryTextColor: '#f0f4ff',
+                primaryBorderColor: '#7285b7',
+                lineColor: '#7285b7',
+                secondaryColor: '#6b5b95',
+                tertiaryColor: '#3a4568',
+            };
+        }
+        
+        // Light themes
+        const lightThemes = ['light', 'lavender', 'mint', 'peach', 'vanilla-orange'];
+        if (lightThemes.includes(bodyTheme)) {
+            return {
+                darkMode: false,
+                background: '#ffffff',
+                fontFamily: 'JetBrains Mono, monospace',
+                primaryColor: '#a8c8ff',
+                primaryTextColor: '#1a1f2e',
+                primaryBorderColor: '#7285b7',
+                lineColor: '#7285b7',
+                secondaryColor: '#c8b6e2',
+                tertiaryColor: '#e8e8e8',
+            };
+        }
+        
+        // Suisei (default) - dark with pink/blue accents
+        return {
+            darkMode: true,
+            background: '#1a1f2e',
+            fontFamily: 'JetBrains Mono, monospace',
+            primaryColor: '#ff69b4',
+            primaryTextColor: '#f0f4ff',
+            primaryBorderColor: '#d46a7e',
+            lineColor: '#a8c8ff',
+            secondaryColor: '#a8c8ff',
+            tertiaryColor: '#3a4568',
+        };
     }
 
     normalizeLanguageAlias(lang) {
@@ -514,28 +564,35 @@ class MessageRenderer {
             const codeStr = typeof code === 'string' ? code : String(code || '');
             const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
             // Mermaid needs raw text, not escaped HTML
+            // NO copy button for mermaid
             return `<div class="mermaid-container"><pre class="mermaid" id="${id}">${codeStr}</pre></div>`;
         }
         
-        // Highlight with hljs
-        const normalizedLang = this.normalizeLanguageAlias(lang);
-        const fallbackLang = 'plaintext';
-        let highlightLang = fallbackLang;
+        // Highlight with hljs - ALWAYS use highlightAuto, ignore lang header
+        // This handles cases like ```ASM which isn't a valid hljs language
+        let highlighted;
+        let detectedLang = 'text';
         
-        if (normalizedLang && this.isHighlightReady && hljs.getLanguage(normalizedLang)) {
-            highlightLang = normalizedLang;
+        if (this.isHighlightReady && typeof hljs !== 'undefined') {
+            try {
+                const result = hljs.highlightAuto(code);
+                highlighted = result.value;
+                detectedLang = result.language || 'text';
+            } catch (e) {
+                highlighted = this.escapeHtml(code);
+            }
+        } else {
+            highlighted = this.escapeHtml(code);
         }
         
+        // Display label can still show what LLM specified
+        const displayLabel = lang || detectedLang;
+        
         // Check if this is HTML code for preview button
-        const isHtmlContent = normalizedLang === 'xml' || normalizedLang === 'html';
-        const isHtml = isHtmlContent || this._isHtmlCode(code);
-        const previewBtn = isHtml ? `<button class="preview-btn" data-code="${encodeURIComponent(code)}" onclick="renderer.showHtmlPreviewModal(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button>` : '';
+        const isHtmlContent = detectedLang === 'xml' || detectedLang === 'html' || detectedLang === 'htmlmixed';
+        const previewBtn = isHtmlContent ? `<button class="preview-btn" data-code="${encodeURIComponent(code)}" onclick="renderer.showHtmlPreviewModal(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button>` : '';
         
-        const highlighted = this.isHighlightReady
-            ? hljs.highlight(code, { language: highlightLang, ignoreIllegals: true }).value
-            : this.escapeHtml(code);
-        
-        return `<div class="code-block-container"><div class="code-block-header"><span class="code-language">${lang || 'code'}</span>${previewBtn}<button class="copy-code-btn" onclick="renderer.copyCode(this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy</button></div><pre><code class="hljs language-${highlightLang}">${highlighted}</code></pre></div>`;
+        return `<div class="code-block-container"><div class="code-block-header"><span class="code-language">${displayLabel}</span>${previewBtn}<button class="copy-code-btn" onclick="renderer.copyCode(this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy</button></div><pre><code class="hljs language-${detectedLang}">${highlighted}</code></pre></div>`;
     }
     
     _renderListSync(token) {

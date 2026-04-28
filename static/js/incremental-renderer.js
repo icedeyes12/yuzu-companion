@@ -173,41 +173,34 @@ class IncrementalMarkdownRenderer {
      * Post-process: syntax highlighting, mermaid
      */
     _postProcess() {
-        // Apply syntax highlighting to ALL code blocks
-        // This ensures highlighting even if renderer's isHighlightReady was false
+        // Apply syntax highlighting to ALL code blocks using highlightAuto
+        // Don't rely on language class - always auto-detect
         if (typeof hljs !== 'undefined') {
             const codeBlocks = this.container.querySelectorAll('pre code');
             console.log('[IncrementalRenderer] Found code blocks:', codeBlocks.length);
             
             codeBlocks.forEach(block => {
                 try {
-                    // Check if already highlighted by looking at content
-                    const hasHljsClass = block.classList.contains('hljs');
-                    const hasSpans = block.querySelectorAll('span.hljs-keyword, span.hljs-string, span.hljs-comment').length > 0;
+                    // Check if already highlighted by looking for hljs spans
+                    const hasSpans = block.querySelectorAll('span.hljs-keyword, span.hljs-string, span.hljs-comment, span.hljs-number').length > 0;
                     
                     if (hasSpans) {
                         // Already has highlighted content, just ensure class is set
-                        if (!hasHljsClass) {
+                        if (!block.classList.contains('hljs')) {
                             block.classList.add('hljs');
                         }
                         return;
                     }
                     
-                    // Get language from class
-                    const langMatch = block.className.match(/language-(\w+)/);
-                    const lang = langMatch ? langMatch[1] : null;
-                    
-                    // Highlight
-                    if (lang && hljs.getLanguage(lang)) {
-                        hljs.highlightElement(block);
-                    } else {
-                        // Auto-detect
-                        const result = hljs.highlightAuto(block.textContent);
-                        block.innerHTML = result.value;
-                        block.classList.add('hljs', `language-${result.language || 'text'}`);
-                    }
-                    
+                    // Always use highlightAuto - ignore language class
+                    const result = hljs.highlightAuto(block.textContent);
+                    block.innerHTML = result.value;
                     block.classList.add('hljs');
+                    
+                    // Optionally add detected language class
+                    if (result.language) {
+                        block.classList.add(`language-${result.language}`);
+                    }
                 } catch (e) {
                     console.warn('[IncrementalRenderer] HLJS error:', e);
                 }
