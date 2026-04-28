@@ -576,7 +576,7 @@ class MessageRenderer {
             const codeStr = typeof code === 'string' ? code : String(code || '');
             const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
             const escapedCode = encodeURIComponent(codeStr);
-            return `<div class="mermaid-container"><div class="mermaid-header"><span class="code-language">mermaid</span><button class="copy-mermaid-btn" data-mermaid="${escapedCode}" onclick="renderer.copyMermaidCode(this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy</button></div><pre class="mermaid" id="${id}">${codeStr}</pre></div>`;
+            return `<div class="mermaid-container"><div class="mermaid-header"><span class="code-language">mermaid</span><button class="copy-mermaid-btn" data-mermaid="${escapedCode}" onclick="renderer.copyMermaidCode(this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy</button></div><pre class="mermaid" id="${id}">${this.escapeHtml(codeStr)}</pre></div>`;
         }
         
         // Highlight with hljs - ALWAYS use highlightAuto, ignore lang header
@@ -600,7 +600,7 @@ class MessageRenderer {
         const displayLabel = lang || detectedLang;
         
         // Check if this is HTML code for preview button
-        const isHtmlContent = detectedLang === 'xml' || detectedLang === 'html' || detectedLang === 'htmlmixed';
+        const isHtmlContent = detectedLang === 'xml' || detectedLang === 'html' || detectedLang === 'htmlmixed' || this._isHtmlCode(code);
         const previewBtn = isHtmlContent ? `<button class="preview-btn" data-code="${encodeURIComponent(code)}" onclick="renderer.showHtmlPreviewModal(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button>` : '';
         
         return `<div class="code-block-container"><div class="code-block-header"><span class="code-language">${displayLabel}</span>${previewBtn}<button class="copy-code-btn" onclick="renderer.copyCode(this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy</button></div><pre><code class="hljs language-${detectedLang}">${highlighted}</code></pre></div>`;
