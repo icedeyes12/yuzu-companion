@@ -1410,155 +1410,21 @@ function hideTypingIndicator() {
 }
 
 // ========================================
-// UNIFIED SEND HANDLER
-// ========================================
-
-async function unifiedSend(text, images = null) {
-  if (isProcessingMessage) {
-    console.log("Message already being processed, please wait...");
-    return;
-  }
-  
-  isProcessingMessage = true;
-  showTypingIndicator();
-  
-  // Add user message
-  if (images && images.length > 0) {
-    // Image message - show preview
-    const imageHtml = images.map(img => 
-      `<img src="${URL.createObjectURL(img)}" class="uploaded-image" alt="Uploaded">`
-    ).join('');
-    addMessage("user", `${text}\n${imageHtml}`);
-  } else {
-    addMessage("user", text);
-  }
-  
-  // Clear input
-  const input = document.getElementById('messageInput');
-  if (input) input.value = '';
-  
-  try {
-    // Use agentic SSE endpoint for all messages
-    const response = await fetch("/api/agentic/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        message: text, 
-        stream: true,
-        images: images ? await Promise.all(images.map(imgToBase64)) : null
-      })
-    });
-    
-    console.log("[Chat] Starting unified stream");
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    
-    // Parse SSE stream (typing indicator will be hidden when content arrives)
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-      
-      let currentEvent = null;
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        console.log("[SSE]", line.substring(0, 100));
-        
-        if (line.startsWith("event: ")) {
-          currentEvent = line.slice(7).trim();
-          continue;
-        }
-        if (!line.startsWith("data: ")) continue;
-        
-        try {
-          const eventData = JSON.parse(line.slice(6));
-          const event = { type: currentEvent || "text", data: eventData };
-          
-          switch (event.type) {
-            case "thought":
-              if (event.data?.content) {
-                addBrainBox(event.data.content, event.data.planning, event.data.tools);
-              }
-              break;
-            
-            case "command":
-              showToolExecution(event.data.tool, event.data.args, event.data.iteration);
-              break;
-            
-            case "tool_result":
-              showToolResult(event.data.ok, event.data.output);
-              break;
-            
-            case "text":
-              if (event.data?.chunk && event.data.chunk.trim()) {
-                hideTypingIndicator();
-                streamToMessage(event.data.chunk);
-              }
-              break;
-            
-            case "done":
-              finalizeStreaming(event.data.iterations, event.data.elapsed, event.data.tool_calls?.length || 0);
-              break;
-            
-            case "error":
-              showError(event.data.message);
-              break;
-          }
-        } catch (e) {
-          console.error("[SSE] Parse error:", e);
-        }
-      }
-    }
-    
-  } catch (error) {
-    console.error("[Chat] Error:", error);
-    hideTypingIndicator();
-    showError(error.message);
-  } finally {
-    hideTypingIndicator();
-    isProcessingMessage = false;
-  }
-}
-
-// Helper to convert image to base64
-async function imgToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-// ========================================
 // INITIALIZATION
 // ========================================
 
-// Override handleSend in MultimodalManager
-const originalHandleSend = MultimodalManager.prototype.handleSend;
-MultimodalManager.prototype.handleSend = function() {
-  const input = document.getElementById('messageInput');
-  const text = input.value.trim();
-  
-  if (this.currentMode === 'generate') {
-    this.handleImageGeneration(text);
-  } else if (this.currentMode === 'image' || this.selectedImages.length > 0) {
-    // Use handleImageMessage which sends FormData to /api/send_message_with_images
-    // This saves images to disk and creates markdown for persistence
-    this.handleImageMessage(text);
-  } else {
-    unifiedSend(text);
-  }
-};
+function initThinkMode() {
+  // Initialize think mode on load
+  document.addEventListener('DOMContentLoaded', () => {
+    // Load think mode status
+    fetch('/api/think/status')
+      .then(r => r.json())
+      .then(data => {
+        thinkModeEnabled = data.think_mode || false;
+      })
+      .catch(() => {});
+  });
+}
 
 // Initialize think mode on load
 document.addEventListener('DOMContentLoaded', initThinkMode);
@@ -1568,3 +1434,4 @@ window.toggleThinkMode = toggleThinkMode;
 window.thinkModeEnabled = () => thinkModeEnabled;
 window.showTypingIndicator = showTypingIndicator;
 window.hideTypingIndicator = hideTypingIndicator;
+
