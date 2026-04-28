@@ -278,8 +278,9 @@ class MultimodalManager {
                                 break;
                             
                             case "text":
-                                if (event.data?.chunk) {
-                                    hideTypingIndicator(); // Hide when first chunk arrives
+                                if (event.data?.chunk && event.data.chunk.trim()) {
+                                    // Only hide typing when actual content arrives (not empty chunks)
+                                    hideTypingIndicator();
                                     streamToMessage(event.data.chunk);
                                 }
                                 break;
@@ -660,16 +661,18 @@ class MultimodalManager {
         const input = document.getElementById('messageInput');
         if (input) {
             input.value = '';
-            input.style.height = 'auto';
-            input.style.height = '42px'; // Reset to min-height
-            // Directly update positions without triggering oninput (which would recalculate height)
+            // Reset height properly - set to 42px (min-height from CSS)
+            input.style.height = '42px';
+            input.style.minHeight = '42px';
+            // Force a reflow
+            void input.offsetHeight;
+            // Update positions
             if (typeof updateScrollButtonPosition === 'function') {
                 updateScrollButtonPosition();
             }
             if (typeof updateChatContainerPadding === 'function') {
                 updateChatContainerPadding();
             }
-            scrollToBottom();
         }
     }
 }
@@ -1375,17 +1378,34 @@ function updateThinkModeUI() {
 // ========================================
 
 function showTypingIndicator() {
-  const indicator = document.getElementById('typingIndicator');
-  if (indicator) {
-    indicator.classList.remove('hidden');
-    scrollToBottom();
-  }
+  const chatContainer = document.getElementById('chatContainer');
+  if (!chatContainer) return;
+  
+  // Remove any existing typing indicator
+  const existing = chatContainer.querySelector('.typing-indicator-message');
+  if (existing) existing.remove();
+  
+  // Create typing indicator as a message inside chat container
+  const typingMsg = document.createElement('div');
+  typingMsg.className = 'message ai typing-indicator-message';
+  typingMsg.innerHTML = `
+    <div class="message-content">
+      <div class="typing-dots">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
+  `;
+  chatContainer.appendChild(typingMsg);
+  scrollToBottom();
 }
 
 function hideTypingIndicator() {
-  const indicator = document.getElementById('typingIndicator');
-  if (indicator) {
-    indicator.classList.add('hidden');
+  const chatContainer = document.getElementById('chatContainer');
+  if (!chatContainer) return;
+  
+  const typingMsg = chatContainer.querySelector('.typing-indicator-message');
+  if (typingMsg) {
+    typingMsg.remove();
   }
 }
 
@@ -1435,10 +1455,7 @@ async function unifiedSend(text, images = null) {
       throw new Error(`HTTP ${response.status}`);
     }
     
-    // Hide typing indicator when first chunk arrives
-    hideTypingIndicator();
-    
-    // Parse SSE stream
+    // Parse SSE stream (typing indicator will be hidden when content arrives)
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -1482,7 +1499,8 @@ async function unifiedSend(text, images = null) {
               break;
             
             case "text":
-              if (event.data?.chunk) {
+              if (event.data?.chunk && event.data.chunk.trim()) {
+                hideTypingIndicator();
                 streamToMessage(event.data.chunk);
               }
               break;
@@ -1506,6 +1524,7 @@ async function unifiedSend(text, images = null) {
     hideTypingIndicator();
     showError(error.message);
   } finally {
+    hideTypingIndicator();
     isProcessingMessage = false;
   }
 }
