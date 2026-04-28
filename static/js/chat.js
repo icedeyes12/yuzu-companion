@@ -39,8 +39,7 @@ function streamToMessage(chunk) {
                 let safeContent = _streamingContent;
                 const codeFenceCount = (safeContent.match(/```/g) || []).length;
                 if (codeFenceCount % 2 !== 0) {
-                    safeContent += '
-```';
+                    safeContent += "\n```";
                 }
                 
                 // ✅ renderSync handles: tables, quotes, codeblocks, hljs, mermaid
