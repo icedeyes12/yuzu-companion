@@ -668,3 +668,43 @@ details[open] .thinking-summary::before {
     font-size: 0.75rem;
     font-family: monospace;
 }
+
+/* ========================================
+   INCREMENTAL STREAMING (Line-based)
+   ======================================== */
+
+.incremental-stable {
+  /* Completed lines */
+}
+
+.incremental-live {
+  /* Current incomplete line */
+  opacity: 0.9;
+}
+
+/* Cursor animation */
+.cursor {
+  color: var(--accent-primary, #ff69b4);
+  animation: cursor-blink 1s step-end infinite;
+  font-weight: bold;
+  margin-left: 1px;
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Raw code line inside incomplete code block */
+.code-line-raw {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  color: var(--text-secondary, rgba(240, 244, 255, 0.7));
+  white-space: pre;
+  padding: 0 1rem;
+}
+
+.code-live {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  color: var(--text-color, #f0f4ff);
+  white-space: pre;
+}

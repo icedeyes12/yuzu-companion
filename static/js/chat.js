@@ -15,24 +15,53 @@ const MESSAGES_PER_PAGE = 30;
 
 let _streamingMessageEl = null;
 let _streamingContent = "";
+let _incrementalRenderer = null;
 
 function streamToMessage(chunk) {
-    if (!_streamingMessageEl) {
-        _streamingMessageEl = createMessageElement("ai", "");
-        document.getElementById("chatContainer").appendChild(_streamingMessageEl);
-        _streamingContent = "";
+    const chatContainer = document.getElementById("chatContainer");
+    if (!chatContainer) return;
+    
+    // Check if incremental renderer is available
+    if (window.IncrementalMarkdownRenderer) {
+        // Use incremental renderer
+        if (!_streamingMessageEl) {
+            _streamingMessageEl = createMessageElement("ai", "", null);
+            chatContainer.appendChild(_streamingMessageEl);
+            
+            const contentEl = _streamingMessageEl.querySelector(".message-content");
+            if (contentEl) {
+                _incrementalRenderer = new window.IncrementalMarkdownRenderer(contentEl);
+                _incrementalRenderer.setRenderer(window.renderer || renderer);
+            }
+            _streamingContent = "";
+        }
+        
+        _incrementalRenderer.append(chunk);
+        _streamingContent += chunk;
+    } else {
+        // Fallback to old method
+        if (!_streamingMessageEl) {
+            _streamingMessageEl = createMessageElement("ai", "", null);
+            chatContainer.appendChild(_streamingMessageEl);
+            _streamingContent = "";
+        }
+        _streamingContent += chunk;
+        const contentEl = _streamingMessageEl.querySelector(".message-content");
+        if (contentEl && typeof renderer !== "undefined") {
+            contentEl.innerHTML = renderer.renderSync(_streamingContent);
+            setTimeout(() => renderer.initializeMermaidDiagrams(), 0);
+        }
     }
-    _streamingContent += chunk;
-    const contentEl = _streamingMessageEl.querySelector(".message-content");
-    if (contentEl && typeof renderer !== "undefined") {
-        // Use renderSync for streaming (returns string, not Promise)
-        contentEl.innerHTML = renderer.renderSync(_streamingContent);
-        // Initialize mermaid diagrams after each update
-        setTimeout(() => renderer.initializeMermaidDiagrams(), 0);
-    }
+    scrollToBottom();
 }
 
 function finalizeStreaming(iterations, elapsed, toolCalls) {
+    // Finalize incremental renderer
+    if (_incrementalRenderer) {
+        _incrementalRenderer.finalize();
+        _incrementalRenderer = null;
+    }
+    
     _streamingMessageEl = null;
     _streamingContent = "";
     scrollToBottom();
@@ -1210,53 +1239,6 @@ window.showToolResult = function(ok, output) {
     
     chatContainer.appendChild(result);
     scrollToBottom();
-};
-
-// Stream text to message (incremental)
-let streamingMessageEl = null;
-let streamingContent = '';
-
-window.streamToMessage = function(chunk) {
-    const chatContainer = document.getElementById('chatContainer');
-    if (!chatContainer) return;
-    
-    if (!streamingMessageEl) {
-        streamingMessageEl = createMessageElement('ai', '', null);
-        chatContainer.appendChild(streamingMessageEl);
-    }
-    
-    streamingContent += chunk;
-    
-    // Update content
-    const contentEl = streamingMessageEl.querySelector('.message-content');
-    if (contentEl) {
-        contentEl.innerHTML = typeof renderer !== 'undefined' 
-            ? renderer.renderSync(streamingContent)
-            : escapeHtml(streamingContent);
-    }
-    
-    scrollToBottom();
-};
-
-// Finalize streaming
-window.finalizeStreaming = function(iterations, elapsed, toolsUsed) {
-    // Persist the streamed message
-    if (streamingMessageEl && streamingContent) {
-        // Already in DOM, just update timestamp
-        const footer = streamingMessageEl.querySelector('.message-footer .timestamp');
-        if (footer) {
-            footer.textContent = getCurrentTime24h();
-        }
-    }
-    
-    // Reset streaming state
-    streamingMessageEl = null;
-    streamingContent = '';
-    
-    // Hide status bar
-    hideAgenticStatusBar();
-    
-    console.log(`[agentic] Done: ${iterations} iterations, ${elapsed}s, ${toolsUsed} tools`);
 };
 
 // Timeout display
