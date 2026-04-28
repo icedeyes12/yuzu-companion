@@ -1198,8 +1198,8 @@ html, body {
    MARKDOWN INLINE STYLES
    ========================= */
 
-/* Inline code - only apply hljs bg to USER messages */
-.message.user .message-content code:not(pre code) {
+/* Inline code - use hljs-bg for ALL messages */
+.message-content code:not(pre code) {
   background: var(--hljs-bg, #002451);
   color: #ffffff;
   padding: 0.15em 0.4em;
@@ -1207,18 +1207,6 @@ html, body {
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 0.85em;
   border: 1px solid rgba(114, 133, 183, 0.3);
-  word-break: break-word;
-}
-
-/* Assistant messages - keep dark background */
-.message.ai .message-content code:not(pre code) {
-  background: rgba(0, 0, 0, 0.3);
-  color: #a8c8ff;
-  padding: 0.15em 0.4em;
-  border-radius: 4px;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 0.85em;
-  border: 1px solid rgba(114, 133, 183, 0.2);
   word-break: break-word;
 }
 

@@ -268,7 +268,8 @@ class MessageRenderer {
                     if (originalLabel === 'mermaid' && self.isMermaidReady) {
                         const codeStr = typeof code === 'string' ? code : String(code || '');
                         const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-                        return `<div class="mermaid-container"><pre class="mermaid" id="${id}">${self.escapeHtml(codeStr)}</pre></div>`;
+                        const escapedCode = encodeURIComponent(codeStr);
+                        return `<div class="mermaid-container"><div class="mermaid-header"><span class="code-language">mermaid</span><button class="copy-mermaid-btn" data-mermaid="${escapedCode}" onclick="renderer.copyMermaidCode(this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy</button></div><pre class="mermaid" id="${id}">${self.escapeHtml(codeStr)}</pre></div>`;
                     }
                     
                     const normalizedLang = self.normalizeLanguageAlias(language);
@@ -563,9 +564,8 @@ class MessageRenderer {
         if (lang === 'mermaid' && this.isMermaidReady) {
             const codeStr = typeof code === 'string' ? code : String(code || '');
             const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-            // Mermaid needs raw text, not escaped HTML
-            // NO copy button for mermaid
-            return `<div class="mermaid-container"><pre class="mermaid" id="${id}">${codeStr}</pre></div>`;
+            const escapedCode = encodeURIComponent(codeStr);
+            return `<div class="mermaid-container"><div class="mermaid-header"><span class="code-language">mermaid</span><button class="copy-mermaid-btn" data-mermaid="${escapedCode}" onclick="renderer.copyMermaidCode(this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy</button></div><pre class="mermaid" id="${id}">${codeStr}</pre></div>`;
         }
         
         // Highlight with hljs - ALWAYS use highlightAuto, ignore lang header
@@ -800,6 +800,28 @@ class MessageRenderer {
             }, 2000);
         }).catch(err => {
             console.error('Failed to copy code:', err);
+        });
+    }
+
+    copyMermaidCode(button) {
+        if (!button) return;
+        const mermaidContainer = button.closest('.mermaid-container');
+        if (!mermaidContainer) return;
+        const pre = mermaidContainer.querySelector('pre.mermaid');
+        if (!pre) return;
+        const text = pre.textContent;
+        
+        navigator.clipboard.writeText(text).then(() => {
+            const originalText = button.innerHTML;
+            button.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>Copied!`;
+            button.classList.add('copied');
+            
+            setTimeout(() => {
+                button.innerHTML = originalText;
+                button.classList.remove('copied');
+            }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy mermaid code:', err);
         });
     }
 
