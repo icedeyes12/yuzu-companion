@@ -1382,7 +1382,10 @@ let _typingIndicatorVisible = false;
 
 function showTypingIndicator() {
   const chatContainer = document.getElementById('chatContainer');
-  if (!chatContainer) return;
+  if (!chatContainer) {
+    console.log('[Typing] ERROR: chatContainer not found!');
+    return;
+  }
   
   // Remove any existing typing indicator
   const existing = chatContainer.querySelector('.typing-indicator-message');
@@ -1401,8 +1404,19 @@ function showTypingIndicator() {
   chatContainer.appendChild(typingMsg);
   scrollToBottom();
   _typingIndicatorVisible = true;
-  _typingIndicatorShowTime = Date.now(); // Track when shown
-  console.log('[Typing] Shown');
+  _typingIndicatorShowTime = Date.now();
+  
+  // Debug: Check if element is visible
+  const rect = typingMsg.getBoundingClientRect();
+  const dots = typingMsg.querySelector('.typing-dots span');
+  const computedStyle = dots ? window.getComputedStyle(dots) : null;
+  console.log('[Typing] Shown', {
+    elementPosition: { top: rect.top, bottom: rect.bottom, height: rect.height },
+    dotColor: computedStyle?.backgroundColor,
+    dotWidth: computedStyle?.width,
+    dotHeight: computedStyle?.height,
+    parentVisible: chatContainer.offsetParent !== null
+  });
 }
 
 function hideTypingIndicator() {
