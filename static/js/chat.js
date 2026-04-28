@@ -29,30 +29,28 @@ function streamToMessage(chunk) {
     
     _streamingContent += chunk;
     
-    // ✅ Throttle DOM writes to once per animation frame — kills the flicker
+    // ✅ Throttle DOM writes to once per animation frame
     if (!_renderPending) {
         _renderPending = true;
         requestAnimationFrame(() => {
             const contentEl = _streamingMessageEl.querySelector(".message-content");
             if (contentEl && typeof renderer !== "undefined") {
-                // ✅ MAGIC TRICK: Count code fences. If odd, temporarily close for rendering.
+                // ✅ MAGIC TRICK: Temp close open codeblocks for rendering
                 let safeContent = _streamingContent;
                 const codeFenceCount = (safeContent.match(/```/g) || []).length;
                 if (codeFenceCount % 2 !== 0) {
-                    safeContent += '\n```'; // Temporarily close the open code block
+                    safeContent += '
+```';
                 }
                 
-                // Parse markdown - use renderer which has syntax highlighting built-in
+                // ✅ renderSync handles: tables, quotes, codeblocks, hljs, mermaid
                 contentEl.innerHTML = renderer.renderSync(safeContent);
                 
-                // ✅ Add cursor to show streaming is active
+                // ✅ Add streaming cursor
                 const cursor = document.createElement('span');
                 cursor.className = 'cursor';
                 cursor.textContent = '▋';
                 contentEl.appendChild(cursor);
-                
-                // ✅ No hljs/mermaid during streaming - too expensive
-                // Those will run at finalize
             }
             _renderPending = false;
             scrollToBottom();
@@ -61,40 +59,17 @@ function streamToMessage(chunk) {
 }
 
 function finalizeStreaming(iterations, elapsed, toolCalls) {
-    // ✅ Final authoritative render
     if (_streamingMessageEl) {
         const contentEl = _streamingMessageEl.querySelector(".message-content");
         if (contentEl && typeof renderer !== "undefined") {
-            // Render final content (no temp close needed - renderer handles it)
+            // ✅ Final render - renderSync handles everything
             contentEl.innerHTML = renderer.renderSync(_streamingContent);
             
-            // ✅ Remove cursor if present
+            // ✅ Remove cursor
             const cursor = contentEl.querySelector('.cursor');
             if (cursor) cursor.remove();
             
-            // ✅ NOW run hljs on all code blocks (not during streaming - too expensive)
-            if (typeof hljs !== 'undefined') {
-                contentEl.querySelectorAll('pre code').forEach((block) => {
-                    try {
-                        // Only highlight if not already done
-                        if (!block.classList.contains('hljs')) {
-                            hljs.highlightElement(block);
-                        }
-                    } catch (e) {
-                        console.warn('[Finalize] HLJS error:', e);
-                    }
-                });
-            }
-            
-            // ✅ Mermaid needs a real DOM tick to find its elements
-            // Pass container to prevent re-processing old diagrams
-            setTimeout(() => {
-                if (typeof renderer !== "undefined") {
-                    renderer.initializeMermaidDiagrams(contentEl);
-                }
-            }, 100);
-            
-            // Add message footer with timestamp
+            // ✅ Add message footer
             const footer = document.createElement("div");
             footer.className = "message-footer";
             footer.innerHTML = `
