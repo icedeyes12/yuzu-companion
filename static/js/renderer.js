@@ -468,6 +468,8 @@ class MessageRenderer {
         try {
             const tokens = marked.lexer(processedMarkdown);
             let html = this._renderTokensSync(tokens);
+            // ✅ THIS WAS MISSING — tables, callouts, blockquotes all live here
+            html = this.postProcessHTML(html);
             setTimeout(() => this.initializeMermaidDiagrams(), 0);
             return html;
         } catch (e) {
