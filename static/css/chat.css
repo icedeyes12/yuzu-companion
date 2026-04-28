@@ -378,7 +378,7 @@ html, body {
   margin: 1rem 0;
   border-radius: 8px;
   overflow: hidden;
-  background: transparent; /* Let hljs theme background show through */
+  background: var(--hljs-bg); /* Let hljs theme background show through */
   border: 1px solid rgba(114, 133, 183, 0.3);
 }
 
