@@ -1393,9 +1393,9 @@ html, body {
 
 .message-content hr {
   border: none;
-  border-top: 1px solid var(--border-ai);
+  border-top: 2px solid var(--accent-pink, #58a6ff);
   margin: 1.5rem 0;
-  opacity: 0.5;
+  opacity: 0.6;
 }
 
 /* =========================
