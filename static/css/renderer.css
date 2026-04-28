@@ -119,7 +119,7 @@ blockquote blockquote blockquote {
 
 /* Mermaid container with header */
 .mermaid-container {
-  background: var(--hljs-bg, #002451);
+  background: var(--hljs-bg, #002451) !important;
   border-radius: 8px;
   overflow: hidden;
   margin: 1rem 0;

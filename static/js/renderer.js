@@ -298,8 +298,12 @@ class MessageRenderer {
                         highlighted = self.escapeHtml(code);
                     }
                     
-                    const displayLabel = originalLabel || 'code';
-                    const previewBtn = isHtml ? `<button class="preview-btn" data-code="${encodeURIComponent(code)}" onclick="renderer.showHtmlPreviewModal(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button>` : '';
+                    // Re-check if HTML after detection
+                    const isDetectedHtml = detectedLang === 'html' || detectedLang === 'xml' || detectedLang === 'htmlmixed';
+                    const shouldShowPreview = isHtml || isDetectedHtml || self._isHtmlCode(code);
+                    
+                    const displayLabel = originalLabel || detectedLang;
+                    const previewBtn = shouldShowPreview ? `<button class="preview-btn" data-code="${encodeURIComponent(code)}" onclick="renderer.showHtmlPreviewModal(this)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8z"/><circle cx="12" cy="12" r="3"/></svg>Preview</button>` : '';
                     
                     return `<div class="code-block-container"><div class="code-block-header"><span class="code-language">${displayLabel}</span>${previewBtn}<button class="copy-code-btn" onclick="renderer.copyCode(this)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy</button></div><pre><code class="hljs language-${detectedLang}">${highlighted}</code></pre></div>`;
                 },

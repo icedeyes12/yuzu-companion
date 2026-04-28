@@ -26,6 +26,10 @@ class IncrementalMarkdownRenderer {
         this.codeBlockLang = null;
         this.codeBlockStartLine = -1;
         
+        // Table state (tables are multi-line)
+        this.inTable = false;
+        this.tableStartLine = -1;
+        
         // Track completed blocks for incremental processing
         this.lastProcessedCodeBlockEnd = -1;
         this.lastProcessedMermaidEnd = -1;
@@ -115,15 +119,17 @@ class IncrementalMarkdownRenderer {
             }
         }
         
-        // Render the line
-        let html;
+        // Track table state (lines starting with |)
+        const isTableLine = trimmed.startsWith('|') && trimmed.includes('|');
+        
         if (this.inCodeBlock) {
             // Inside code block - skip, will render whole block at close
             return;
-        } else {
-            // Normal line - use renderer
-            html = this._renderLine(line + "\n");
         }
+        
+        // Render the line
+        let html;
+        html = this._renderLine(line + "\n");
         
         this.stableEl.insertAdjacentHTML("beforeend", html);
     }
