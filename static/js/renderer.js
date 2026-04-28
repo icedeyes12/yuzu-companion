@@ -805,13 +805,15 @@ class MessageRenderer {
 
     copyMermaidCode(button) {
         if (!button) return;
-        const mermaidContainer = button.closest('.mermaid-container');
-        if (!mermaidContainer) return;
-        const pre = mermaidContainer.querySelector('pre.mermaid');
-        if (!pre) return;
-        const text = pre.textContent;
         
-        navigator.clipboard.writeText(text).then(() => {
+        // Read from data-mermaid attr (URI-encoded)
+        const encodedCode = button.getAttribute('data-mermaid');
+        if (!encodedCode) return;
+        
+        // Decode the mermaid code
+        const mermaidCode = decodeURIComponent(encodedCode);
+        
+        navigator.clipboard.writeText(mermaidCode).then(() => {
             const originalText = button.innerHTML;
             button.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>Copied!`;
             button.classList.add('copied');
