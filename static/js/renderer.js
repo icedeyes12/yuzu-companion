@@ -425,25 +425,28 @@ class MessageRenderer {
 
     /**
      * Initialize mermaid diagrams in rendered HTML
+     * @param {Element} container - Optional container to scope search (prevents re-processing old diagrams)
      */
-    async initializeMermaidDiagrams() {
+    async initializeMermaidDiagrams(container = null) {
         if (!this.isMermaidReady) return;
         
-        const mermaidElements = document.querySelectorAll('.mermaid:not([data-processed])');
+        // Scope search to container if provided, otherwise global
+        const root = container || document;
+        const mermaidElements = root.querySelectorAll('.mermaid:not([data-processed])');
+        
         if (mermaidElements.length === 0) return;
         
         console.log('[Renderer] Initializing', mermaidElements.length, 'mermaid diagrams');
         
-        mermaidElements.forEach(el => {
-            el.setAttribute('data-processed', 'true');
-        });
-        
         try {
-            // Remove data-processed attribute and let mermaid re-process
+            // Use nodes API - more reliable than querySelector
+            await mermaid.run({ nodes: Array.from(mermaidElements) });
+            
+            // Mark as processed
             mermaidElements.forEach(el => {
-                el.removeAttribute('data-processed');
+                el.setAttribute('data-processed', 'true');
             });
-            await mermaid.run({ querySelector: '.mermaid' });
+            
             console.log('[Renderer] Mermaid diagrams initialized');
         } catch (error) {
             console.error('[Renderer] Mermaid initialization error:', error);
@@ -515,6 +518,9 @@ class MessageRenderer {
                 return '';
             case 'hr':
                 return '<hr>';
+            case 'softbreak':
+                // marked.js generates softbreak for \n when breaks: true
+                return '<br>';
             case 'html':
                 return token.raw || '';
             case 'text':
@@ -556,6 +562,10 @@ class MessageRenderer {
                     html += `<img src="${token.href || ''}" alt="${token.text || ''}">`;
                     break;
                 case 'br':
+                    html += '<br>';
+                    break;
+                case 'softbreak':
+                    // marked.js generates softbreak for \n when breaks: true
                     html += '<br>';
                     break;
                 case 'del':

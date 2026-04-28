@@ -14,91 +14,72 @@ const MESSAGES_PER_PAGE = 30;
 // ========================================
 
 let _streamingMessageEl = null;
-let _streamingContentEl = null;
 let _streamingContent = "";
-let _renderPending = false;   // rAF throttle flag
+let _renderPending      = false;  // rAF throttle flag
 
-// Called once per SSE text chunk
 function streamToMessage(chunk) {
     const chatContainer = document.getElementById("chatContainer");
     if (!chatContainer) return;
     
-    // First chunk → create the message bubble
     if (!_streamingMessageEl) {
-        _streamingMessageEl = document.createElement("div");
-        _streamingMessageEl.className = "message ai";
-        _streamingContentEl = document.createElement("div");
-        _streamingContentEl.className = "message-content";
-        _streamingMessageEl.appendChild(_streamingContentEl);
+        _streamingMessageEl = createMessageElement("ai", "", null);
         chatContainer.appendChild(_streamingMessageEl);
         _streamingContent = "";
     }
     
-    // Accumulate
     _streamingContent += chunk;
     
     // ✅ Throttle DOM writes to once per animation frame — kills the flicker
     if (!_renderPending) {
         _renderPending = true;
         requestAnimationFrame(() => {
-            if (_streamingContentEl) {
-                _streamingContentEl.innerHTML =
-                    typeof renderer !== "undefined"
-                        ? renderer.renderSync(_streamingContent)
-                        : _streamingContent;
-                scrollToBottom();
+            const contentEl = _streamingMessageEl.querySelector(".message-content");
+            if (contentEl && typeof renderer !== "undefined") {
+                // ✅ Append "\n\n" to close paragraphs mid-stream
+                const streamContent = _streamingContent.endsWith("\n\n") 
+                    ? _streamingContent 
+                    : _streamingContent + "\n\n";
+                contentEl.innerHTML = renderer.renderSync(streamContent);
             }
             _renderPending = false;
+            scrollToBottom();
         });
     }
 }
 
-// Called when SSE "done" event fires
 function finalizeStreaming(iterations, elapsed, toolCalls) {
-    if (!_streamingContentEl || !_streamingContent) {
-        _streamingMessageEl = null;
-        _streamingContentEl = null;
-        _streamingContent = "";
-        return;
-    }
-    
-    // ✅ Full final render — postProcessHTML already included via renderSync fix
-    if (typeof renderer !== "undefined") {
-        _streamingContentEl.innerHTML = renderer.renderSync(_streamingContent);
-        
-        // Syntax highlight code blocks
-        if (typeof hljs !== "undefined") {
-            _streamingContentEl
-                .querySelectorAll("pre code:not(.hljs)")
-                .forEach(b => hljs.highlightElement(b));
+    // ✅ Final authoritative render
+    if (_streamingMessageEl) {
+        const contentEl = _streamingMessageEl.querySelector(".message-content");
+        if (contentEl && typeof renderer !== "undefined") {
+            // Render without the temporary "\n\n" we added during streaming
+            contentEl.innerHTML = renderer.renderSync(_streamingContent);
+            
+            // ✅ Mermaid needs a real DOM tick to find its elements
+            // Pass container to prevent re-processing old diagrams
+            setTimeout(() => {
+                if (typeof renderer !== "undefined") {
+                    renderer.initializeMermaidDiagrams(contentEl);
+                }
+            }, 100);
+            
+            // Add message footer with timestamp
+            const footer = document.createElement("div");
+            footer.className = "message-footer";
+            footer.innerHTML = `
+                <span class="timestamp">${getCurrentTime24h()}</span>
+                <button class="copy-message-btn" onclick="copyFullMessage(this)" title="Copy message">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                </button>
+            `;
+            contentEl.appendChild(footer);
         }
-        
-        // ✅ Mermaid needs a real DOM tick to find its elements
-        setTimeout(() => renderer.initializeMermaidDiagrams(), 100);
     }
     
-    // Add footer (timestamp + copy button)
-    const footer = document.createElement("div");
-    footer.className = "message-footer";
-    
-    const ts = document.createElement("div");
-    ts.className = "timestamp";
-    ts.textContent = getCurrentTime24h();
-    footer.appendChild(ts);
-    
-    const copyBtn = document.createElement("button");
-    copyBtn.className = "copy-message-btn";
-    copyBtn.title = "Copy message";
-    copyBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
-    const captured = _streamingContent;
-    copyBtn.onclick = () => copyFullMessage(captured);
-    footer.appendChild(copyBtn);
-    
-    _streamingMessageEl.appendChild(footer);
-    
-    // Reset
     _streamingMessageEl = null;
-    _streamingContentEl = null;
     _streamingContent = "";
     _renderPending = false;
     
