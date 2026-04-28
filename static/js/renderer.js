@@ -331,10 +331,34 @@ class MessageRenderer {
         // Ensure code is a string (marked v18 sometimes passes objects)
         const codeStr = typeof code === 'string' ? code : String(code || '');
         const trimmed = codeStr.trim();
+        // Detect common HTML patterns
         return trimmed.startsWith('<!DOCTYPE') ||
                trimmed.startsWith('<html') ||
-               (trimmed.startsWith('<head') && trimmed.includes('<body')) ||
-               (trimmed.includes('<html') && trimmed.includes('<body'));
+               trimmed.startsWith('<head') ||
+               trimmed.startsWith('<body') ||
+               trimmed.startsWith('<div') ||
+               trimmed.startsWith('<section') ||
+               trimmed.startsWith('<article') ||
+               trimmed.startsWith('<main') ||
+               trimmed.startsWith('<header') ||
+               trimmed.startsWith('<footer') ||
+               trimmed.startsWith('<nav') ||
+               trimmed.startsWith('<aside') ||
+               trimmed.startsWith('<form') ||
+               trimmed.startsWith('<table') ||
+               trimmed.startsWith('<ul') ||
+               trimmed.startsWith('<ol') ||
+               trimmed.startsWith('<dl') ||
+               trimmed.startsWith('<figure') ||
+               trimmed.startsWith('<details') ||
+               trimmed.startsWith('<script') ||
+               trimmed.startsWith('<style') ||
+               (trimmed.includes('<html') && trimmed.includes('<body')) ||
+               (/<\/?[a-z][\s\S]*>/i.test(trimmed) && 
+                (trimmed.includes('</div>') || trimmed.includes('</section>') || 
+                 trimmed.includes('</article>') || trimmed.includes('</details>') ||
+                 trimmed.includes('</ul>') || trimmed.includes('</ol>') ||
+                 trimmed.includes('</table>') || trimmed.includes('</form>')));
     }
 
     normalizeImagePath(path) {
