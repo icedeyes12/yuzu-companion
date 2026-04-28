@@ -16,7 +16,6 @@ const MESSAGES_PER_PAGE = 30;
 let _streamingMessageEl = null;
 let _streamingContent = "";
 let _renderPending      = false;  // rAF throttle flag
-let _codeBlockDepth     = 0;     // Track nested codeblocks
 
 function streamToMessage(chunk) {
     const chatContainer = document.getElementById("chatContainer");
@@ -30,32 +29,30 @@ function streamToMessage(chunk) {
     
     _streamingContent += chunk;
     
-    // Track codeblock depth
-    const lines = chunk.split('\n');
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('```')) {
-            if (_codeBlockDepth > 0 && !trimmed.slice(3).trim()) {
-                // Closing fence (no language after ```)
-                _codeBlockDepth--;
-            } else if (trimmed.slice(3).trim() || _codeBlockDepth === 0) {
-                // Opening fence (has language) or start of new block
-                _codeBlockDepth++;
-            }
-        }
-    }
-    
     // ✅ Throttle DOM writes to once per animation frame — kills the flicker
     if (!_renderPending) {
         _renderPending = true;
         requestAnimationFrame(() => {
             const contentEl = _streamingMessageEl.querySelector(".message-content");
             if (contentEl && typeof renderer !== "undefined") {
-                // ✅ Append "\n\n" to close paragraphs mid-stream
-                const streamContent = _streamingContent.endsWith("\n\n") 
-                    ? _streamingContent 
-                    : _streamingContent + "\n\n";
-                contentEl.innerHTML = renderer.renderSync(streamContent);
+                // ✅ MAGIC TRICK: Count code fences. If odd, temporarily close for rendering.
+                let safeContent = _streamingContent;
+                const codeFenceCount = (safeContent.match(/```/g) || []).length;
+                if (codeFenceCount % 2 !== 0) {
+                    safeContent += '\n```'; // Temporarily close the open code block
+                }
+                
+                // Parse markdown - use renderer which has syntax highlighting built-in
+                contentEl.innerHTML = renderer.renderSync(safeContent);
+                
+                // ✅ Add cursor to show streaming is active
+                const cursor = document.createElement('span');
+                cursor.className = 'cursor';
+                cursor.textContent = '▋';
+                contentEl.appendChild(cursor);
+                
+                // ✅ No hljs/mermaid during streaming - too expensive
+                // Those will run at finalize
             }
             _renderPending = false;
             scrollToBottom();
@@ -68,21 +65,26 @@ function finalizeStreaming(iterations, elapsed, toolCalls) {
     if (_streamingMessageEl) {
         const contentEl = _streamingMessageEl.querySelector(".message-content");
         if (contentEl && typeof renderer !== "undefined") {
-            // ✅ Auto-close any unclosed codeblocks
-            let finalContent = _streamingContent;
-            if (_codeBlockDepth > 0) {
-                console.warn('[Stream] Auto-closing', _codeBlockDepth, 'unclosed codeblock(s)');
-                for (let i = 0; i < _codeBlockDepth; i++) {
-                    finalContent += '\n```\n';
-                }
+            // Render final content (no temp close needed - renderer handles it)
+            contentEl.innerHTML = renderer.renderSync(_streamingContent);
+            
+            // ✅ Remove cursor if present
+            const cursor = contentEl.querySelector('.cursor');
+            if (cursor) cursor.remove();
+            
+            // ✅ NOW run hljs on all code blocks (not during streaming - too expensive)
+            if (typeof hljs !== 'undefined') {
+                contentEl.querySelectorAll('pre code').forEach((block) => {
+                    try {
+                        // Only highlight if not already done
+                        if (!block.classList.contains('hljs')) {
+                            hljs.highlightElement(block);
+                        }
+                    } catch (e) {
+                        console.warn('[Finalize] HLJS error:', e);
+                    }
+                });
             }
-            
-            // Render with auto-closed content
-            contentEl.innerHTML = renderer.renderSync(finalContent);
-            
-            // Reset codeblock depth
-            _codeBlockDepth = 0;
-
             
             // ✅ Mermaid needs a real DOM tick to find its elements
             // Pass container to prevent re-processing old diagrams
