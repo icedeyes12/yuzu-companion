@@ -16,6 +16,7 @@ const MESSAGES_PER_PAGE = 30;
 let _streamingMessageEl = null;
 let _streamingContent = "";
 let _renderPending      = false;  // rAF throttle flag
+let _codeBlockDepth     = 0;     // Track nested codeblocks
 
 function streamToMessage(chunk) {
     const chatContainer = document.getElementById("chatContainer");
@@ -28,6 +29,21 @@ function streamToMessage(chunk) {
     }
     
     _streamingContent += chunk;
+    
+    // Track codeblock depth
+    const lines = chunk.split('\n');
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('```')) {
+            if (_codeBlockDepth > 0 && !trimmed.slice(3).trim()) {
+                // Closing fence (no language after ```)
+                _codeBlockDepth--;
+            } else if (trimmed.slice(3).trim() || _codeBlockDepth === 0) {
+                // Opening fence (has language) or start of new block
+                _codeBlockDepth++;
+            }
+        }
+    }
     
     // ✅ Throttle DOM writes to once per animation frame — kills the flicker
     if (!_renderPending) {
@@ -52,8 +68,21 @@ function finalizeStreaming(iterations, elapsed, toolCalls) {
     if (_streamingMessageEl) {
         const contentEl = _streamingMessageEl.querySelector(".message-content");
         if (contentEl && typeof renderer !== "undefined") {
-            // Render without the temporary "\n\n" we added during streaming
-            contentEl.innerHTML = renderer.renderSync(_streamingContent);
+            // ✅ Auto-close any unclosed codeblocks
+            let finalContent = _streamingContent;
+            if (_codeBlockDepth > 0) {
+                console.warn('[Stream] Auto-closing', _codeBlockDepth, 'unclosed codeblock(s)');
+                for (let i = 0; i < _codeBlockDepth; i++) {
+                    finalContent += '\n```\n';
+                }
+            }
+            
+            // Render with auto-closed content
+            contentEl.innerHTML = renderer.renderSync(finalContent);
+            
+            // Reset codeblock depth
+            _codeBlockDepth = 0;
+
             
             // ✅ Mermaid needs a real DOM tick to find its elements
             // Pass container to prevent re-processing old diagrams
