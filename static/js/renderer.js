@@ -767,8 +767,17 @@ class MessageRenderer {
         return { href, title, text };
     }
 
-    showHtmlPreviewModal(btn) {
-        const rawCode = decodeURIComponent(btn.dataset.code || '');
+    showHtmlPreviewModal(btnOrCode) {
+        // Accept either button element or raw code string
+        let rawCode;
+        if (typeof btnOrCode === 'string') {
+            rawCode = btnOrCode; // Direct string input
+        } else if (btnOrCode && btnOrCode.dataset) {
+            rawCode = decodeURIComponent(btnOrCode.dataset.code || ''); // Button element
+        } else {
+            return; // Invalid input
+        }
+        
         const modal = document.getElementById('html-preview-modal');
         const iframe = document.getElementById('preview-iframe');
         if (!modal || !iframe || !rawCode) return;
