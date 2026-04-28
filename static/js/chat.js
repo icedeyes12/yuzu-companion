@@ -1401,20 +1401,29 @@ function showTypingIndicator() {
   chatContainer.appendChild(typingMsg);
   scrollToBottom();
   _typingIndicatorVisible = true;
+  _typingIndicatorShowTime = Date.now(); // Track when shown
   console.log('[Typing] Shown');
 }
 
 function hideTypingIndicator() {
   if (!_typingIndicatorVisible) return; // Already hidden
-  const chatContainer = document.getElementById('chatContainer');
-  if (!chatContainer) return;
   
-  const typingMsg = chatContainer.querySelector('.typing-indicator-message');
-  if (typingMsg) {
-    typingMsg.remove();
-  }
-  _typingIndicatorVisible = false;
-  console.log('[Typing] Hidden');
+  // Ensure minimum visibility time (300ms) so user can actually see it
+  const MIN_VISIBLE_MS = 300;
+  const elapsed = Date.now() - (_typingIndicatorShowTime || 0);
+  const delay = Math.max(0, MIN_VISIBLE_MS - elapsed);
+  
+  setTimeout(() => {
+    const chatContainer = document.getElementById('chatContainer');
+    if (!chatContainer) return;
+    
+    const typingMsg = chatContainer.querySelector('.typing-indicator-message');
+    if (typingMsg) {
+      typingMsg.remove();
+    }
+    _typingIndicatorVisible = false;
+    console.log('[Typing] Hidden (visible for ' + elapsed + 'ms, delayed ' + delay + 'ms)');
+  }, delay);
 }
 
 // ========================================
