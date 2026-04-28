@@ -24,6 +24,11 @@ class IncrementalMarkdownRenderer {
         // Code block state
         this.inCodeBlock = false;
         this.codeBlockLang = null;
+        this.codeBlockStartLine = -1;
+        
+        // Track completed blocks for incremental processing
+        this.lastProcessedCodeBlockEnd = -1;
+        this.lastProcessedMermaidEnd = -1;
         
         // DOM parts: stable (completed) + live (current line)
         this.stableEl = document.createElement("div");
@@ -63,7 +68,7 @@ class IncrementalMarkdownRenderer {
         // Process only new stable lines (all except last)
         while (this.renderedLineCount < newLines.length - 1) {
             const line = newLines[this.renderedLineCount];
-            this._processStableLine(line);
+            this._processStableLine(line, this.renderedLineCount);
             this.renderedLineCount++;
         }
         
@@ -74,27 +79,47 @@ class IncrementalMarkdownRenderer {
     /**
      * Process a stable (complete) line
      */
-    _processStableLine(line) {
-        // Track code block state
+    _processStableLine(line, lineIndex) {
         const trimmed = line.trim();
+        
+        // Track code block state
         if (trimmed.startsWith("```")) {
             if (!this.inCodeBlock) {
-                // Opening code block - extract language
+                // Opening code block
                 this.inCodeBlock = true;
                 this.codeBlockLang = trimmed.slice(3).trim() || null;
+                this.codeBlockStartLine = lineIndex;
             } else {
-                // Closing code block
+                // Closing code block - render the WHOLE block now
                 this.inCodeBlock = false;
+                
+                // Extract the complete code block from buffer
+                const codeBlockContent = this._extractCompletedCodeBlock(lineIndex);
+                if (codeBlockContent) {
+                    // Render complete code block
+                    const html = this._renderLine(codeBlockContent);
+                    this.stableEl.insertAdjacentHTML("beforeend", html);
+                    
+                    // Immediately post-process this code block
+                    this._postProcessCodeBlock(this.stableEl.lastElementChild);
+                    
+                    // If it's mermaid, initialize it
+                    if (this.codeBlockLang === 'mermaid') {
+                        this._initMermaidInElement(this.stableEl.lastElementChild);
+                    }
+                }
+                
                 this.codeBlockLang = null;
+                this.codeBlockStartLine = -1;
+                return; // Don't double-render
             }
         }
         
         // Render the line
         let html;
         if (this.inCodeBlock) {
-            // Inside code block - render as plain text line
-            // We'll accumulate these and render the whole block at close
-            html = this._renderCodeBlockLine(line);
+            // Inside code block - skip, will render whole block at close
+            return;
         } else {
             // Normal line - use renderer
             html = this._renderLine(line + "\n");
@@ -104,7 +129,33 @@ class IncrementalMarkdownRenderer {
     }
 
     /**
-     * Render a normal line using existing renderer
+     * Extract completed code block content from buffer
+     */
+    _extractCompletedCodeBlock(endLineIndex) {
+        const lines = this.buffer.split("\n");
+        
+        // Find the start (opening ```)
+        let startIdx = -1;
+        for (let i = endLineIndex - 1; i >= 0; i--) {
+            if (lines[i].trim().startsWith("```")) {
+                startIdx = i;
+                break;
+            }
+        }
+        
+        if (startIdx === -1) return null;
+        
+        // Build the code block markdown
+        let blockContent = lines[startIdx] + "\n";
+        for (let i = startIdx + 1; i <= endLineIndex; i++) {
+            blockContent += lines[i] + "\n";
+        }
+        
+        return blockContent;
+    }
+
+    /**
+     * Render a line/block using existing renderer
      */
     _renderLine(text) {
         if (this.renderer && typeof this.renderer.renderSync === 'function') {
@@ -118,24 +169,14 @@ class IncrementalMarkdownRenderer {
     }
 
     /**
-     * Render a line inside code block
-     */
-    _renderCodeBlockLine(line) {
-        // Inside code block - just show raw text
-        // The full code block will be rendered properly on finalize
-        return `<div class="code-line-raw">${this._escapeHtml(line)}</div>`;
-    }
-
-    /**
      * Render the live (incomplete) line
      */
     _renderLive(line) {
         if (this.inCodeBlock) {
-            // Inside code block - don't parse, show raw
+            // Inside code block - show raw with cursor
             this.liveEl.innerHTML = `<span class="code-live">${this._escapeHtml(line)}</span><span class="cursor">▋</span>`;
         } else {
-            // Normal line - try to parse
-            // But wrap in paragraph to avoid breaking
+            // Normal line - show parsed with cursor
             if (line.trim()) {
                 const html = this._renderLine(line);
                 this.liveEl.innerHTML = html + '<span class="cursor">▋</span>';
@@ -149,6 +190,8 @@ class IncrementalMarkdownRenderer {
      * Finalize - full authoritative render
      */
     finalize() {
+        console.log('[IncrementalRenderer] Finalizing...');
+        
         // Full clean render using existing renderer
         if (this.renderer && typeof this.renderer.renderSync === 'function') {
             const html = this.renderer.renderSync(this.buffer);
@@ -160,44 +203,103 @@ class IncrementalMarkdownRenderer {
             this.container.innerHTML = this._escapeHtml(this.buffer);
         }
         
-        // Post-process: syntax highlighting, mermaid
-        // Use requestAnimationFrame to ensure DOM is settled
+        // Post-process immediately, then again after RAF
+        this._postProcessAll();
+        
+        // Also post-process after DOM settles
         requestAnimationFrame(() => {
-            this._postProcess();
+            this._postProcessAll();
         });
         
         console.log('[IncrementalRenderer] Finalized');
     }
 
     /**
-     * Post-process: syntax highlighting, mermaid
+     * Post-process a single code block element
      */
-    _postProcess() {
-        // Apply syntax highlighting to ALL code blocks using highlightAuto
-        // Don't rely on language class - always auto-detect
+    _postProcessCodeBlock(element) {
+        if (!element) return;
+        
+        const codeEl = element.querySelector('pre code');
+        if (!codeEl) return;
+        
+        // Check if already highlighted
+        const hasSpans = codeEl.querySelectorAll('span.hljs-keyword, span.hljs-string, span.hljs-comment, span.hljs-number').length > 0;
+        if (hasSpans) {
+            if (!codeEl.classList.contains('hljs')) {
+                codeEl.classList.add('hljs');
+            }
+            return;
+        }
+        
+        // Apply hljs
+        if (typeof hljs !== 'undefined') {
+            try {
+                const result = hljs.highlightAuto(codeEl.textContent);
+                codeEl.innerHTML = result.value;
+                codeEl.classList.add('hljs');
+                if (result.language) {
+                    codeEl.classList.add(`language-${result.language}`);
+                }
+            } catch (e) {
+                console.warn('[IncrementalRenderer] HLJS error:', e);
+            }
+        }
+    }
+
+    /**
+     * Initialize mermaid in an element
+     */
+    _initMermaidInElement(element) {
+        if (!element) return;
+        
+        const mermaidEl = element.querySelector('.mermaid, pre.mermaid');
+        if (!mermaidEl) return;
+        
+        // Remove data-processed to allow re-processing
+        mermaidEl.removeAttribute('data-processed');
+        
+        if (typeof mermaid !== 'undefined' && typeof mermaid.run === 'function') {
+            try {
+                mermaid.run({ 
+                    nodes: [mermaidEl]
+                });
+            } catch (e) {
+                console.error('[IncrementalRenderer] Mermaid error:', e);
+            }
+        } else if (this.renderer && typeof this.renderer.initializeMermaidDiagrams === 'function') {
+            this.renderer.initializeMermaidDiagrams();
+        }
+    }
+
+    /**
+     * Post-process all elements in container
+     */
+    _postProcessAll() {
+        console.log('[IncrementalRenderer] Post-processing all...');
+        
+        // Process all code blocks
         if (typeof hljs !== 'undefined') {
             const codeBlocks = this.container.querySelectorAll('pre code');
-            console.log('[IncrementalRenderer] Found code blocks:', codeBlocks.length);
+            console.log('[IncrementalRenderer] Code blocks found:', codeBlocks.length);
             
             codeBlocks.forEach(block => {
                 try {
-                    // Check if already highlighted by looking for hljs spans
-                    const hasSpans = block.querySelectorAll('span.hljs-keyword, span.hljs-string, span.hljs-comment, span.hljs-number').length > 0;
+                    // Check if already highlighted
+                    const hasSpans = block.querySelectorAll('span.hljs-keyword, span.hljs-string, span.hljs-comment, span.hljs-number, span.hljs-function, span.hljs-variable').length > 0;
                     
                     if (hasSpans) {
-                        // Already has highlighted content, just ensure class is set
                         if (!block.classList.contains('hljs')) {
                             block.classList.add('hljs');
                         }
                         return;
                     }
                     
-                    // Always use highlightAuto - ignore language class
+                    // Apply highlightAuto
                     const result = hljs.highlightAuto(block.textContent);
                     block.innerHTML = result.value;
                     block.classList.add('hljs');
                     
-                    // Optionally add detected language class
                     if (result.language) {
                         block.classList.add(`language-${result.language}`);
                     }
@@ -207,20 +309,37 @@ class IncrementalMarkdownRenderer {
             });
         }
         
-        // Initialize mermaid diagrams
-        if (this.renderer && typeof this.renderer.initializeMermaidDiagrams === 'function') {
-            this.renderer.initializeMermaidDiagrams();
-        } else if (typeof mermaid !== 'undefined' && typeof mermaid.run === 'function') {
-            try {
-                // Remove data-processed to allow re-processing
-                this.container.querySelectorAll('.mermaid').forEach(el => {
-                    el.removeAttribute('data-processed');
-                });
-                mermaid.run({ querySelector: '.mermaid' });
-            } catch (e) {
-                console.error('[IncrementalRenderer] Mermaid error:', e);
+        // Process all mermaid diagrams
+        const mermaidBlocks = this.container.querySelectorAll('.mermaid, pre.mermaid');
+        console.log('[IncrementalRenderer] Mermaid blocks found:', mermaidBlocks.length);
+        
+        if (mermaidBlocks.length > 0) {
+            // Remove data-processed from all
+            mermaidBlocks.forEach(el => {
+                el.removeAttribute('data-processed');
+            });
+            
+            if (typeof mermaid !== 'undefined' && typeof mermaid.run === 'function') {
+                try {
+                    mermaid.run({ querySelector: '.mermaid, pre.mermaid' });
+                } catch (e) {
+                    console.error('[IncrementalRenderer] Mermaid error:', e);
+                }
+            } else if (this.renderer && typeof this.renderer.initializeMermaidDiagrams === 'function') {
+                this.renderer.initializeMermaidDiagrams();
             }
         }
+        
+        // Process tables (wrap in container if needed)
+        const tables = this.container.querySelectorAll('table');
+        tables.forEach(table => {
+            if (!table.parentElement?.classList.contains('table-container')) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'table-container';
+                table.parentNode.insertBefore(wrapper, table);
+                wrapper.appendChild(table);
+            }
+        });
     }
 
     /**
@@ -232,6 +351,9 @@ class IncrementalMarkdownRenderer {
         this.renderedLineCount = 0;
         this.inCodeBlock = false;
         this.codeBlockLang = null;
+        this.codeBlockStartLine = -1;
+        this.lastProcessedCodeBlockEnd = -1;
+        this.lastProcessedMermaidEnd = -1;
         
         this.container.innerHTML = "";
         this.container.appendChild(this.stableEl);
