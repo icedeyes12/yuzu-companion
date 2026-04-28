@@ -14,56 +14,82 @@ const MESSAGES_PER_PAGE = 30;
 // ========================================
 
 let _streamingMessageEl = null;
+let _streamingContentEl = null;
 let _streamingContent = "";
-let _incrementalRenderer = null;
 
+// Called once per SSE text chunk
 function streamToMessage(chunk) {
     const chatContainer = document.getElementById("chatContainer");
     if (!chatContainer) return;
     
-    // Check if incremental renderer is available
-    if (window.IncrementalMarkdownRenderer) {
-        // Use incremental renderer
-        if (!_streamingMessageEl) {
-            _streamingMessageEl = createMessageElement("ai", "", null);
-            chatContainer.appendChild(_streamingMessageEl);
-            
-            const contentEl = _streamingMessageEl.querySelector(".message-content");
-            if (contentEl) {
-                _incrementalRenderer = new window.IncrementalMarkdownRenderer(contentEl);
-                _incrementalRenderer.setRenderer(window.renderer || renderer);
-            }
-            _streamingContent = "";
-        }
-        
-        _incrementalRenderer.append(chunk);
-        _streamingContent += chunk;
-    } else {
-        // Fallback to old method
-        if (!_streamingMessageEl) {
-            _streamingMessageEl = createMessageElement("ai", "", null);
-            chatContainer.appendChild(_streamingMessageEl);
-            _streamingContent = "";
-        }
-        _streamingContent += chunk;
-        const contentEl = _streamingMessageEl.querySelector(".message-content");
-        if (contentEl && typeof renderer !== "undefined") {
-            contentEl.innerHTML = renderer.renderSync(_streamingContent);
-            setTimeout(() => renderer.initializeMermaidDiagrams(), 0);
-        }
+    // First chunk → create the message bubble
+    if (!_streamingMessageEl) {
+        _streamingMessageEl = document.createElement("div");
+        _streamingMessageEl.className = "message ai";
+        _streamingContentEl = document.createElement("div");
+        _streamingContentEl.className = "message-content";
+        _streamingMessageEl.appendChild(_streamingContentEl);
+        chatContainer.appendChild(_streamingMessageEl);
+        _streamingContent = "";
     }
+    
+    // Accumulate
+    _streamingContent += chunk;
+    
+    // Re-render the whole buffer — fast enough for streaming
+    if (typeof renderer !== "undefined") {
+        _streamingContentEl.innerHTML = renderer.renderSync(_streamingContent);
+    } else {
+        _streamingContentEl.textContent = _streamingContent;
+    }
+    
     scrollToBottom();
 }
 
+// Called when SSE "done" event fires
 function finalizeStreaming(iterations, elapsed, toolCalls) {
-    // Finalize incremental renderer
-    if (_incrementalRenderer) {
-        _incrementalRenderer.finalize();
-        _incrementalRenderer = null;
+    if (_streamingContentEl && _streamingContent) {
+        // Final authoritative render
+        if (typeof renderer !== "undefined") {
+            _streamingContentEl.innerHTML = renderer.renderSync(_streamingContent);
+            
+            // Syntax highlight any code blocks
+            if (typeof hljs !== "undefined") {
+                _streamingContentEl
+                    .querySelectorAll("pre code:not(.hljs)")
+                    .forEach(b => hljs.highlightElement(b));
+            }
+            
+            // Kick off mermaid (safe to call even if no diagrams)
+            setTimeout(() => renderer.initializeMermaidDiagrams(), 50);
+        }
+        
+        // Add timestamp footer
+        const footer = document.createElement("div");
+        footer.className = "message-footer";
+        
+        const ts = document.createElement("div");
+        ts.className = "timestamp";
+        ts.textContent = getCurrentTime24h();
+        footer.appendChild(ts);
+        
+        // Copy button
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "copy-message-btn";
+        copyBtn.title = "Copy message";
+        copyBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+        const captured = _streamingContent;
+        copyBtn.onclick = () => copyFullMessage(captured);
+        footer.appendChild(copyBtn);
+        
+        _streamingMessageEl.appendChild(footer);
     }
     
+    // Reset state
     _streamingMessageEl = null;
+    _streamingContentEl = null;
     _streamingContent = "";
+    
     scrollToBottom();
 }
 
