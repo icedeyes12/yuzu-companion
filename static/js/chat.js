@@ -71,16 +71,33 @@ function finalizeStreaming(iterations, elapsed, toolCalls) {
             // ✅ Add message footer
             const footer = document.createElement("div");
             footer.className = "message-footer";
-            footer.innerHTML = `
-                <span class="timestamp">${getCurrentTime24h()}</span>
-                <button class="copy-message-btn" onclick="copyFullMessage(this)" title="Copy message">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                    </svg>
-                </button>
+            
+            // Timestamp
+            const timeDiv = document.createElement("div");
+            timeDiv.className = "timestamp";
+            timeDiv.textContent = getCurrentTime24h();
+            footer.appendChild(timeDiv);
+            
+            // Copy button with closure (not inline onclick)
+            const copyBtn = document.createElement("button");
+            copyBtn.className = "copy-message-btn";
+            copyBtn.title = "Copy full message";
+            copyBtn.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
             `;
+            const messageContent = _streamingContent;
+            copyBtn.onclick = () => copyFullMessage(messageContent);
+            footer.appendChild(copyBtn);
+            
             contentEl.appendChild(footer);
+            
+            // ✅ Initialize mermaid diagrams
+            if (typeof renderer !== "undefined" && typeof renderer.initializeMermaidDiagrams === "function") {
+                setTimeout(() => renderer.initializeMermaidDiagrams(), 0);
+            }
         }
     }
     
