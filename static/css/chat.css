@@ -1393,7 +1393,7 @@ html, body {
 
 .message-content hr {
   border: none;
-  border-top: 2px solid var(--accent-pink, #58a6ff);
+  border-top: 2px solid var(--accent-color);
   margin: 1.5rem 0;
   opacity: 0.6;
 }
