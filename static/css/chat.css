@@ -254,15 +254,6 @@ html, body {
   margin: 0.3rem 0;
 }
 
-.message-content blockquote {
-  border-left: 4px solid var(--accent-primary);
-  margin: 0.8rem 0;
-  padding: 0.5rem 1rem;
-  background: var(--bg-secondary);
-  border-radius: 4px;
-  font-style: italic;
-}
-
 /* Callout blocks */
 .message-content .callout {
   border-left: 4px solid;
