@@ -213,9 +213,9 @@ html, body {
 }
 
 .copy-message-btn:hover {
-  background: var(--accent-pink);
+  background: var(--accent-primary);
   color: white;
-  border-color: var(--accent-pink);
+  border-color: var(--accent-primary);
 }
 
 /* ==================== MARKDOWN CONTENT ==================== */
@@ -255,7 +255,7 @@ html, body {
 }
 
 .message-content blockquote {
-  border-left: 4px solid var(--accent-pink);
+  border-left: 4px solid var(--accent-primary);
   margin: 0.8rem 0;
   padding: 0.5rem 1rem;
   background: var(--bg-secondary);
@@ -465,7 +465,7 @@ html, body {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: var(--accent-pink);
+  background: var(--accent-primary);
   color: white;
   border: none;
   cursor: pointer;
@@ -511,7 +511,7 @@ html, body {
 .typing-dots span {
   width: 8px;
   height: 8px;
-  background: var(--accent-pink);
+  background: var(--accent-primary);
   border-radius: 50%;
   animation: typing 1.4s infinite;
 }
@@ -543,7 +543,7 @@ html, body {
 .typing-indicator span {
   width: 8px;
   height: 8px;
-  background: var(--accent-pink);
+  background: var(--accent-primary);
   border-radius: 50%;
   animation: typing 1.4s infinite;
 }
@@ -598,13 +598,13 @@ html, body {
 
 #messageInput:focus {
   outline: none;
-  border-color: var(--accent-pink);
+  border-color: var(--accent-primary);
 }
 
 #sendButton {
   min-width: 70px;
   height: 42px;
-  background: var(--accent-pink);
+  background: var(--accent-primary);
   color: white;
   border: none;
   border-radius: 20px;
@@ -644,9 +644,9 @@ html, body {
 }
 
 .multimodal-toggle-btn:hover {
-  background: var(--accent-pink);
+  background: var(--accent-primary);
   color: white;
-  border-color: var(--accent-pink);
+  border-color: var(--accent-primary);
 }
 
 .mode-indicator {
@@ -655,7 +655,7 @@ html, body {
   right: -2px;
   width: 18px;
   height: 18px;
-  background: var(--accent-pink);
+  background: var(--accent-primary);
   color: white;
   border-radius: 50%;
   font-size: 0.7rem;
@@ -715,7 +715,7 @@ html, body {
 }
 
 .multimodal-option.active {
-  background: var(--accent-pink);
+  background: var(--accent-primary);
   color: white;
 }
 
@@ -763,7 +763,7 @@ html, body {
   justify-content: center;
   gap: 0.5rem;
   padding: 0.7rem;
-  background: var(--accent-pink);
+  background: var(--accent-primary);
   color: white;
   border: none;
   border-radius: 8px;
@@ -862,9 +862,9 @@ html, body {
 }
 
 .image-action-btn:hover {
-  background: var(--accent-pink);
+  background: var(--accent-primary);
   color: white;
-  border-color: var(--accent-pink);
+  border-color: var(--accent-primary);
 }
 
 .image-caption {
@@ -977,7 +977,7 @@ html, body {
     align-items: center;
     gap: 0.3rem;
     padding: 0.3rem 0.7rem;
-    background: var(--accent-pink);
+    background: var(--accent-primary);
     color: white;
     border: none;
     border-radius: 6px;
@@ -1291,17 +1291,17 @@ html, body {
 
 /* Callout variants */
 .message-content .callout-note {
-  border-color: var(--accent-lavender);
+  border-color: var(--accent-secondary);
   background: rgba(147, 165, 255, 0.1);
 }
 
 .message-content .callout-warning {
-  border-color: var(--accent-pink);
+  border-color: var(--accent-primary);
   background: rgba(255, 133, 161, 0.1);
 }
 
 .message-content .callout-tip {
-  border-color: var(--accent-mint);
+  border-color: var(--accent-tertiary);
   background: rgba(184, 225, 221, 0.1);
 }
 
@@ -1315,7 +1315,7 @@ html, body {
    ========================= */
 
 .message-content a {
-  color: var(--accent-lavender);
+  color: var(--accent-secondary);
   text-decoration: underline;
   text-decoration-color: rgba(168, 200, 255, 0.4);
   text-underline-offset: 2px;
@@ -1323,8 +1323,8 @@ html, body {
 }
 
 .message-content a:hover {
-  color: var(--accent-pink);
-  text-decoration-color: var(--accent-pink);
+  color: var(--accent-primary);
+  text-decoration-color: var(--accent-primary);
 }
 
 /* =========================

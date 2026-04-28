@@ -1054,7 +1054,7 @@ function showNotification(message, type = 'info') {
         position: fixed;
         top: 100px;
         right: 20px;
-        background: ${type === 'success' ? 'var(--accent-mint)' : type === 'error' ? 'var(--accent-pink)' : 'var(--accent-lavender)'};
+        background: ${type === 'success' ? 'var(--accent-tertiary)' : type === 'error' ? 'var(--accent-primary)' : 'var(--accent-secondary)'};
         color: var(--button-text);
         padding: 1rem;
         border-radius: 8px;

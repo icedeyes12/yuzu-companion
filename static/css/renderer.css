@@ -17,7 +17,7 @@
   top: 0;
   bottom: 0;
   width: 2px;
-  background: var(--accent-lavender, #a8c8ff);
+  background: var(--accent-secondary, #a8c8ff);
   opacity: 0.5;
   border-radius: 1px;
 }
@@ -65,7 +65,7 @@ blockquote blockquote blockquote {
   overflow-x: auto;
   margin: 1rem 0;
   border-radius: 8px;
-  border: 1px solid var(--border-lavender, rgba(168, 200, 255, 0.4));
+  border: 1px solid var(--border-secondary, rgba(168, 200, 255, 0.4));
 }
 
 .table-container table {
@@ -145,7 +145,7 @@ blockquote blockquote blockquote {
 }
 
 .brain-box.expanded {
-  border-color: var(--accent-lavender, #a8c8ff);
+  border-color: var(--accent-secondary, #a8c8ff);
   box-shadow: 0 0 12px rgba(168, 200, 255, 0.2);
 }
 
@@ -170,7 +170,7 @@ blockquote blockquote blockquote {
   gap: 0.35rem;
   font-size: 0.85rem;
   font-weight: 500;
-  color: var(--accent-lavender, #a8c8ff);
+  color: var(--accent-secondary, #a8c8ff);
 }
 
 .brain-box-icon svg {
@@ -229,7 +229,7 @@ blockquote blockquote blockquote {
   padding: 0.15rem 0.4rem;
   background: rgba(168, 200, 255, 0.15);
   border-radius: 3px;
-  color: var(--accent-lavender, #a8c8ff);
+  color: var(--accent-secondary, #a8c8ff);
   font-family: monospace;
 }
 
@@ -477,7 +477,7 @@ blockquote blockquote blockquote {
   height: 8px;
   margin-top: 3px;
   border-radius: 50%;
-  background: var(--accent-lavender, #a8c8ff);
+  background: var(--accent-secondary, #a8c8ff);
   flex-shrink: 0;
 }
 
@@ -486,7 +486,7 @@ blockquote blockquote blockquote {
 }
 
 .execution-timeline-item.thought .execution-timeline-bullet {
-  background: var(--accent-mint, #b8e1dd);
+  background: var(--accent-tertiary, #b8e1dd);
 }
 
 .execution-timeline-item.error .execution-timeline-bullet {
@@ -528,13 +528,13 @@ blockquote blockquote blockquote {
 
 .agentic-history-toggle:hover {
   background: rgba(168, 200, 255, 0.1);
-  border-color: var(--accent-lavender, #a8c8ff);
+  border-color: var(--accent-secondary, #a8c8ff);
 }
 
 .agentic-history-toggle svg {
   width: 20px;
   height: 20px;
-  color: var(--accent-lavender, #a8c8ff);
+  color: var(--accent-secondary, #a8c8ff);
 }
 
 .agentic-history-toggle.active {
@@ -597,7 +597,7 @@ blockquote blockquote blockquote {
 
 .thinking-block details {
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(168, 85, 247, 0.08));
-    border-left: 3px solid var(--accent-lavender, #a78bfa);
+    border-left: 3px solid var(--accent-secondary, #a78bfa);
     border-radius: 8px;
 }
 

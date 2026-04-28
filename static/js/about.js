@@ -170,7 +170,7 @@ function showSecretMessage() {
         left: 50%;
         transform: translate(-50%, -50%);
         background: var(--card-bg);
-        border: 2px solid var(--accent-pink);
+        border: 2px solid var(--accent-primary);
         border-radius: 15px;
         padding: 2rem;
         text-align: center;

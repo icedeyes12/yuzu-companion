@@ -1,4 +1,23 @@
 /* FILE: static/css/theme.css */
+/* 
+ * ========================================
+ * ACCENT COLOR NAMING CONVENTION
+ * ========================================
+ * 
+ * --accent-primary   → Main action color (buttons, links, focus)
+ * --accent-secondary → Borders, headers, subtle accents
+ * --accent-tertiary  → Code blocks, tertiary elements
+ * --accent-color     → Alias for accent-primary (semantic)
+ * 
+ * --border-primary   → Primary border color
+ * --border-secondary → Secondary border color
+ * 
+ * Each theme defines its own palette, so the actual colors
+ * vary by theme. The names indicate role, not specific hue.
+ * ========================================
+ */
+
+
 /* DESCRIPTION: Theme system with multiple color schemes
  * 
  * Default theme: suisei (blue-gray with white accents)
@@ -46,14 +65,14 @@
   --text-secondary: rgba(240, 246, 252, 0.8);
   
   /* Accent Colors - Cyan/Blue */
-  --accent-pink: #58a6ff;
-  --accent-mint: #39d353;
-  --accent-lavender: #388bfd;
+  --accent-primary: #58a6ff;
+  --accent-tertiary: #39d353;
+  --accent-secondary: #388bfd;
   --accent-color: #58a6ff;
   
   /* Border Colors */
-  --border-lavender: rgba(56, 139, 253, 0.4);
-  --border-pink: rgba(31, 111, 235, 0.6);
+  --border-secondary: rgba(56, 139, 253, 0.4);
+  --border-primary: rgba(31, 111, 235, 0.6);
   --border-ai: rgba(56, 139, 253, 0.3);
   --border-user: rgba(31, 111, 235, 0.6);
   
@@ -108,14 +127,14 @@
   --text-secondary: rgba(192, 202, 245, 0.8);
   
   /* Accent Colors - Neon palette */
-  --accent-pink: #ff9e64;
-  --accent-mint: #9ece6a;
-  --accent-lavender: #bb9af7;
+  --accent-primary: #ff9e64;
+  --accent-tertiary: #9ece6a;
+  --accent-secondary: #bb9af7;
   --accent-color: #7aa2f7;
   
   /* Border Colors */
-  --border-lavender: rgba(187, 154, 247, 0.4);
-  --border-pink: rgba(255, 158, 100, 0.4);
+  --border-secondary: rgba(187, 154, 247, 0.4);
+  --border-primary: rgba(255, 158, 100, 0.4);
   --border-ai: rgba(122, 162, 247, 0.3);
   --border-user: rgba(122, 162, 247, 0.5);
   
@@ -168,14 +187,14 @@
   --text-secondary: rgba(240, 244, 255, 0.7);
   
   /* Accent Colors - Pink & Soft Blue */
-  --accent-pink: #ffb8c6;
-  --accent-mint: #b8e1dd;
-  --accent-lavender: #a8c8ff;
+  --accent-primary: #ffb8c6;
+  --accent-tertiary: #b8e1dd;
+  --accent-secondary: #a8c8ff;
   --accent-color: #a8c8ff;
   
   /* Border Colors */
-  --border-lavender: rgba(168, 200, 255, 0.4);
-  --border-pink: rgba(212, 106, 126, 0.6);
+  --border-secondary: rgba(168, 200, 255, 0.4);
+  --border-primary: rgba(212, 106, 126, 0.6);
   --border-ai: rgba(168, 200, 255, 0.3);
   --border-user: rgba(212, 106, 126, 0.6);
   
@@ -219,14 +238,14 @@
   --text-secondary: rgba(42, 36, 56, 0.8);
   
   /* Accent Colors - Soft Blue & Pink */
-  --accent-pink: #ff85a1;
-  --accent-mint: #8ac6b8;
-  --accent-lavender: #93a5ff;
+  --accent-primary: #ff85a1;
+  --accent-tertiary: #8ac6b8;
+  --accent-secondary: #93a5ff;
   --accent-color: #93a5ff;
   
   /* Border Colors */
-  --border-lavender: rgba(147, 165, 255, 0.3);
-  --border-pink: rgba(255, 133, 161, 0.4);
+  --border-secondary: rgba(147, 165, 255, 0.3);
+  --border-primary: rgba(255, 133, 161, 0.4);
   --border-ai: rgba(147, 165, 255, 0.2);
   --border-user: rgba(255, 133, 161, 0.4);
   
@@ -270,14 +289,14 @@
   --text-secondary: rgba(76, 29, 149, 0.8);
   
   /* Accent Colors - Purple & Lavender */
-  --accent-pink: #c084fc;
-  --accent-mint: #a5b4fc;
-  --accent-lavender: #a78bfa;
+  --accent-primary: #c084fc;
+  --accent-tertiary: #a5b4fc;
+  --accent-secondary: #a78bfa;
   --accent-color: #a78bfa;
   
   /* Border Colors */
-  --border-lavender: rgba(167, 139, 250, 0.4);
-  --border-pink: rgba(192, 132, 252, 0.4);
+  --border-secondary: rgba(167, 139, 250, 0.4);
+  --border-primary: rgba(192, 132, 252, 0.4);
   --border-ai: rgba(167, 139, 250, 0.3);
   --border-user: rgba(192, 132, 252, 0.4);
   
@@ -321,14 +340,14 @@
   --text-secondary: rgba(6, 95, 70, 0.8);
   
   /* Accent Colors - Teal & Mint */
-  --accent-pink: #5eead4;
-  --accent-mint: #2dd4bf;
-  --accent-lavender: #34d399;
+  --accent-primary: #5eead4;
+  --accent-tertiary: #2dd4bf;
+  --accent-secondary: #34d399;
   --accent-color: #34d399;
   
   /* Border Colors */
-  --border-lavender: rgba(52, 211, 153, 0.4);
-  --border-pink: rgba(94, 234, 212, 0.4);
+  --border-secondary: rgba(52, 211, 153, 0.4);
+  --border-primary: rgba(94, 234, 212, 0.4);
   --border-ai: rgba(52, 211, 153, 0.3);
   --border-user: rgba(94, 234, 212, 0.4);
   
@@ -372,14 +391,14 @@
   --text-secondary: rgba(124, 45, 18, 0.8);
   
   /* Accent Colors - Orange & Peach */
-  --accent-pink: #fb923c;
-  --accent-mint: #fbbf24;
-  --accent-lavender: #f97316;
+  --accent-primary: #fb923c;
+  --accent-tertiary: #fbbf24;
+  --accent-secondary: #f97316;
   --accent-color: #f97316;
   
   /* Border Colors */
-  --border-lavender: rgba(249, 115, 22, 0.4);
-  --border-pink: rgba(251, 146, 60, 0.4);
+  --border-secondary: rgba(249, 115, 22, 0.4);
+  --border-primary: rgba(251, 146, 60, 0.4);
   --border-ai: rgba(249, 115, 22, 0.3);
   --border-user: rgba(251, 146, 60, 0.4);
   
@@ -423,14 +442,14 @@
   --text-secondary: rgba(245, 243, 255, 0.7);
   
   /* Accent Colors - Soft Purple */
-  --accent-pink: #a78bfa;
-  --accent-mint: #8b5cf6;
-  --accent-lavender: #c4b5fd;
+  --accent-primary: #a78bfa;
+  --accent-tertiary: #8b5cf6;
+  --accent-secondary: #c4b5fd;
   --accent-color: #c4b5fd;
   
   /* Border Colors */
-  --border-lavender: rgba(196, 181, 253, 0.4);
-  --border-pink: rgba(167, 139, 250, 0.4);
+  --border-secondary: rgba(196, 181, 253, 0.4);
+  --border-primary: rgba(167, 139, 250, 0.4);
   --border-ai: rgba(196, 181, 253, 0.3);
   --border-user: rgba(167, 139, 250, 0.4);
   
@@ -474,14 +493,14 @@
   --text-secondary: rgba(92, 61, 13, 0.8);
   
   /* Accent Colors - Vanilla & Orange */
-  --accent-pink: #ffc285;
-  --accent-mint: #ffd8a8;
-  --accent-lavender: #ffb366;
+  --accent-primary: #ffc285;
+  --accent-tertiary: #ffd8a8;
+  --accent-secondary: #ffb366;
   --accent-color: #ffb366;
   
   /* Border Colors */
-  --border-lavender: rgba(255, 179, 102, 0.4);
-  --border-pink: rgba(255, 194, 133, 0.4);
+  --border-secondary: rgba(255, 179, 102, 0.4);
+  --border-primary: rgba(255, 194, 133, 0.4);
   --border-ai: rgba(255, 179, 102, 0.3);
   --border-user: rgba(255, 194, 133, 0.4);
   
