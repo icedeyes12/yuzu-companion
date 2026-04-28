@@ -661,17 +661,17 @@ class MultimodalManager {
         const input = document.getElementById('messageInput');
         if (input) {
             input.value = '';
-            // Reset height properly - set to 42px (min-height from CSS)
+            // Reset height: first set to auto to recalculate, then set to 42px
+            input.style.height = 'auto';
             input.style.height = '42px';
-            input.style.minHeight = '42px';
-            // Force a reflow
+            // Force a reflow to ensure the change takes effect
             void input.offsetHeight;
             // Update positions
-            if (typeof updateScrollButtonPosition === 'function') {
-                updateScrollButtonPosition();
+            if (typeof window.updateScrollButtonPosition === 'function') {
+                window.updateScrollButtonPosition();
             }
-            if (typeof updateChatContainerPadding === 'function') {
-                updateChatContainerPadding();
+            if (typeof window.updateChatContainerPadding === 'function') {
+                window.updateChatContainerPadding();
             }
         }
     }
@@ -1377,6 +1377,9 @@ function updateThinkModeUI() {
 // TYPING INDICATOR
 // ========================================
 
+// Track typing indicator state
+let _typingIndicatorVisible = false;
+
 function showTypingIndicator() {
   const chatContainer = document.getElementById('chatContainer');
   if (!chatContainer) return;
@@ -1397,9 +1400,12 @@ function showTypingIndicator() {
   `;
   chatContainer.appendChild(typingMsg);
   scrollToBottom();
+  _typingIndicatorVisible = true;
+  console.log('[Typing] Shown');
 }
 
 function hideTypingIndicator() {
+  if (!_typingIndicatorVisible) return; // Already hidden
   const chatContainer = document.getElementById('chatContainer');
   if (!chatContainer) return;
   
@@ -1407,6 +1413,8 @@ function hideTypingIndicator() {
   if (typingMsg) {
     typingMsg.remove();
   }
+  _typingIndicatorVisible = false;
+  console.log('[Typing] Hidden');
 }
 
 // ========================================
