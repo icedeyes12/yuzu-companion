@@ -151,15 +151,20 @@ class IncrementalMarkdownRenderer {
     finalize() {
         // Full clean render using existing renderer
         if (this.renderer && typeof this.renderer.renderSync === 'function') {
-            this.container.innerHTML = this.renderer.renderSync(this.buffer);
+            const html = this.renderer.renderSync(this.buffer);
+            this.container.innerHTML = typeof html === 'string' ? html : String(html || '');
         } else if (typeof marked !== 'undefined') {
-            this.container.innerHTML = marked.parse(this.buffer);
+            const html = marked.parse(this.buffer);
+            this.container.innerHTML = typeof html === 'string' ? html : String(html || '');
         } else {
             this.container.innerHTML = this._escapeHtml(this.buffer);
         }
         
         // Post-process: syntax highlighting, mermaid
-        this._postProcess();
+        // Use requestAnimationFrame to ensure DOM is settled
+        requestAnimationFrame(() => {
+            this._postProcess();
+        });
         
         console.log('[IncrementalRenderer] Finalized');
     }
@@ -168,29 +173,60 @@ class IncrementalMarkdownRenderer {
      * Post-process: syntax highlighting, mermaid
      */
     _postProcess() {
-        // Initialize mermaid if available
+        // Apply syntax highlighting to ALL code blocks
+        // This ensures highlighting even if renderer's isHighlightReady was false
+        if (typeof hljs !== 'undefined') {
+            const codeBlocks = this.container.querySelectorAll('pre code');
+            console.log('[IncrementalRenderer] Found code blocks:', codeBlocks.length);
+            
+            codeBlocks.forEach(block => {
+                try {
+                    // Check if already highlighted by looking at content
+                    const hasHljsClass = block.classList.contains('hljs');
+                    const hasSpans = block.querySelectorAll('span.hljs-keyword, span.hljs-string, span.hljs-comment').length > 0;
+                    
+                    if (hasSpans) {
+                        // Already has highlighted content, just ensure class is set
+                        if (!hasHljsClass) {
+                            block.classList.add('hljs');
+                        }
+                        return;
+                    }
+                    
+                    // Get language from class
+                    const langMatch = block.className.match(/language-(\w+)/);
+                    const lang = langMatch ? langMatch[1] : null;
+                    
+                    // Highlight
+                    if (lang && hljs.getLanguage(lang)) {
+                        hljs.highlightElement(block);
+                    } else {
+                        // Auto-detect
+                        const result = hljs.highlightAuto(block.textContent);
+                        block.innerHTML = result.value;
+                        block.classList.add('hljs', `language-${result.language || 'text'}`);
+                    }
+                    
+                    block.classList.add('hljs');
+                } catch (e) {
+                    console.warn('[IncrementalRenderer] HLJS error:', e);
+                }
+            });
+        }
+        
+        // Initialize mermaid diagrams
         if (this.renderer && typeof this.renderer.initializeMermaidDiagrams === 'function') {
             this.renderer.initializeMermaidDiagrams();
         } else if (typeof mermaid !== 'undefined' && typeof mermaid.run === 'function') {
             try {
+                // Remove data-processed to allow re-processing
+                this.container.querySelectorAll('.mermaid').forEach(el => {
+                    el.removeAttribute('data-processed');
+                });
                 mermaid.run({ querySelector: '.mermaid' });
             } catch (e) {
                 console.error('[IncrementalRenderer] Mermaid error:', e);
             }
-        }
-        
-        // Apply syntax highlighting if needed
-        if (typeof hljs !== 'undefined') {
-            const codeBlocks = this.container.querySelectorAll('pre code:not(.hljs)');
-            codeBlocks.forEach(block => {
-                if (block.className.includes('language-')) {
-                    try {
-                        hljs.highlightElement(block);
-                    } catch (e) {
-                        // Ignore
-                    }
-                }
-            });
         }
     }
 
