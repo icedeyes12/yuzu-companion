@@ -19,6 +19,7 @@ backup/
 database_backups/
 debug_logs/
 *.log
+*.decay_state.json
 
 # Runtime generated assets
 app/static/
@@ -50,19 +51,5 @@ copilot/
 # Migration checkpoints
 *_checkpoint.json
 
-
-# Agent / session artifacts
-AGENTS.md
-SOUL.md
-TODO.md
-TODO_LIST.md
-CLAUDE.md
-MEMORY.md
-*.session
-*.agent
-.conversation/
-*.conversation
-**/indexes/
-**/.decay_state.json
 
 *.sql
