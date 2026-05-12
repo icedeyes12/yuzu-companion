@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import re
+from enum import Enum, auto
 from typing import Any, Iterator
 
 from app.logging_config import get_logger
@@ -41,6 +42,9 @@ _COMMAND_SNIFF_LIMIT = 512
 # Maximum length for regex input to prevent ReDoS
 _REGEX_INPUT_LIMIT = 10000
 
+# Maximum chars to buffer for <tools> block detection
+_TOOLS_BLOCK_LIMIT = 5000
+
 
 def _safe_regex_search(pattern: re.Pattern, text: str) -> re.Match | None:
     """Safely search with input length limit to prevent ReDoS."""
@@ -49,104 +53,228 @@ def _safe_regex_search(pattern: re.Pattern, text: str) -> re.Match | None:
     return pattern.search(text)
 
 
-class StreamFilter:
-    """Stateful filter that holds back chunks until a /command on the first
-    line can be confirmed or ruled out.
+# ------------------------------------------------
+# v3.1.0: StreamState for XML <tools> detection
+# ------------------------------------------------
 
+class StreamState(Enum):
+    """State machine states for StreamFilter v3.1.0."""
+    NORMAL = auto()           # Yielding text immediately
+    COMMAND_SNIFFING = auto() # Buffering to detect leading /command
+    TOOLS_DETECTED = auto()   # Buffering <tools> block
+    TOOLS_COMPLETE = auto()   # <tools> block parsed, ready to emit
+
+
+# ------------------------------------------------
+# v3.1.0: XML Parsing Patterns
+# ------------------------------------------------
+
+# Pattern to match complete <tools>...</tools> block
+_TOOLS_BLOCK_PATTERN = re.compile(
+    r'<tools>\s*'
+    r'<name>([^<]+)</name>\s*'
+    r'(?:<args>(.*?)</args>\s*)?'
+    r'</tools>',
+    re.DOTALL
+)
+
+# Pattern to extract individual args from <args> block
+_ARG_PATTERN = re.compile(r'<(\w+)>([^<]*)</\1>')
+
+
+def _parse_tools_block(block: str) -> dict[str, Any] | None:
+    """Parse <tools> block into {name, args} dict.
+    
+    Args:
+        block: The <tools>...</tools> XML block
+        
+    Returns:
+        {"name": str, "args": dict} or None if parsing fails
+    """
+    match = _TOOLS_BLOCK_PATTERN.search(block)
+    if not match:
+        return None
+    
+    tool_name = match.group(1).strip()
+    args_str = match.group(2)
+    
+    args = {}
+    if args_str:
+        # Parse individual <key>value</key> args
+        for arg_match in _ARG_PATTERN.finditer(args_str):
+            key = arg_match.group(1)
+            value = arg_match.group(2)
+            args[key] = value
+    
+    return {"name": tool_name, "args": args}
+
+
+class StreamFilter:
+    """Stateful filter for v3.1.0 universal inline command flow.
+    
+    Two detection modes:
+    1. Legacy: Leading /command on first line (backward compat)
+    2. v3.1.0: <tools> XML block anywhere in stream
+    
+    Emits placeholder events when <tools> block is detected.
+    
+    Behavior:
+    - Normal text yields immediately (except last 6 chars for <tools> detection)
+    - When <tools> detected: buffer until </tools>, emit placeholder
+    - After tools complete: yield remaining text immediately
+    
     Usage:
         sf = StreamFilter()
         for chunk in upstream:
-            for safe in sf.feed(chunk):
-                yield safe
-        for safe in sf.flush():
-            yield safe
-
-        # After streaming completes:
-        if sf.command:
-            ...  # don't render command line; suppressed via emit
-        full_text = sf.full_text
-
-    Behavior:
-      - First non-whitespace char is '/': buffer until newline (or limit).
-        On newline, parse the command, suppress that line, and stream the
-        rest live.
-      - First non-whitespace char is not '/': flush buffer immediately and
-        pass through every subsequent chunk untouched.
+            for output in sf.feed(chunk):
+                if isinstance(output, dict):
+                    # Placeholder event: {"type": "tool_executing", ...}
+                    yield output
+                else:
+                    # Text chunk
+                    yield output
+        
+        for output in sf.flush():
+            yield output
+        
+        # After streaming:
+        if sf.tool_call:
+            name = sf.tool_call["name"]
+            args = sf.tool_call["args"]
     """
-
-    __slots__ = ("_buffer", "_decided", "_is_command", "command", "full_text")
-
+    
+    __slots__ = (
+        "_buffer",
+        "_state",
+        "_command_decided",
+        "_is_command",
+        "command",      # Legacy: /command detection result
+        "tool_call",    # v3.1.0: <tools> block parsed result
+        "full_text",
+        "_yielded_placeholder",
+    )
+    
     def __init__(self) -> None:
         self._buffer = ""
-        self._decided = False
+        self._state = StreamState.NORMAL
+        self._command_decided = False
         self._is_command = False
         self.command: dict[str, str] | None = None
+        self.tool_call: dict[str, Any] | None = None
         self.full_text = ""
-
-    def feed(self, chunk: str) -> Iterator[str]:  # type: ignore[name-defined]
+        self._yielded_placeholder = False
+    
+    def feed(self, chunk: str) -> Iterator[str | dict[str, Any]]:  # type: ignore[name-defined]
+        """Process a chunk and yield text or placeholder events.
+        
+        Yields:
+            str: Text to display (narrative before/after tools)
+            dict: Placeholder event {"type": "tool_executing", "name": ..., "args": ...}
+        """
         if not chunk:
             return
+        
         self.full_text += chunk
-
-        if self._decided and not self._is_command:
-            yield chunk
-            return
-
-        if self._decided and self._is_command:
-            # Command was already detected in a previous chunk.
-            # Any subsequent text is narration — yield it live.
-            yield chunk
-            return
-
-        self._buffer += chunk
-
-        if not self._decided:
-            stripped = self._buffer.lstrip()
-            if stripped and not stripped.startswith("/"):
-                # Definitely not a command.
-                self._decided = True
-                self._is_command = False
-                yield self._buffer
-                self._buffer = ""
-                return
-            if len(self._buffer) >= _COMMAND_SNIFF_LIMIT and "\n" not in self._buffer:
-                # Ran out of patience: treat as plain text.
-                self._decided = True
-                self._is_command = False
-                yield self._buffer
-                self._buffer = ""
-                return
-            if not stripped:
-                # Only whitespace so far; keep buffering.
-                return
-            # Starts with '/': wait for the newline (handled below).
-
-        if "\n" in self._buffer and not self._decided:
-            self._decided = True
-            self._is_command = True
-            first_line, _, rest = self._buffer.partition("\n")
-            self.command = detect_command(first_line)
+        
+        # Process character by character
+        for char in chunk:
+            self._buffer += char
+            
+            if self._state == StreamState.NORMAL:
+                # Check for <tools> start
+                if self._buffer.endswith("<tools>"):
+                    self._state = StreamState.TOOLS_DETECTED
+                    
+                    # Yield text before <tools>
+                    text_before = self._buffer[:-7]
+                    if text_before:
+                        yield text_before
+                    
+                    # Check for legacy /command in text before tools
+                    if not self._command_decided and text_before.strip():
+                        lines = text_before.split("\n")
+                        if lines and lines[0].strip().startswith("/"):
+                            self.command = detect_command(lines[0])
+                            if self.command:
+                                self._is_command = True
+                        self._command_decided = True
+                    
+                    self._buffer = "<tools>"
+                
+                # Legacy /command backward compat: buffer if starts with /
+                elif not self._command_decided and self._buffer.strip().startswith("/"):
+                    # Could be a legacy command - buffer until newline
+                    if "\n" in self._buffer:
+                        # First line complete - check if command
+                        first_line = self._buffer.split("\n")[0]
+                        self.command = detect_command(first_line)
+                        if self.command:
+                            self._is_command = True
+                            self._command_decided = True
+                            # Clear buffer (command line consumed)
+                            idx = self._buffer.find("\n") + 1
+                            self._buffer = self._buffer[idx:]
+                        else:
+                            # Not a valid command - yield buffer
+                            self._command_decided = True
+                            yield self._buffer
+                            self._buffer = ""
+                
+                # Yield normal text, but keep last 6 chars for "<tools>" detection
+                elif len(self._buffer) > 6 and not self._buffer.endswith("<"):
+                    # Safe to yield everything except last 6 chars
+                    safe_len = len(self._buffer) - 6
+                    yield self._buffer[:safe_len]
+                    self._buffer = self._buffer[safe_len:]
+            
+            elif self._state == StreamState.TOOLS_DETECTED:
+                # Check for </tools> end
+                if self._buffer.endswith("</tools>"):
+                    self._state = StreamState.TOOLS_COMPLETE
+                    
+                    # Parse the tools block
+                    self.tool_call = _parse_tools_block(self._buffer)
+                    
+                    if self.tool_call and not self._yielded_placeholder:
+                        yield {
+                            "type": "tool_executing",
+                            "name": self.tool_call["name"],
+                            "args": self.tool_call["args"],
+                        }
+                        self._yielded_placeholder = True
+                    
+                    self._buffer = ""
+            
+            elif self._state == StreamState.TOOLS_COMPLETE:
+                # Yield text after tools block immediately
+                yield char
+    
+    def flush(self) -> Iterator[str | dict[str, Any]]:  # type: ignore[name-defined]
+        """Drain any held-back text. Call once after upstream completes.
+        
+        Handles incomplete <tools> block gracefully.
+        """
+        if self._buffer:
+            if self._state == StreamState.TOOLS_DETECTED:
+                # Incomplete tools block - yield as text
+                log.warning("Incomplete <tools> block detected, yielding as text")
+            
+            # Check for legacy /command in remaining buffer
+            if not self._command_decided:
+                # Check if FULL TEXT starts with / (legacy command)
+                # We use full_text because buffer may be partial from chunked yielding
+                stripped = self.full_text.strip()
+                if stripped.startswith("/"):
+                    # It's a command - detect and don't yield
+                    self.command = detect_command(self.full_text)
+                    if self.command:
+                        self._is_command = True
+                        self._command_decided = True
+                        self._buffer = ""
+                        return  # Don't yield the command
+            
+            yield self._buffer
             self._buffer = ""
-            # Suppress the command line; the rest is rarely produced by the
-            # model when a /command is the first line, but pass it through
-            # for correctness.
-            if rest:
-                yield rest
-
-    def flush(self) -> Iterator[str]:  # type: ignore[name-defined]
-        """Drain any held-back text. Call once after the upstream completes."""
-        if not self._decided:
-            # Stream ended before we could decide. If the buffer starts with
-            # a slash and never produced a newline, treat it as a command on
-            # a single line.
-            stripped = self._buffer.lstrip()
-            if stripped.startswith("/"):
-                self._is_command = True
-                self.command = detect_command(self._buffer)
-            else:
-                yield self._buffer
-            self._buffer = ""
-            self._decided = True
 
 
 def detect_command(response_text: str | None) -> dict[str, str] | None:

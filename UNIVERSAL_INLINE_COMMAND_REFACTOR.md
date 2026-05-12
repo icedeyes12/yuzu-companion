@@ -1,9 +1,9 @@
 # Roadmap: Universal Inline Command + 2-Pass Synthesis (v3.1.0)
 
-> **Status:** 📋 PLANNING — Ready for implementation  
-> **Version:** 3.1.0  
-> **Last Updated:** 2026-05-12  
-> **Branch:** `refactor/universal-inline-command` (to be created from `dev`)
+> **Status:** 📋 PLANNING — Ready for implementation
+> \*\***Version:** 3.1.0
+> \*\***Last Updated:** 2026-05-12
+> \*\***Branch:** `refactor/universal-inline-command` (to be created from `dev`)
 
 ---
 
@@ -11,14 +11,14 @@
 
 Refactor tool execution from **dual-path** (native tool calls + inline `/command`) to **single universal inline path** with proper UX flow:
 
-```
+```markdown
 User Message → LLM First Pass → Placeholder → Tool Execution → Result → Synthesis
 ```
 
 ### Goals
 
 | Goal | Current | Target |
-|------|---------|--------|
+| --- | --- | --- |
 | Tool invocation | Dual: native API calls + `/command` | Single: inline `/command` only |
 | Tool result storage | Per-tool roles (`image_tools`, etc.) | Single `tools` role |
 | Placeholder during execution | ❌ None | ✅ Immediate placeholder |
@@ -38,20 +38,20 @@ User Message → LLM First Pass → Placeholder → Tool Execution → Result �
 ### Files Involved
 
 | File | Current Role | Changes Needed |
-|------|--------------|----------------|
-| `orchestrator.py` | Dual-path execution, synthesis | Remove native path, add placeholder |
-| `commands.py` | `/command` detection, StreamFilter | Add XML parsing, placeholder emission |
-| `tools/schemas.py` | Markdown contract (`<details>`) | Add XML format, dual output |
-| `tools/registry.py` | Tool dispatch | Add XML result formatting |
-| `database/db_queries.py` | Tool roles, history formatting | Add `tools` role, dual-path reader |
-| `providers.py` | Native tool call support | Remove tool call parsing |
-| `prompts.py` | System prompt | Add tool instructions |
-| `llm_client.py` | LLM calls with tools[] | Remove tools[] parameter |
-| `static/js/chat.js` | Frontend | Add placeholder handling |
+| --- | --- | --- |
+|  | Dual-path execution, synthesis | Remove native path, add placeholder |
+|  | `/command` detection, StreamFilter | Add XML parsing, placeholder emission |
+|  | Markdown contract (`<details>`) | Add XML format, dual output |
+|  | Tool dispatch | Add XML result formatting |
+|  | Tool roles, history formatting | Add `tools` role, dual-path reader |
+|  | Native tool call support | Remove tool call parsing |
+|  | System prompt | Add tool instructions |
+|  | LLM calls with tools\[\] | Remove tools\[\] parameter |
+|  | Frontend | Add placeholder handling |
 
 ### Current Execution Flow
 
-```
+```markdown
 ┌─────────────────────────────────────────────────────────────────┐
 │ handle_user_message() / handle_user_message_streaming()         │
 └─────────────────────────────────────────────────────────────────┘
@@ -75,8 +75,8 @@ User Message → LLM First Pass → Placeholder → Tool Execution → Result �
 
 ### Problems Identified
 
-| # | Problem | Impact |
-|---|---------|--------|
+| \# | Problem | Impact |
+| --- | --- | --- |
 | 1 | Dual execution paths | Complexity, drift risk |
 | 2 | No placeholder during tool execution | Silent UX gap |
 | 3 | First pass not stored | Incomplete history |
@@ -89,7 +89,7 @@ User Message → LLM First Pass → Placeholder → Tool Execution → Result �
 
 ### New Execution Flow
 
-```
+```markdown
 ┌─────────────────────────────────────────────────────────────────┐
 │ 1. USER MESSAGE                                                 │
 │    Database.add_message("user", message)                        │
@@ -155,9 +155,9 @@ User Message → LLM First Pass → Placeholder → Tool Execution → Result �
 ### DB Message Sequence
 
 | Step | Role | Content |
-|------|------|---------|
+| --- | --- | --- |
 | 1 | `user` | "Search my memories about cats" |
-| 2 | `assistant` | "Baik, saya akan mencari...\n<tools>...</tools>" |
+| 2 | `assistant` | "Baik, saya akan mencari...\\n..." |
 | 3 | `tools` | `<tools><name>memory_search</name>...</tools>` |
 | 4 | `assistant` | "Saya menemukan 3 memori tentang kucing..." |
 
@@ -172,36 +172,60 @@ User Message → LLM First Pass → Placeholder → Tool Execution → Result �
 **Files to modify:**
 
 | File | Changes | Status |
-|------|---------|--------|
-| `tools/schemas.py` | Add `sanitize_xml_value()`, `format_tool_result_xml()`, `dual_format_result()` | ✅ Done |
-| `database/db_queries.py` | Add `TOOL_ROLE_UNIVERSAL`, update `tool_role_for()` | ✅ Done |
+| --- | --- | --- |
+|  | Add `sanitize_xml_value()`, `format_tool_result_xml()`, `dual_format_result()` | ✅ Done |
+|  | Add `TOOL_ROLE_UNIVERSAL`, update `tool_role_for()` | ✅ Done |
 
 **Tasks:**
 
-- [x] Add `sanitize_xml_value()` to `tools/schemas.py`
-  - [x] XML-escape: `< > & " '`
-  - [x] Remove NULL bytes
-  - [x] Remove control chars (except tab, newline, CR)
-  - [x] Unit tests
-- [x] Add `format_tool_result_xml()` to `tools/schemas.py`
-  - [x] Output: `<tool_result><name>...</name><status>...</status>...</tool_result>`
-  - [x] Handle ok/error status
-  - [x] Handle nested dict/list data
-  - [x] Limit list items to 20
-  - [x] Unit tests
-- [x] Add `dual_format_result()` to `tools/schemas.py`
-  - [x] Return both `markdown` and `xml` formats
-  - [x] Backward compatible with existing `ok_result()` / `error_result()`
-  - [x] Unit tests
-- [x] Add `TOOL_ROLE_UNIVERSAL = "tools"` to `database/db_queries.py`
-  - [x] Constant defined
-  - [x] Exported in `__all__`
-  - [x] Unit test
-- [x] Update `tool_role_for()` to support `use_universal` flag
-  - [x] Default behavior unchanged (backward compat)
-  - [x] `use_universal=True` returns `"tools"`
-  - [x] Unit tests
-- [x] Create test file `tests/test_v31_phase1.py`
+- [x]  Add `sanitize_xml_value()` to `file tools/schemas.py`
+
+  - [x]  XML-escape: `< > & " '`
+
+  - [x]  Remove NULL bytes
+
+  - [x]  Remove control chars (except tab, newline, CR)
+
+  - [x]  Unit tests
+
+- [x]  Add `format_tool_result_xml()` to `file tools/schemas.py`
+
+  - [x]  Output: `<tool_result><name>...</name><status>...</status>...</tool_result>`
+
+  - [x]  Handle ok/error status
+
+  - [x]  Handle nested dict/list data
+
+  - [x]  Limit list items to 20
+
+  - [x]  Unit tests
+
+- [x]  Add `dual_format_result()` to `file tools/schemas.py`
+
+  - [x]  Return both `markdown` and `xml` formats
+
+  - [x]  Backward compatible with existing `ok_result()` / `error_result()`
+
+  - [x]  Unit tests
+
+- [x]  Add `TOOL_ROLE_UNIVERSAL = "tools"` to `file database/db_queries.py`
+
+  - [x]  Constant defined
+
+  - [x]  Exported in `__all__`
+
+  - [x]  Unit test
+
+- [x]  Update `tool_role_for()` to support `use_universal` flag
+
+  - [x]  Default behavior unchanged (backward compat)
+
+  - [x]  `use_universal=True` returns `"tools"`
+
+  - [x]  Unit tests
+
+- [x]  Create test file `file tests/test_v31_phase1.py`
+
   - [x] 16 tests, all passing
 
 **Verification:**
@@ -223,33 +247,47 @@ python -m pytest tests/test_v31_phase1.py -v
 
 **Files:**
 
-- [x] `app/tools/registry.py` — Update `execute_tool()` return format
-- [x] `app/tools/schemas.py` — Update `ok_result()`, `error_result()` to include xml
+- [x]  `file app/tools/registry.py` — Update `execute_tool()` return format
+
+- [x]  `file app/tools/schemas.py` — Update `ok_result()`, `error_result()` to include xml
 
 **Tasks:**
 
-- [x] 2.1 Update `execute_tool()` return format
-  - [x] Return: `{"ok": bool, "data": dict, "markdown": str, "xml": str}`
-  - [x] `xml` is new, `markdown` is kept for backward compat
+- [x]   2.1 Update `execute_tool()` return format
 
-- [x] 2.2 Update `ok_result()` and `error_result()` in schemas
-  - [x] Both now include `xml` field using `format_tool_result_xml()`
-  - [x] Backward compatible with existing callers
+  - [x]  Return: `{"ok": bool, "data": dict, "markdown": str, "xml": str}`
 
-- [x] 2.3 Verify all tools return dual format
-  - [x] `image_generate.py` — uses `ok_result()`/`error_result()` ✅
-  - [x] `http_request.py` — uses `ok_result()`/`error_result()` ✅
-  - [x] `memory_store.py` — uses `ok_result()`/`error_result()` ✅
-  - [x] `memory_search.py` — uses `ok_result()`/`error_result()` ✅
+  - [x]  `xml` is new, `markdown` is kept for backward compat
 
-- [x] 2.4 Registry handles legacy tools
-  - [x] If tool returns dict without `xml`, registry adds it
-  - [x] If tool returns string (legacy), registry wraps with xml
+- [x]   2.2 Update `ok_result()` and `error_result()` in schemas
 
-- [x] 2.5 Write tests
-  - [x] `test_ok_result_has_xml()`
-  - [x] `test_error_result_has_xml()`
-  - [x] 17 tests, all passing
+  - [x]  Both now include `xml` field using `format_tool_result_xml()`
+
+  - [x]  Backward compatible with existing callers
+
+- [x]   2.3 Verify all tools return dual format
+
+  - [x]  `file image_generate.py` — uses `ok_result()`/`error_result()` ✅
+
+  - [x]  `file http_request.py` — uses `ok_result()`/`error_result()` ✅
+
+  - [x]  `file memory_store.py` — uses `ok_result()`/`error_result()` ✅
+
+  - [x]  `file memory_search.py` — uses `ok_result()`/`error_result()` ✅
+
+- [x]   2.4 Registry handles legacy tools
+
+  - [x]  If tool returns dict without `xml`, registry adds it
+
+  - [x]  If tool returns string (legacy), registry wraps with xml
+
+- [x]   2.5 Write tests
+
+  - [x]  `test_ok_result_has_xml()`
+
+  - [x]  `test_error_result_has_xml()`
+
+  - [x]  17 tests, all passing
 
 **Verification:**
 
@@ -269,45 +307,50 @@ ruff check .
 
 **Files:**
 
-- [ ] `app/commands.py` — Rewrite `StreamFilter`
+- [x] `app/commands.py` — Rewrite `StreamFilter`
 
 **Tasks:**
 
-- [ ] 3.1 Add `StreamState` enum
-  - [ ] `NORMAL` — yielding text immediately
-  - [ ] `TOOL_DETECTED` — buffering `<tools>` block
-  - [ ] `TOOL_EXECUTING` — waiting for result (placeholder shown)
+- [x] 3.1 Add `StreamState` enum
+  - [x] `NORMAL` — yielding text immediately
+  - [x] `TOOLS_DETECTED` — buffering `<tools>` block
+  - [x] `TOOLS_COMPLETE` — `<tools>` block parsed, ready to emit
 
-- [ ] 3.2 Add XML parsing patterns
-  - [ ] `_TOOLS_BLOCK_PATTERN` — regex to match `<tools>...</tools>`
-  - [ ] `_parse_tools_block()` — extract name, args from XML
+- [x] 3.2 Add XML parsing patterns
+  - [x] `_TOOLS_BLOCK_PATTERN` — regex to match `<tools>...</tools>`
+  - [x] `_parse_tools_block()` — extract name, args from XML
 
-- [ ] 3.3 Rewrite `StreamFilter.feed()`
-  - [ ] Character-by-character processing
-  - [ ] Detect `<tools>` opening tag
-  - [ ] Buffer until `</tools>` closing tag
-  - [ ] On complete block: emit placeholder dict, store parsed tool call
-  - [ ] Yield text before/after tools block immediately
+- [x] 3.3 Rewrite `StreamFilter.feed()`
+  - [x] Character-by-character processing
+  - [x] Detect `<tools>` opening tag
+  - [x] Buffer until `</tools>` closing tag
+  - [x] On complete block: emit placeholder dict, store parsed tool call
+  - [x] Yield text before/after tools block immediately
+  - [x] Legacy `/command` detection at stream start (backward compat)
 
-- [ ] 3.4 Add `StreamFilter.tool_call` property
-  - [ ] Returns `{"name": str, "args": dict}` after detection
-  - [ ] Returns `None` if no tool detected
+- [x] 3.4 Add `StreamFilter.tool_call` property
+  - [x] Returns `{"name": str, "args": dict}` after detection
+  - [x] Returns `None` if no tool detected
 
-- [ ] 3.5 Add `StreamFilter.flush()` 
-  - [ ] Handle incomplete tools block at stream end
-  - [ ] Return any buffered text
+- [x] 3.5 Add `StreamFilter.flush()` 
+  - [x] Handle incomplete tools block at stream end
+  - [x] Return any buffered text
+  - [x] Handle legacy `/command` without newline
 
-- [ ] 3.6 Write unit tests
-  - [ ] `test_normal_text_yields_immediately()`
-  - [ ] `test_tools_block_detected()`
-  - [ ] `test_tools_block_emits_placeholder()`
-  - [ ] `test_text_after_tools_yields()`
-  - [ ] `test_incomplete_tools_block_flush()`
+- [x] 3.6 Write unit tests
+  - [x] `test_normal_text_yields_immediately()`
+  - [x] `test_tools_block_detected()`
+  - [x] `test_tools_block_emits_placeholder()`
+  - [x] `test_text_after_tools_yields()`
+  - [x] `test_incomplete_tools_block_flush()`
+  - [x] `test_legacy_command_detected()`
+  - [x] 26 tests, all passing
 
 **Verification:**
 
 ```bash
-python -m pytest tests/test_stream_filter.py -v
+python -m pytest tests/test_v31_phase3.py -v
+# Expected: 26 passed
 ruff check app/commands.py
 ```
 
@@ -321,44 +364,67 @@ ruff check app/commands.py
 
 **Files:**
 
-- [ ] `app/orchestrator.py` — Major refactor
+- [ ] `file app/orchestrator.py` — Major refactor
 
 **Tasks:**
 
-- [ ] 4.1 Remove native tool call functions
-  - [ ] Delete `_parse_raw_tool_calls()`
-  - [ ] Delete `_execute_tool_calls()`
-  - [ ] Remove `tool_calls` handling in `handle_user_message()`
+- [ ]   4.1 Remove native tool call functions
 
-- [ ] 4.2 Update `handle_user_message_streaming()` flow
-  - [ ] Remove native tool call branch
-  - [ ] After stream ends, check `sf.tool_call`
-  - [ ] If tool detected:
-    - [ ] Store first pass: `Database.add_message("assistant", first_pass_text)`
-    - [ ] Emit placeholder event (already done by StreamFilter)
-    - [ ] Execute tool
-    - [ ] Emit result event
-    - [ ] Store tool result: `Database.add_message("tools", xml_result)`
-    - [ ] Run synthesis
-    - [ ] Store synthesis: `Database.add_message("assistant", synthesis_text)`
-  - [ ] If no tool:
+  - [ ]  Delete `_parse_raw_tool_calls()`
+
+  - [ ]  Delete `_execute_tool_calls()`
+
+  - [ ]  Remove `tool_calls` handling in `handle_user_message()`
+
+- [ ]   4.2 Update `handle_user_message_streaming()` flow
+
+  - [ ]  Remove native tool call branch
+
+  - [ ]  After stream ends, check `sf.tool_call`
+
+  - [ ]  If tool detected:
+
+    - [ ]  Store first pass: `Database.add_message("assistant", first_pass_text)`
+
+    - [ ]  Emit placeholder event (already done by StreamFilter)
+
+    - [ ]  Execute tool
+
+    - [ ]  Emit result event
+
+    - [ ]  Store tool result: `Database.add_message("tools", xml_result)`
+
+    - [ ]  Run synthesis
+
+    - [ ]  Store synthesis: `Database.add_message("assistant", synthesis_text)`
+
+  - [ ]  If no tool:
+
     - [ ] Store response: `Database.add_message("assistant", text)`
 
-- [ ] 4.3 Update `_persist_tool_result()` signature
-  - [ ] Accept `xml: str` parameter
-  - [ ] Use `TOOL_ROLE_UNIVERSAL` for storage role
+- [ ]   4.3 Update `_persist_tool_result()` signature
 
-- [ ] 4.4 Add synthesis context builder
-  - [ ] Include first pass text in context
-  - [ ] Include tool result XML
+  - [ ]  Accept `xml: str` parameter
 
-- [ ] 4.5 Remove `tools[]` array from LLM calls
+  - [ ]  Use `TOOL_ROLE_UNIVERSAL` for storage role
+
+- [ ]   4.4 Add synthesis context builder
+
+  - [ ]  Include first pass text in context
+
+  - [ ]  Include tool result XML
+
+- [ ]   4.5 Remove `tools[]` array from LLM calls
+
   - [ ] Verify `generate_ai_response_streaming()` doesn't pass tools
 
-- [ ] 4.6 Write integration tests
-  - [ ] `test_tool_execution_flow()` — full flow with DB verification
-  - [ ] `test_no_tool_flow()` — plain response
-  - [ ] `test_synthesis_after_tool()` — verify synthesis happens
+- [ ]   4.6 Write integration tests
+
+  - [ ]  `test_tool_execution_flow()` — full flow with DB verification
+
+  - [ ]  `test_no_tool_flow()` — plain response
+
+  - [ ]  `test_synthesis_after_tool()` — verify synthesis happens
 
 **Verification:**
 
@@ -377,29 +443,39 @@ ruff check app/orchestrator.py
 
 **Files:**
 
-- [ ] `app/providers.py` — Remove tool call methods
-- [ ] `app/llm_client.py` — Remove tools[] parameter
+- [ ]  `file app/providers.py` — Remove tool call methods
+
+- [ ]  `file app/llm_client.py` — Remove tools\[\] parameter
 
 **Tasks:**
 
-- [ ] 5.1 Remove `parse_tool_calls()` from `AIProvider` base class
+- [ ]   5.1 Remove `parse_tool_calls()` from `AIProvider` base class
+
   - [ ] Delete method and all overrides
 
-- [ ] 5.2 Remove `tools` parameter handling in providers
-  - [ ] `OpenRouterProvider.send_message()` — remove `tools = kwargs.get('tools')`
-  - [ ] `ChutesProvider.send_message()` — remove tools from payload
-  - [ ] Other providers as needed
+- [ ]   5.2 Remove `tools` parameter handling in providers
 
-- [ ] 5.3 Update `llm_client.py`
-  - [ ] Remove `_unique_tool_schemas()`
-  - [ ] Remove `tools=schemas` from `_send_to_provider()` calls
+  - [ ]  `OpenRouterProvider.send_message()` — remove `tools = kwargs.get('tools')`
 
-- [ ] 5.4 Remove native tool call references in docstrings
+  - [ ]  `ChutesProvider.send_message()` — remove tools from payload
+
+  - [ ]  Other providers as needed
+
+- [ ]   5.3 Update `file llm_client.py`
+
+  - [ ]  Remove `_unique_tool_schemas()`
+
+  - [ ]  Remove `tools=schemas` from `_send_to_provider()` calls
+
+- [ ]   5.4 Remove native tool call references in docstrings
+
   - [ ] Update `AIProvider.send_message()` docstring
 
-- [ ] 5.5 Write regression tests
-  - [ ] Verify providers still work without tools parameter
-  - [ ] Test with multiple providers (Ollama, OpenRouter, Chutes)
+- [ ]   5.5 Write regression tests
+
+  - [ ]  Verify providers still work without tools parameter
+
+  - [ ]  Test with multiple providers (Ollama, OpenRouter, Chutes)
 
 **Verification:**
 
@@ -418,26 +494,35 @@ ruff check app/providers.py app/llm_client.py
 
 **Files:**
 
-- [ ] `app/prompts.py` — Add tool instructions
+- [ ] `file app/prompts.py` — Add tool instructions
 
 **Tasks:**
 
-- [ ] 6.1 Add tool instructions section to system prompt
-  - [ ] Document each available tool with `/command` syntax
-  - [ ] Examples: `/imagine cat`, `/memory_search query`
-  - [ ] Format rules: command on its own line
+- [ ]   6.1 Add tool instructions section to system prompt
 
-- [ ] 6.2 Add synthesis prompt template
-  - [ ] Template for second pass context
-  - [ ] Include tool result XML
-  - [ ] Instruction to acknowledge naturally
+  - [ ]  Document each available tool with `/command` syntax
 
-- [ ] 6.3 Remove tools[] array construction
+  - [ ]  Examples: `/imagine cat`, `/memory_search query`
+
+  - [ ]  Format rules: command on its own line
+
+- [ ]   6.2 Add synthesis prompt template
+
+  - [ ]  Template for second pass context
+
+  - [ ]  Include tool result XML
+
+  - [ ]  Instruction to acknowledge naturally
+
+- [ ]   6.3 Remove tools\[\] array construction
+
   - [ ] Verify no `get_tool_definitions()` call for LLM context
 
-- [ ] 6.4 Write manual tests
-  - [ ] Verify LLM outputs `/command` format
-  - [ ] Test with different providers
+- [ ]   6.4 Write manual tests
+
+  - [ ]  Verify LLM outputs `/command` format
+
+  - [ ]  Test with different providers
 
 **Verification:**
 
@@ -456,34 +541,49 @@ ruff check app/prompts.py
 
 **Files:**
 
-- [ ] `static/js/chat.js` — Add placeholder handling
-- [ ] `static/css/chat.css` — Placeholder styles
+- [ ]  `file static/js/chat.js` — Add placeholder handling
+
+- [ ]  `file static/css/chat.css` — Placeholder styles
 
 **Tasks:**
 
-- [ ] 7.1 Add placeholder message type
-  - [ ] `addMessage("tool_executing", data)` — shows loading state
-  - [ ] `updateToolMessage(id, result)` — replaces placeholder with result
+- [ ]   7.1 Add placeholder message type
 
-- [ ] 7.2 Handle streaming events
-  - [ ] Parse `{"type": "tool_executing", ...}` from stream
-  - [ ] Show placeholder immediately
-  - [ ] Parse `{"type": "tool_result", ...}` from stream
-  - [ ] Replace placeholder with result
+  - [ ]  `addMessage("tool_executing", data)` — shows loading state
 
-- [ ] 7.3 Add placeholder styles
-  - [ ] `.tool-placeholder.executing` — loading spinner
-  - [ ] `.tool-placeholder.success` — checkmark, collapsible details
-  - [ ] `.tool-placeholder.error` — error icon, message
+  - [ ]  `updateToolMessage(id, result)` — replaces placeholder with result
 
-- [ ] 7.4 Handle old `<details>` format (backward compat)
-  - [ ] Detect `<details>` in message
-  - [ ] Render as collapsible block (existing behavior)
+- [ ]   7.2 Handle streaming events
 
-- [ ] 7.5 Write manual tests
-  - [ ] Test `/imagine` — shows placeholder, then image
-  - [ ] Test `/memory_search` — shows placeholder, then results
-  - [ ] Test tool error — shows error in placeholder
+  - [ ]  Parse `{"type": "tool_executing", ...}` from stream
+
+  - [ ]  Show placeholder immediately
+
+  - [ ]  Parse `{"type": "tool_result", ...}` from stream
+
+  - [ ]  Replace placeholder with result
+
+- [ ]   7.3 Add placeholder styles
+
+  - [ ]  `.tool-placeholder.executing` — loading spinner
+
+  - [ ]  `.tool-placeholder.success` — checkmark, collapsible details
+
+  - [ ]  `.tool-placeholder.error` — error icon, message
+
+- [ ]   7.4 Handle old `<details>` format (backward compat)
+
+  - [ ]  Detect `<details>` in message
+
+  - [ ]  Render as collapsible block (existing behavior)
+
+- [ ]   7.5 Write manual tests
+
+  - [ ]  Test `/imagine` — shows placeholder, then image
+
+  - [ ]  Test `/memory_search` — shows placeholder, then results
+
+  - [ ]  Test tool error — shows error in placeholder
 
 **Verification:**
 
@@ -502,31 +602,43 @@ ruff check static/js/chat.js  # if applicable
 
 **Files:**
 
-- [ ] All files — Final cleanup
-- [ ] `docs/roadmap-history/` — Archive roadmap
+- [ ]  All files — Final cleanup
+
+- [ ]  `docs/roadmap-history/` — Archive roadmap
 
 **Tasks:**
 
-- [ ] 8.1 Remove markdown contract helpers (optional)
-  - [ ] Consider keeping for backward compat
-  - [ ] Or remove `build_tool_contract()` if sure all old data migrated
+- [ ]   8.1 Remove markdown contract helpers (optional)
 
-- [ ] 8.2 Update `AGENTS.md`
-  - [ ] Document new tool execution flow
-  - [ ] Update architecture diagram
-  - [ ] Add rules for tool development
+  - [ ]  Consider keeping for backward compat
 
-- [ ] 8.3 Move roadmap to history
+  - [ ]  Or remove `build_tool_contract()` if sure all old data migrated
+
+- [ ]   8.2 Update `file AGENTS.md`
+
+  - [ ]  Document new tool execution flow
+
+  - [ ]  Update architecture diagram
+
+  - [ ]  Add rules for tool development
+
+- [ ]   8.3 Move roadmap to history
+
   - [ ] `mv UNIVERSAL_INLINE_COMMAND_REFACTOR.md docs/roadmap-history/`
 
-- [ ] 8.4 Final verification
-  - [ ] All tests pass
-  - [ ] Ruff clean
-  - [ ] Manual testing with all providers
+- [ ]   8.4 Final verification
 
-- [ ] 8.5 Merge PR
-  - [ ] Squash commits or keep separate
-  - [ ] Update CHANGELOG.md
+  - [ ]  All tests pass
+
+  - [ ]  Ruff clean
+
+  - [ ]  Manual testing with all providers
+
+- [ ]   8.5 Merge PR
+
+  - [ ]  Squash commits or keep separate
+
+  - [ ]  Update CHANGELOG.md
 
 **Verification:**
 
@@ -545,7 +657,7 @@ git status
 ### Rollback Points
 
 | Phase | Rollback Command |
-|-------|-----------------|
+| --- | --- |
 | After Phase 1 | `git revert HEAD` |
 | After Phase 2 | `git revert HEAD~2` |
 | After Phase 3 | `git revert HEAD~3` |
@@ -561,7 +673,7 @@ USE_UNIVERSAL_TOOL_PATH = os.getenv("USE_UNIVERSAL_TOOL_PATH", "true").lower() =
 ### Backward Compatibility
 
 | Aspect | Strategy |
-|--------|----------|
+| --- | --- |
 | Old messages in DB | Dual-path reader handles both formats |
 | Frontend | Handles both `<details>` and `<tools>` |
 | Tool results | Returns both `markdown` and `xml` fields |
@@ -572,32 +684,42 @@ USE_UNIVERSAL_TOOL_PATH = os.getenv("USE_UNIVERSAL_TOOL_PATH", "true").lower() =
 
 ### Unit Tests
 
-- [ ] `test_tool_xml_format.py` — XML sanitization, formatting
-- [ ] `test_stream_filter.py` — XML detection, placeholder emission
-- [ ] `test_orchestrator.py` — Full flow, DB persistence
-- [ ] `test_registry.py` — Dual output format
+- [ ]  `file test_tool_xml_format.py` — XML sanitization, formatting
+
+- [ ]  `file test_stream_filter.py` — XML detection, placeholder emission
+
+- [ ]  `file test_orchestrator.py` — Full flow, DB persistence
+
+- [ ]  `file test_registry.py` — Dual output format
 
 ### Integration Tests
 
-- [ ] Test with Ollama provider
-- [ ] Test with OpenRouter provider
-- [ ] Test with Chutes provider
-- [ ] Test with Cerebras provider
+- [ ]  Test with Ollama provider
+
+- [ ]  Test with OpenRouter provider
+
+- [ ]  Test with Chutes provider
+
+- [ ]  Test with Cerebras provider
 
 ### Manual Tests
 
-- [ ] `/imagine cat` — image generation
-- [ ] `/memory_search cats` — memory search
-- [ ] `/memory_store fact="test"` — memory storage
-- [ ] `/request https://example.com` — HTTP request
-- [ ] Tool error handling — network timeout, invalid args
+- [ ]  `/imagine cat` — image generation
+
+- [ ]  `/memory_search cats` — memory search
+
+- [ ]  `/memory_store fact="test"` — memory storage
+
+- [ ]  `/request https://example.com` — HTTP request
+
+- [ ]  Tool error handling — network timeout, invalid args
 
 ---
 
 ## Timeline Estimate
 
 | Phase | Duration | Dependencies |
-|-------|----------|--------------|
+| --- | --- | --- |
 | Phase 1 | 1 day | None |
 | Phase 2 | 1 day | Phase 1 |
 | Phase 3 | 1-2 days | Phase 1 |
@@ -607,30 +729,37 @@ USE_UNIVERSAL_TOOL_PATH = os.getenv("USE_UNIVERSAL_TOOL_PATH", "true").lower() =
 | Phase 7 | 1 day | Phase 4 |
 | Phase 8 | 0.5 day | All phases |
 
-**Total:** ~7-9 days
+**Total:** \~7-9 days
 
 ---
 
 ## Success Criteria
 
-- [ ] All tests pass
-- [ ] Ruff check clean
-- [ ] Manual testing with all providers successful
-- [ ] No regression in existing functionality
-- [ ] Placeholder shown during tool execution
-- [ ] Tool results stored as `tools` role
-- [ ] Synthesis pass always runs after tool execution
-- [ ] Frontend displays tool results correctly
+- [ ]  All tests pass
+
+- [ ]  Ruff check clean
+
+- [ ]  Manual testing with all providers successful
+
+- [ ]  No regression in existing functionality
+
+- [ ]  Placeholder shown during tool execution
+
+- [ ]  Tool results stored as `tools` role
+
+- [ ]  Synthesis pass always runs after tool execution
+
+- [ ]  Frontend displays tool results correctly
 
 ---
 
 ## References
 
-- `file 'yuzu-companion/AGENTS.md'` — Project architecture
-- `file 'yuzu-companion/app/orchestrator.py'` — Current execution flow
-- `file 'yuzu-companion/app/commands.py'` — Current StreamFilter
-- `file 'yuzu-companion/app/tools/schemas.py'` — Current tool schema
-- `file 'yuzu-companion/app/database/db_queries.py'` — Current tool roles
+- `file yuzu-companion/AGENTS.md` — Project architecture
+- `file yuzu-companion/app/orchestrator.py` — Current execution flow
+- `file yuzu-companion/app/commands.py` — Current StreamFilter
+- `file yuzu-companion/app/tools/schemas.py` — Current tool schema
+- `file yuzu-companion/app/database/db_queries.py` — Current tool roles
 
 ---
 
