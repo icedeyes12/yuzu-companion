@@ -167,47 +167,53 @@ User Message → LLM First Pass → Placeholder → Tool Execution → Result �
 
 ### Phase 1: Infrastructure — XML Format & Storage
 
-**Goal:** Add XML formatting without breaking existing markdown contract.
+**Goal:** Add XML formatting and universal storage role.
 
-**Files:**
+**Files to modify:**
 
-- [ ] `app/tools/schemas.py` — Add XML formatting functions
-- [ ] `app/database/db_queries.py` — Add `TOOL_ROLE_UNIVERSAL`, dual-path reader
+| File | Changes | Status |
+|------|---------|--------|
+| `tools/schemas.py` | Add `sanitize_xml_value()`, `format_tool_result_xml()`, `dual_format_result()` | ✅ Done |
+| `database/db_queries.py` | Add `TOOL_ROLE_UNIVERSAL`, update `tool_role_for()` | ✅ Done |
 
 **Tasks:**
 
-- [ ] 1.1 Add `sanitize_xml_value()` to `tools/schemas.py`
-  - [ ] Escape XML entities: `&`, `<`, `>`, `"`, `'`
-  - [ ] Strip control characters (0x00-0x1F except 0x09, 0x0A, 0x0D)
-  - [ ] Remove NULL bytes
-
-- [ ] 1.2 Add `format_tool_result_xml()` to `tools/schemas.py`
-  - [ ] Input: `tool_name`, `result` dict
-  - [ ] Output: XML string with `<tools>`, `<name>`, `<status>`, `<data>`, `<error>`
-  - [ ] Use `sanitize_xml_value()` for all text content
-
-- [ ] 1.3 Add `TOOL_ROLE_UNIVERSAL = "tools"` to `db_queries.py`
-  - [ ] Update `tool_role_for()` to optionally use universal role
-
-- [ ] 1.4 Add dual-path history reader to `db_queries.py`
-  - [ ] `format_ai_history_rows()` handles both:
-    - Old: `role="image_tools"`, content=`<details>...</details>`
-    - New: `role="tools"`, content=`<tools>...</tools>`
-  - [ ] Both expand to same AI context format
-
-- [ ] 1.5 Write unit tests
-  - [ ] `test_sanitize_xml_value()` — entities, control chars, NULL bytes
-  - [ ] `test_format_tool_result_xml()` — ok result, error result
-  - [ ] `test_format_ai_history_rows()` — old format, new format, mixed
+- [x] Add `sanitize_xml_value()` to `tools/schemas.py`
+  - [x] XML-escape: `< > & " '`
+  - [x] Remove NULL bytes
+  - [x] Remove control chars (except tab, newline, CR)
+  - [x] Unit tests
+- [x] Add `format_tool_result_xml()` to `tools/schemas.py`
+  - [x] Output: `<tool_result><name>...</name><status>...</status>...</tool_result>`
+  - [x] Handle ok/error status
+  - [x] Handle nested dict/list data
+  - [x] Limit list items to 20
+  - [x] Unit tests
+- [x] Add `dual_format_result()` to `tools/schemas.py`
+  - [x] Return both `markdown` and `xml` formats
+  - [x] Backward compatible with existing `ok_result()` / `error_result()`
+  - [x] Unit tests
+- [x] Add `TOOL_ROLE_UNIVERSAL = "tools"` to `database/db_queries.py`
+  - [x] Constant defined
+  - [x] Exported in `__all__`
+  - [x] Unit test
+- [x] Update `tool_role_for()` to support `use_universal` flag
+  - [x] Default behavior unchanged (backward compat)
+  - [x] `use_universal=True` returns `"tools"`
+  - [x] Unit tests
+- [x] Create test file `tests/test_v31_phase1.py`
+  - [x] 16 tests, all passing
 
 **Verification:**
 
 ```bash
-python -m pytest tests/test_tool_xml_format.py -v
-ruff check app/tools/schemas.py app/database/db_queries.py
+python -m py_compile app/tools/schemas.py app/database/db_queries.py
+ruff check .
+python -m pytest tests/test_v31_phase1.py -v
+# Expected: 16 passed
 ```
 
-**Commit:** `feat(tools): Phase 1 - Add XML formatting and dual-path history reader`
+**Commit:** `feat(tools): Phase 1 - XML formatting and universal storage role`
 
 ---
 

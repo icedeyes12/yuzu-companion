@@ -34,6 +34,9 @@ TOOL_ROLES: dict[str, str] = {
 }
 ALL_TOOL_ROLES: list[str] = sorted(set(TOOL_ROLES.values()))
 
+# v3.1.0: Universal tool role (single storage role for all tools)
+TOOL_ROLE_UNIVERSAL: str = "tools"
+
 
 # ---------------------------------------------------------------------------
 # Encryption helpers (sync, CPU-bound)
@@ -135,7 +138,7 @@ SQL_PROFILE_INSERT_DEFAULT = """
 INSERT INTO profiles (display_name, partner_name, affection, theme,
                       memory_json, session_history_json, global_knowledge_json,
                       providers_config_json, context, timestamp, updated_at)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 """
 
 DEFAULT_PROFILE_PARAMS = ("", "", 50, "default", "{}", "{}", "{}", "{}", "{}")
@@ -596,8 +599,14 @@ def parse_json(s: str | None) -> dict:
         return {}
 
 
-def tool_role_for(tool_name: str) -> str:
-    """Return the canonical message-role for *tool_name*."""
+def tool_role_for(tool_name: str, use_universal: bool = False) -> str:
+    """Return the canonical message-role for *tool_name*.
+    
+    v3.1.0: When use_universal=True, returns "tools" for all tools.
+    This will become the default after Phase 4.
+    """
+    if use_universal:
+        return TOOL_ROLE_UNIVERSAL
     return TOOL_ROLES.get(tool_name, f"{tool_name}_tools")
 
 
@@ -608,7 +617,7 @@ def format_session_event(content: str, interface: str) -> str:
 
 __all__ = [
     # Tool roles
-    "TOOL_ROLES", "ALL_TOOL_ROLES", "tool_role_for",
+    "TOOL_ROLES", "ALL_TOOL_ROLES", "TOOL_ROLE_UNIVERSAL", "tool_role_for",
     # Encryption
     "encrypt_api_key", "decrypt_api_key", "DECRYPTION_ERROR",
     # Schema

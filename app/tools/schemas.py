@@ -5,6 +5,7 @@ from __future__ import annotations
 
 
 from dataclasses import dataclass, field
+from html import escape as html_escape
 from typing import Any
 
 
@@ -151,3 +152,168 @@ def _flatten_lines(data: dict) -> list[str]:
         else:
             lines.append(f"{key}: {value}")
     return lines
+
+
+# --------------------------------------------------------------------
+# v3.1.0 XML Format Functions
+# --------------------------------------------------------------------
+# Tools return XML format for LLM synthesis, markdown for UI display.
+# --------------------------------------------------------------------
+
+
+def sanitize_xml_value(value: str) -> str:
+    """Sanitize string for safe XML element content.
+    
+    - XML-escapes: < > & " '
+    - Removes control chars (except 0x09, 0x0A, 0x0D)
+    - Removes NULL bytes
+    
+    Args:
+        value: Raw string input
+        
+    Returns:
+        XML-safe string
+    """
+    if not isinstance(value, str):
+        value = str(value)
+    
+    # Remove NULL bytes first
+    value = value.replace("\x00", "")
+    
+    # Remove control characters (keep tab, newline, carriage return)
+    cleaned = []
+    for ch in value:
+        code = ord(ch)
+        if code < 0x20 and code not in (0x09, 0x0A, 0x0D):
+            continue  # Skip control chars
+        cleaned.append(ch)
+    value = "".join(cleaned)
+    
+    # XML escape
+    return html_escape(value, quote=True)
+
+
+def format_tool_result_xml(
+    tool_name: str,
+    status: str,
+    data: dict | None = None,
+    error: str | None = None,
+    summary: str | None = None,
+) -> str:
+    """Format tool result as XML for LLM synthesis pass.
+    
+    Output format:
+    ```xml
+    <tool_result>
+      <name>tool_name</name>
+      <status>ok|error</status>
+      <data>
+        <key>value</key>
+        ...
+      </data>
+      <summary>Human-readable summary</summary>
+    </tool_result>
+    ```
+    
+    Args:
+        tool_name: Tool identifier (e.g., "memory_search")
+        status: "ok" or "error"
+        data: Result data dict (for ok status)
+        error: Error message (for error status)
+        summary: Optional human-readable summary
+        
+    Returns:
+        XML string
+    """
+    lines = ["<tool_result>"]
+    lines.append(f"  <name>{sanitize_xml_value(tool_name)}</name>")
+    lines.append(f"  <status>{sanitize_xml_value(status)}</status>")
+    
+    if status == "ok" and data:
+        lines.append("  <data>")
+        for key, value in data.items():
+            if isinstance(value, str):
+                lines.append(f"    <{key}>{sanitize_xml_value(value)}</{key}>")
+            elif isinstance(value, dict):
+                lines.append(f"    <{key}>")
+                for k, v in value.items():
+                    lines.append(f"      <{k}>{sanitize_xml_value(str(v))}</{k}>")
+                lines.append(f"    </{key}>")
+            elif isinstance(value, list):
+                lines.append(f"    <{key}>")
+                for item in value[:20]:  # Limit list items
+                    lines.append(f"      <item>{sanitize_xml_value(str(item))}</item>")
+                if len(value) > 20:
+                    lines.append(f"      <!-- {len(value) - 20} more items -->")
+                lines.append(f"    </{key}>")
+            else:
+                lines.append(f"    <{key}>{sanitize_xml_value(str(value))}</{key}>")
+        lines.append("  </data>")
+    
+    if status == "error" and error:
+        lines.append(f"  <error>{sanitize_xml_value(error)}</error>")
+    
+    if summary:
+        lines.append(f"  <summary>{sanitize_xml_value(summary)}</summary>")
+    
+    lines.append("</tool_result>")
+    return "\n".join(lines)
+
+
+def dual_format_result(
+    tool_def: ToolDefinition,
+    full_command: str,
+    data: dict,
+    error: str | None = None,
+    partner_name: str = "Yuzu",
+    summary: str | None = None,
+) -> dict:
+    """Return dual-format tool result: XML + markdown.
+    
+    v3.1.0: Returns both formats for backward compatibility.
+    
+    Args:
+        tool_def: Tool definition
+        full_command: Full command string
+        data: Result data
+        error: Optional error message
+        partner_name: Partner name for display
+        summary: Optional summary for XML
+        
+    Returns:
+        {
+            "ok": bool,
+            "data": dict,
+            "error": str | None,
+            "markdown": str,  # For UI
+            "xml": str,       # For LLM synthesis
+        }
+    """
+    is_ok = error is None
+    
+    # Markdown for UI (backward compat)
+    if is_ok:
+        markdown = build_tool_contract(tool_def, full_command, _flatten_lines(data), partner_name)
+    else:
+        markdown = build_tool_contract(tool_def, full_command, [f"Error: {error}"], partner_name)
+    
+    # XML for LLM
+    xml = format_tool_result_xml(
+        tool_name=tool_def.name,
+        status="ok" if is_ok else "error",
+        data=data if is_ok else None,
+        error=error if not is_ok else None,
+        summary=summary,
+    )
+    
+    result = {
+        "ok": is_ok,
+        "data": data,
+        "markdown": markdown,
+        "xml": xml,
+    }
+    
+    if error:
+        result["error"] = error
+    
+    return result
