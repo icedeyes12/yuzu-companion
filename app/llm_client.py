@@ -248,14 +248,17 @@ def generate_ai_response(
 
     if image_content_for_context:
         messages.append({"role": "user", "content": image_content_for_context})
-
-    if tool_result_context:
-        messages.append({"role": "user", "content": f"[Tool Result]\n{tool_result_context}"})
-        log.info("injected tool result context for synthesis")
         log.info("injected base64 image context for second pass")
 
     if tool_result_context:
-        messages.append({"role": "user", "content": f"[Tool Result]\n{tool_result_context}"})
+        # v3.1.0: Synthesis pass - acknowledge tool result and respond naturally
+        synthesis_instruction = (
+            "[Tool Execution Complete]\n"
+            f"{tool_result_context}\n\n"
+            "Acknowledge this result briefly and continue naturally. "
+            "Do not explain what you did - just respond to the user."
+        )
+        messages.append({"role": "user", "content": synthesis_instruction})
         log.info("injected tool result context for synthesis")
 
     text, raw = _send_to_provider(
@@ -334,7 +337,14 @@ def generate_ai_response_streaming(
         messages.append({"role": "user", "content": image_content_for_context})
 
     if tool_result_context:
-        messages.append({"role": "user", "content": f"[Tool Result]\n{tool_result_context}"})
+        # v3.1.0: Synthesis pass - acknowledge tool result and respond naturally
+        synthesis_instruction = (
+            "[Tool Execution Complete]\n"
+            f"{tool_result_context}\n\n"
+            "Acknowledge this result briefly and continue naturally. "
+            "Do not explain what you did - just respond to the user."
+        )
+        messages.append({"role": "user", "content": synthesis_instruction})
         log.info("injected tool result context for synthesis")
 
     yield from _stream_from_provider(

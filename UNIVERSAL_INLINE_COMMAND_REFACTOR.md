@@ -517,35 +517,35 @@ ruff check app/providers.py app/llm_client.py
 
 **Files:**
 
-- [ ] `file app/prompts.py` — Add tool instructions
+- [x] `file app/prompts.py` — Add tool instructions
 
 **Tasks:**
 
-- [ ]    6.1 Add tool instructions section to system prompt
+- [x]    6.1 Add tool instructions section to system prompt
 
-  - [ ]   Document each available tool with `/command` syntax
+  - [x]   Document each available tool with `/command` syntax
 
-  - [ ]   Examples: `/imagine cat`, `/memory_search query`
+  - [x]   Examples: `/imagine cat`, `/memory_search query`
 
-  - [ ]   Format rules: command on its own line
+  - [x]   Format rules: command on its own line
 
-- [ ]    6.2 Add synthesis prompt template
+- [x]    6.2 Add synthesis prompt template
 
-  - [ ]   Template for second pass context
+  - [x]   Template for second pass context
 
-  - [ ]   Include tool result XML
+  - [x]   Include tool result XML
 
-  - [ ]   Instruction to acknowledge naturally
+  - [x]   Instruction to acknowledge naturally
 
-- [ ]    6.3 Remove tools\[\] array construction
+- [x]    6.3 Remove tools\[\] array construction
 
-  - [ ] Verify no `get_tool_definitions()` call for LLM context
+  - [x] Verify no `get_tool_definitions()` call for LLM context
 
-- [ ]    6.4 Write manual tests
+- [x]    6.4 Write manual tests
 
-  - [ ]   Verify LLM outputs `/command` format
+  - [x]   Verify LLM outputs `/command` format
 
-  - [ ]   Test with different providers
+  - [x]   Test with different providers
 
 **Verification:**
 
