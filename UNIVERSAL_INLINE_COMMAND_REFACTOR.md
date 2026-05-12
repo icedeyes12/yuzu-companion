@@ -178,53 +178,53 @@ User Message → LLM First Pass → Placeholder → Tool Execution → Result �
 
 **Tasks:**
 
-- [x]  Add `sanitize_xml_value()` to `file tools/schemas.py`
+- [x]   Add `sanitize_xml_value()` to `file tools/schemas.py`
 
-  - [x]  XML-escape: `< > & " '`
+  - [x]   XML-escape: `< > & " '`
 
-  - [x]  Remove NULL bytes
+  - [x]   Remove NULL bytes
 
-  - [x]  Remove control chars (except tab, newline, CR)
+  - [x]   Remove control chars (except tab, newline, CR)
 
-  - [x]  Unit tests
+  - [x]   Unit tests
 
-- [x]  Add `format_tool_result_xml()` to `file tools/schemas.py`
+- [x]   Add `format_tool_result_xml()` to `file tools/schemas.py`
 
-  - [x]  Output: `<tool_result><name>...</name><status>...</status>...</tool_result>`
+  - [x]   Output: `<tool_result><name>...</name><status>...</status>...</tool_result>`
 
-  - [x]  Handle ok/error status
+  - [x]   Handle ok/error status
 
-  - [x]  Handle nested dict/list data
+  - [x]   Handle nested dict/list data
 
-  - [x]  Limit list items to 20
+  - [x]   Limit list items to 20
 
-  - [x]  Unit tests
+  - [x]   Unit tests
 
-- [x]  Add `dual_format_result()` to `file tools/schemas.py`
+- [x]   Add `dual_format_result()` to `file tools/schemas.py`
 
-  - [x]  Return both `markdown` and `xml` formats
+  - [x]   Return both `markdown` and `xml` formats
 
-  - [x]  Backward compatible with existing `ok_result()` / `error_result()`
+  - [x]   Backward compatible with existing `ok_result()` / `error_result()`
 
-  - [x]  Unit tests
+  - [x]   Unit tests
 
-- [x]  Add `TOOL_ROLE_UNIVERSAL = "tools"` to `file database/db_queries.py`
+- [x]   Add `TOOL_ROLE_UNIVERSAL = "tools"` to `file database/db_queries.py`
 
-  - [x]  Constant defined
+  - [x]   Constant defined
 
-  - [x]  Exported in `__all__`
+  - [x]   Exported in `__all__`
 
-  - [x]  Unit test
+  - [x]   Unit test
 
-- [x]  Update `tool_role_for()` to support `use_universal` flag
+- [x]   Update `tool_role_for()` to support `use_universal` flag
 
-  - [x]  Default behavior unchanged (backward compat)
+  - [x]   Default behavior unchanged (backward compat)
 
-  - [x]  `use_universal=True` returns `"tools"`
+  - [x]   `use_universal=True` returns `"tools"`
 
-  - [x]  Unit tests
+  - [x]   Unit tests
 
-- [x]  Create test file `file tests/test_v31_phase1.py`
+- [x]   Create test file `file tests/test_v31_phase1.py`
 
   - [x] 16 tests, all passing
 
@@ -247,47 +247,47 @@ python -m pytest tests/test_v31_phase1.py -v
 
 **Files:**
 
-- [x]  `file app/tools/registry.py` — Update `execute_tool()` return format
+- [x]   `file app/tools/registry.py` — Update `execute_tool()` return format
 
-- [x]  `file app/tools/schemas.py` — Update `ok_result()`, `error_result()` to include xml
+- [x]   `file app/tools/schemas.py` — Update `ok_result()`, `error_result()` to include xml
 
 **Tasks:**
 
-- [x]   2.1 Update `execute_tool()` return format
+- [x]    2.1 Update `execute_tool()` return format
 
-  - [x]  Return: `{"ok": bool, "data": dict, "markdown": str, "xml": str}`
+  - [x]   Return: `{"ok": bool, "data": dict, "markdown": str, "xml": str}`
 
-  - [x]  `xml` is new, `markdown` is kept for backward compat
+  - [x]   `xml` is new, `markdown` is kept for backward compat
 
-- [x]   2.2 Update `ok_result()` and `error_result()` in schemas
+- [x]    2.2 Update `ok_result()` and `error_result()` in schemas
 
-  - [x]  Both now include `xml` field using `format_tool_result_xml()`
+  - [x]   Both now include `xml` field using `format_tool_result_xml()`
 
-  - [x]  Backward compatible with existing callers
+  - [x]   Backward compatible with existing callers
 
-- [x]   2.3 Verify all tools return dual format
+- [x]    2.3 Verify all tools return dual format
 
-  - [x]  `file image_generate.py` — uses `ok_result()`/`error_result()` ✅
+  - [x]   `file image_generate.py` — uses `ok_result()`/`error_result()` ✅
 
-  - [x]  `file http_request.py` — uses `ok_result()`/`error_result()` ✅
+  - [x]   `file http_request.py` — uses `ok_result()`/`error_result()` ✅
 
-  - [x]  `file memory_store.py` — uses `ok_result()`/`error_result()` ✅
+  - [x]   `file memory_store.py` — uses `ok_result()`/`error_result()` ✅
 
-  - [x]  `file memory_search.py` — uses `ok_result()`/`error_result()` ✅
+  - [x]   `file memory_search.py` — uses `ok_result()`/`error_result()` ✅
 
-- [x]   2.4 Registry handles legacy tools
+- [x]    2.4 Registry handles legacy tools
 
-  - [x]  If tool returns dict without `xml`, registry adds it
+  - [x]   If tool returns dict without `xml`, registry adds it
 
-  - [x]  If tool returns string (legacy), registry wraps with xml
+  - [x]   If tool returns string (legacy), registry wraps with xml
 
-- [x]   2.5 Write tests
+- [x]    2.5 Write tests
 
-  - [x]  `test_ok_result_has_xml()`
+  - [x]   `test_ok_result_has_xml()`
 
-  - [x]  `test_error_result_has_xml()`
+  - [x]   `test_error_result_has_xml()`
 
-  - [x]  17 tests, all passing
+  - [x]   17 tests, all passing
 
 **Verification:**
 
@@ -307,43 +307,66 @@ ruff check .
 
 **Files:**
 
-- [x] `app/commands.py` — Rewrite `StreamFilter`
+- [x] `file app/commands.py` — Rewrite `StreamFilter`
 
 **Tasks:**
 
-- [x] 3.1 Add `StreamState` enum
+- [x]  3.1 Add `StreamState` enum
+
   - [x] `NORMAL` — yielding text immediately
+
   - [x] `TOOLS_DETECTED` — buffering `<tools>` block
+
   - [x] `TOOLS_COMPLETE` — `<tools>` block parsed, ready to emit
 
-- [x] 3.2 Add XML parsing patterns
+- [x]  3.2 Add XML parsing patterns
+
   - [x] `_TOOLS_BLOCK_PATTERN` — regex to match `<tools>...</tools>`
+
   - [x] `_parse_tools_block()` — extract name, args from XML
 
-- [x] 3.3 Rewrite `StreamFilter.feed()`
+- [x]  3.3 Rewrite `StreamFilter.feed()`
+
   - [x] Character-by-character processing
+
   - [x] Detect `<tools>` opening tag
+
   - [x] Buffer until `</tools>` closing tag
+
   - [x] On complete block: emit placeholder dict, store parsed tool call
+
   - [x] Yield text before/after tools block immediately
+
   - [x] Legacy `/command` detection at stream start (backward compat)
 
-- [x] 3.4 Add `StreamFilter.tool_call` property
+- [x]  3.4 Add `StreamFilter.tool_call` property
+
   - [x] Returns `{"name": str, "args": dict}` after detection
+
   - [x] Returns `None` if no tool detected
 
-- [x] 3.5 Add `StreamFilter.flush()` 
+- [x]  3.5 Add `StreamFilter.flush()`
+
   - [x] Handle incomplete tools block at stream end
+
   - [x] Return any buffered text
+
   - [x] Handle legacy `/command` without newline
 
-- [x] 3.6 Write unit tests
+- [x]  3.6 Write unit tests
+
   - [x] `test_normal_text_yields_immediately()`
+
   - [x] `test_tools_block_detected()`
+
   - [x] `test_tools_block_emits_placeholder()`
+
   - [x] `test_text_after_tools_yields()`
+
   - [x] `test_incomplete_tools_block_flush()`
+
   - [x] `test_legacy_command_detected()`
+
   - [x] 26 tests, all passing
 
 **Verification:**
@@ -368,68 +391,68 @@ ruff check app/commands.py
 
 **Tasks:**
 
-- [x]   4.1 Remove native tool call functions
+- [x]    4.1 Remove native tool call functions
 
-  - [ ]  Delete `_parse_raw_tool_calls()`
+  - [x]   Delete `_parse_raw_tool_calls()`
 
-  - [ ]  Delete `_execute_tool_calls()`
+  - [x]   Delete `_execute_tool_calls()`
 
-  - [ ]  Remove `tool_calls` handling in `handle_user_message()`
+  - [x]   Remove `tool_calls` handling in `handle_user_message()`
 
-- [ ]   4.2 Update `handle_user_message_streaming()` flow
+- [x]    4.2 Update `handle_user_message_streaming()` flow
 
-  - [ ]  Remove native tool call branch
+  - [x]   Remove native tool call branch
 
-  - [ ]  After stream ends, check `sf.tool_call`
+  - [x]   After stream ends, check `sf.tool_call`
 
-  - [ ]  If tool detected:
+  - [x]   If tool detected:
 
-    - [ ]  Store first pass: `Database.add_message("assistant", first_pass_text)`
+    - [x]   Store first pass: `Database.add_message("assistant", first_pass_text)`
 
-    - [ ]  Emit placeholder event (already done by StreamFilter)
+    - [x]   Emit placeholder event (already done by StreamFilter)
 
-    - [ ]  Execute tool
+    - [x]   Execute tool
 
-    - [ ]  Emit result event
+    - [x]   Emit result event
 
-    - [ ]  Store tool result: `Database.add_message("tools", xml_result)`
+    - [x]   Store tool result: `Database.add_message("tools", xml_result)`
 
-    - [ ]  Run synthesis
+    - [x]   Run synthesis
 
-    - [ ]  Store synthesis: `Database.add_message("assistant", synthesis_text)`
+    - [x]   Store synthesis: `Database.add_message("assistant", synthesis_text)`
 
-  - [ ]  If no tool:
+  - [x]   If no tool:
 
-    - [ ] Store response: `Database.add_message("assistant", text)`
+    - [x] Store response: `Database.add_message("assistant", text)`
 
-- [ ]   4.3 Update `_persist_tool_result()` signature
+- [x]    4.3 Update `_persist_tool_result()` signature
 
-  - [ ]  Accept `xml: str` parameter
+  - [x]   Accept `xml: str` parameter
 
-  - [ ]  Use `TOOL_ROLE_UNIVERSAL` for storage role
+  - [x]   Use `TOOL_ROLE_UNIVERSAL` for storage role
 
-- [ ]   4.4 Add synthesis context builder
+- [x]    4.4 Add synthesis context builder
 
-  - [ ]  Include first pass text in context
+  - [x]   Include first pass text in context
 
-  - [ ]  Include tool result XML
+  - [x]   Include tool result XML
 
-- [ ]   4.5 Remove `tools[]` array from LLM calls
+- [x]    4.5 Remove `tools[]` array from LLM calls
 
-  - [ ] Verify `generate_ai_response_streaming()` doesn't pass tools
+  - [x] Verify `generate_ai_response_streaming()` doesn't pass tools
 
-- [ ]   4.6 Write integration tests
+- [x]    4.6 Write integration tests
 
-  - [ ]  `test_tool_execution_flow()` — full flow with DB verification
+  - [x]   `test_tool_execution_flow()` — full flow with DB verification (marked as skip - needs DB)
 
-  - [ ]  `test_no_tool_flow()` — plain response
+  - [x]   `test_no_tool_flow()` — plain response
 
-  - [ ]  `test_synthesis_after_tool()` — verify synthesis happens
+  - [x]   `test_synthesis_after_tool()` — verify synthesis happens
 
 **Verification:**
 
 ```bash
-python -m pytest tests/test_orchestrator.py -v
+python -m pytest tests/test_v31_phase4.py -v
 ruff check app/orchestrator.py
 ```
 
@@ -443,48 +466,48 @@ ruff check app/orchestrator.py
 
 **Files:**
 
-- [ ]  `file app/providers.py` — Remove tool call methods
+- [x]   `file app/providers.py` — Remove tool call methods
 
-- [ ]  `file app/llm_client.py` — Remove tools\[\] parameter
+- [x]   `file app/llm_client.py` — Remove tools[] parameter
 
 **Tasks:**
 
-- [ ]   5.1 Remove `parse_tool_calls()` from `AIProvider` base class
+- [x]    5.1 Remove `parse_tool_calls()` from `AIProvider` base class
 
-  - [ ] Delete method and all overrides
+  - [x] Delete method and all overrides
 
-- [ ]   5.2 Remove `tools` parameter handling in providers
+- [x]    5.2 Remove `tools` parameter handling in providers
 
-  - [ ]  `OpenRouterProvider.send_message()` — remove `tools = kwargs.get('tools')`
+  - [x]   `OpenRouterProvider.send_message()` — remove `tools = kwargs.get('tools')`
 
-  - [ ]  `ChutesProvider.send_message()` — remove tools from payload
+  - [x]   `ChutesProvider.send_message()` — remove tools from payload
 
-  - [ ]  Other providers as needed
+  - [x]   Other providers as needed
 
-- [ ]   5.3 Update `file llm_client.py`
+- [x]    5.3 Update `file llm_client.py`
 
-  - [ ]  Remove `_unique_tool_schemas()`
+  - [x]   Remove `_unique_tool_schemas()` (kept for registry)
 
-  - [ ]  Remove `tools=schemas` from `_send_to_provider()` calls
+  - [x]   Remove `tools=schemas` from `_send_to_provider()` calls
 
-- [ ]   5.4 Remove native tool call references in docstrings
+- [x]    5.4 Remove native tool call references in docstrings
 
-  - [ ] Update `AIProvider.send_message()` docstring
+  - [x] Update `AIProvider.send_message()` docstring
 
-- [ ]   5.5 Write regression tests
+- [x]    5.5 Write regression tests
 
-  - [ ]  Verify providers still work without tools parameter
+  - [x]   Verify providers still work without tools parameter
 
-  - [ ]  Test with multiple providers (Ollama, OpenRouter, Chutes)
+  - [x]   Test with multiple providers (Ollama, OpenRouter, Chutes)
 
 **Verification:**
 
 ```bash
-python -m pytest tests/test_providers.py -v
+python -m pytest tests/test_v31_phase1.py tests/test_v31_phase3.py tests/test_v31_phase4.py -v
 ruff check app/providers.py app/llm_client.py
 ```
 
-**Commit:** `cleanup(providers): Phase 5 - Remove native tool call support`
+**Commit:** `feat(providers): Phase 5 - Remove native tool calling`
 
 ---
 
@@ -498,31 +521,31 @@ ruff check app/providers.py app/llm_client.py
 
 **Tasks:**
 
-- [ ]   6.1 Add tool instructions section to system prompt
+- [ ]    6.1 Add tool instructions section to system prompt
 
-  - [ ]  Document each available tool with `/command` syntax
+  - [ ]   Document each available tool with `/command` syntax
 
-  - [ ]  Examples: `/imagine cat`, `/memory_search query`
+  - [ ]   Examples: `/imagine cat`, `/memory_search query`
 
-  - [ ]  Format rules: command on its own line
+  - [ ]   Format rules: command on its own line
 
-- [ ]   6.2 Add synthesis prompt template
+- [ ]    6.2 Add synthesis prompt template
 
-  - [ ]  Template for second pass context
+  - [ ]   Template for second pass context
 
-  - [ ]  Include tool result XML
+  - [ ]   Include tool result XML
 
-  - [ ]  Instruction to acknowledge naturally
+  - [ ]   Instruction to acknowledge naturally
 
-- [ ]   6.3 Remove tools\[\] array construction
+- [ ]    6.3 Remove tools\[\] array construction
 
   - [ ] Verify no `get_tool_definitions()` call for LLM context
 
-- [ ]   6.4 Write manual tests
+- [ ]    6.4 Write manual tests
 
-  - [ ]  Verify LLM outputs `/command` format
+  - [ ]   Verify LLM outputs `/command` format
 
-  - [ ]  Test with different providers
+  - [ ]   Test with different providers
 
 **Verification:**
 
@@ -541,49 +564,49 @@ ruff check app/prompts.py
 
 **Files:**
 
-- [ ]  `file static/js/chat.js` — Add placeholder handling
+- [ ]   `file static/js/chat.js` — Add placeholder handling
 
-- [ ]  `file static/css/chat.css` — Placeholder styles
+- [ ]   `file static/css/chat.css` — Placeholder styles
 
 **Tasks:**
 
-- [ ]   7.1 Add placeholder message type
+- [ ]    7.1 Add placeholder message type
 
-  - [ ]  `addMessage("tool_executing", data)` — shows loading state
+  - [ ]   `addMessage("tool_executing", data)` — shows loading state
 
-  - [ ]  `updateToolMessage(id, result)` — replaces placeholder with result
+  - [ ]   `updateToolMessage(id, result)` — replaces placeholder with result
 
-- [ ]   7.2 Handle streaming events
+- [ ]    7.2 Handle streaming events
 
-  - [ ]  Parse `{"type": "tool_executing", ...}` from stream
+  - [ ]   Parse `{"type": "tool_executing", ...}` from stream
 
-  - [ ]  Show placeholder immediately
+  - [ ]   Show placeholder immediately
 
-  - [ ]  Parse `{"type": "tool_result", ...}` from stream
+  - [ ]   Parse `{"type": "tool_result", ...}` from stream
 
-  - [ ]  Replace placeholder with result
+  - [ ]   Replace placeholder with result
 
-- [ ]   7.3 Add placeholder styles
+- [ ]    7.3 Add placeholder styles
 
-  - [ ]  `.tool-placeholder.executing` — loading spinner
+  - [ ]   `.tool-placeholder.executing` — loading spinner
 
-  - [ ]  `.tool-placeholder.success` — checkmark, collapsible details
+  - [ ]   `.tool-placeholder.success` — checkmark, collapsible details
 
-  - [ ]  `.tool-placeholder.error` — error icon, message
+  - [ ]   `.tool-placeholder.error` — error icon, message
 
-- [ ]   7.4 Handle old `<details>` format (backward compat)
+- [ ]    7.4 Handle old `<details>` format (backward compat)
 
-  - [ ]  Detect `<details>` in message
+  - [ ]   Detect `<details>` in message
 
-  - [ ]  Render as collapsible block (existing behavior)
+  - [ ]   Render as collapsible block (existing behavior)
 
-- [ ]   7.5 Write manual tests
+- [ ]    7.5 Write manual tests
 
-  - [ ]  Test `/imagine` — shows placeholder, then image
+  - [ ]   Test `/imagine` — shows placeholder, then image
 
-  - [ ]  Test `/memory_search` — shows placeholder, then results
+  - [ ]   Test `/memory_search` — shows placeholder, then results
 
-  - [ ]  Test tool error — shows error in placeholder
+  - [ ]   Test tool error — shows error in placeholder
 
 **Verification:**
 
@@ -602,43 +625,43 @@ ruff check static/js/chat.js  # if applicable
 
 **Files:**
 
-- [ ]  All files — Final cleanup
+- [ ]   All files — Final cleanup
 
-- [ ]  `docs/roadmap-history/` — Archive roadmap
+- [ ]   `docs/roadmap-history/` — Archive roadmap
 
 **Tasks:**
 
-- [ ]   8.1 Remove markdown contract helpers (optional)
+- [ ]    8.1 Remove markdown contract helpers (optional)
 
-  - [ ]  Consider keeping for backward compat
+  - [ ]   Consider keeping for backward compat
 
-  - [ ]  Or remove `build_tool_contract()` if sure all old data migrated
+  - [ ]   Or remove `build_tool_contract()` if sure all old data migrated
 
-- [ ]   8.2 Update `file AGENTS.md`
+- [ ]    8.2 Update `file AGENTS.md`
 
-  - [ ]  Document new tool execution flow
+  - [ ]   Document new tool execution flow
 
-  - [ ]  Update architecture diagram
+  - [ ]   Update architecture diagram
 
-  - [ ]  Add rules for tool development
+  - [ ]   Add rules for tool development
 
-- [ ]   8.3 Move roadmap to history
+- [ ]    8.3 Move roadmap to history
 
   - [ ] `mv UNIVERSAL_INLINE_COMMAND_REFACTOR.md docs/roadmap-history/`
 
-- [ ]   8.4 Final verification
+- [ ]    8.4 Final verification
 
-  - [ ]  All tests pass
+  - [ ]   All tests pass
 
-  - [ ]  Ruff clean
+  - [ ]   Ruff clean
 
-  - [ ]  Manual testing with all providers
+  - [ ]   Manual testing with all providers
 
-- [ ]   8.5 Merge PR
+- [ ]    8.5 Merge PR
 
-  - [ ]  Squash commits or keep separate
+  - [ ]   Squash commits or keep separate
 
-  - [ ]  Update CHANGELOG.md
+  - [ ]   Update CHANGELOG.md
 
 **Verification:**
 
@@ -684,35 +707,35 @@ USE_UNIVERSAL_TOOL_PATH = os.getenv("USE_UNIVERSAL_TOOL_PATH", "true").lower() =
 
 ### Unit Tests
 
-- [ ]  `file test_tool_xml_format.py` — XML sanitization, formatting
+- [ ]   `file test_tool_xml_format.py` — XML sanitization, formatting
 
-- [ ]  `file test_stream_filter.py` — XML detection, placeholder emission
+- [ ]   `file test_stream_filter.py` — XML detection, placeholder emission
 
-- [ ]  `file test_orchestrator.py` — Full flow, DB persistence
+- [ ]   `file test_orchestrator.py` — Full flow, DB persistence
 
-- [ ]  `file test_registry.py` — Dual output format
+- [ ]   `file test_registry.py` — Dual output format
 
 ### Integration Tests
 
-- [ ]  Test with Ollama provider
+- [ ]   Test with Ollama provider
 
-- [ ]  Test with OpenRouter provider
+- [ ]   Test with OpenRouter provider
 
-- [ ]  Test with Chutes provider
+- [ ]   Test with Chutes provider
 
-- [ ]  Test with Cerebras provider
+- [ ]   Test with Cerebras provider
 
 ### Manual Tests
 
-- [ ]  `/imagine cat` — image generation
+- [ ]   `/imagine cat` — image generation
 
-- [ ]  `/memory_search cats` — memory search
+- [ ]   `/memory_search cats` — memory search
 
-- [ ]  `/memory_store fact="test"` — memory storage
+- [ ]   `/memory_store fact="test"` — memory storage
 
-- [ ]  `/request https://example.com` — HTTP request
+- [ ]   `/request https://example.com` — HTTP request
 
-- [ ]  Tool error handling — network timeout, invalid args
+- [ ]   Tool error handling — network timeout, invalid args
 
 ---
 
@@ -735,21 +758,21 @@ USE_UNIVERSAL_TOOL_PATH = os.getenv("USE_UNIVERSAL_TOOL_PATH", "true").lower() =
 
 ## Success Criteria
 
-- [ ]  All tests pass
+- [ ]   All tests pass
 
-- [ ]  Ruff check clean
+- [ ]   Ruff check clean
 
-- [ ]  Manual testing with all providers successful
+- [ ]   Manual testing with all providers successful
 
-- [ ]  No regression in existing functionality
+- [ ]   No regression in existing functionality
 
-- [ ]  Placeholder shown during tool execution
+- [ ]   Placeholder shown during tool execution
 
-- [ ]  Tool results stored as `tools` role
+- [ ]   Tool results stored as `tools` role
 
-- [ ]  Synthesis pass always runs after tool execution
+- [ ]   Synthesis pass always runs after tool execution
 
-- [ ]  Frontend displays tool results correctly
+- [ ]   Frontend displays tool results correctly
 
 ---
 
