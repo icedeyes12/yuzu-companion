@@ -19,45 +19,20 @@ class AIProvider:
         self.name = name
         self.config = config or {}
         self.is_available = True
-        self._last_raw_response: dict | None = None
     
     def get_models(self) -> list[str]:
         raise NotImplementedError
     
     def send_message(self, messages: list[dict], model: str, **kwargs) -> str | None:
-        """Send a message. Supports tools=[] kwarg for function calling.
+        """Send a message and return natural text response.
         
-        Returns:
-            str: Natural text response. Tool execution is handled by caller
-                 via parse_tool_calls() on the raw response.
+        v3.1.0: No native tool calling. All tools are invoked via
+        inline /command or <tool_call> XML tags in the response text.
         """
         raise NotImplementedError
 
-    def send_message_raw(self, messages: list[dict], model: str, **kwargs) -> dict | None:
-        """Send a message and return the full raw API response dict.
-        
-        Returns the raw JSON response from the provider, or None on error.
-        Use this when you need to inspect tool_calls or other metadata.
-        """
-        # Default: fall back to send_message, no raw response available
-        text = self.send_message(messages, model, **kwargs)
-        if text is not None:
-            # Synthesize a minimal raw response for providers that don't support raw
-            return {
-                "choices": [{"message": {"content": text, "tool_calls": []}}]
-            }
-        return None
-    
     def send_message_streaming(self, messages: list[dict], model: str, **kwargs) -> Generator[str, None, None]:
         raise NotImplementedError
-    
-    def parse_tool_calls(self, raw_response) -> list[dict]:
-        """Parse tool_calls from a provider-specific response object.
-
-        Returns list of {"name": str, "arguments": dict, "id": str} or empty list.
-        Override per-provider since response shapes differ.
-        """
-        return []
     
     def test_connection(self) -> bool:
         try:
@@ -463,10 +438,6 @@ class OpenRouterProvider(AIProvider):
                 "stream": False
             }
             # Add tools if provided (for function calling)
-            tools = kwargs.get('tools')
-            if tools:
-                payload["tools"] = tools
-
             # Debug: Log summary (not full payload)
             logger.debug(f"[OpenRouter] {model} | max_tokens={max_tokens or 'unlimited'}")
 
@@ -485,7 +456,6 @@ class OpenRouterProvider(AIProvider):
 
             if response.status_code == 200:
                 result = response.json()
-                self._last_raw_response = result
                 message = result['choices'][0]['message']
                 content = message.get('content', '')
                 return content.strip() if content else ''
@@ -496,69 +466,6 @@ class OpenRouterProvider(AIProvider):
                     return "Rate limit exceeded. Please wait a moment and try again."
                 else:
                     return None
-                
-        except Exception:
-            return None
-    
-    def send_message_raw(self, messages: list[dict], model: str, **kwargs) -> dict | None:
-        """Send a message and return the full raw API response dict."""
-        if not self.api_key or model not in self.available_models:
-            return None
-        
-        try:
-            if self.supports_vision(model) and messages:
-                last_user_message = self._get_last_user_message(messages)
-                if last_user_message and multimodal_tools.has_images(last_user_message):
-                    vision_messages = self.format_vision_message(last_user_message)
-                    messages = self._replace_last_user_message(messages, last_user_message, vision_messages)
-            
-            temperature = kwargs.get('temperature', 0.73)
-            max_tokens = kwargs.get('max_tokens')
-            top_p = kwargs.get('top_p', 0.9)
-            top_k = kwargs.get('top_k', 40)
-            typical_p = kwargs.get('typical_p', 0.8)
-            
-            if model.endswith(':free'):
-                max_tokens = min(max_tokens, 2048)
-                temperature = min(temperature, 0.8)
-            
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/icedeyes12/yuzu-companion",
-                "X-Title": "Yuzu-Companion"
-            }
-            
-            payload = {
-                "model": model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "top_p": top_p,
-                "top_k": top_k,
-                "typical_p": typical_p,
-                "stream": False,
-            }
-
-            tools = kwargs.get('tools')
-            if tools:
-                payload["tools"] = tools
-                payload["tool_choice"] = "auto"
-            
-            response = requests.post(
-                self.base_url,
-                headers=headers,
-                json=payload,
-                timeout=kwargs.get('timeout', 180)
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                self._last_raw_response = result
-                return result
-            else:
-                logger.debug(f"[OpenRouter] raw error {response.status_code}: {response.text[:200]}")
-                return None
                 
         except Exception:
             return None
@@ -631,28 +538,6 @@ class OpenRouterProvider(AIProvider):
                 
         except Exception as e:
             yield f"Error: {str(e)}"
-
-    def parse_tool_calls(self, raw_response) -> list[dict]:
-        """Parse tool_calls from OpenRouter API response.
-        
-        Returns list of {"name": str, "arguments": dict, "id": str}.
-        """
-        if not isinstance(raw_response, dict):
-            return []
-        try:
-            message = raw_response.get("choices", [{}])[0].get("message", {})
-            tool_calls = message.get("tool_calls", [])
-            results = []
-            for tc in tool_calls:
-                fn = tc.get("function", {})
-                results.append({
-                    "id": tc.get("id", ""),
-                    "name": fn.get("name", ""),
-                    "arguments": json.loads(fn.get("arguments", "{}")),
-                })
-            return results
-        except Exception:
-            return []
 
 class ChutesProvider(AIProvider):
     def __init__(self, config: dict | None = None):
@@ -841,10 +726,6 @@ class ChutesProvider(AIProvider):
         }
         # NOTE: Chutes does NOT support native tool calling.
         # Strip tools to avoid confusing the model - rely on /command detection instead.
-        # tools = kwargs.get('tools')
-        # if tools:
-        #     payload["tools"] = tools
-
         log_prefix = kwargs.pop('log_prefix', '[CHAT]')
         logger.debug(f"{log_prefix} {model} | max_tokens={max_tokens or 'unlimited'}")
 
@@ -977,21 +858,7 @@ class AIProviderManager:
             return response
         logger.warning(f"[ProviderManager] {provider_name} failed after {response_time:.1f}s")
         return None
-    
-    def send_message_raw(self, provider_name: str, model: str, messages: list[dict], **kwargs) -> dict | None:
-        """Send a message and return the full raw API response dict."""
-        if provider_name not in self.providers:
-            return None
         
-        provider = self.providers[provider_name]
-        start_time = time.time()
-        raw = provider.send_message_raw(messages, model, **kwargs)
-        response_time = time.time() - start_time
-        if raw is not None:
-            return raw
-        logger.warning(f"[ProviderManager] {provider_name} raw failed after {response_time:.1f}s")
-        return None
-    
     def send_message_streaming(self, provider_name: str, model: str, messages: list[dict], **kwargs) -> Generator[str, None, None]:
         if provider_name not in self.providers:
             yield ""

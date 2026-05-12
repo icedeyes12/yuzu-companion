@@ -1,17 +1,16 @@
 """
 Unit tests for v3.1.0 Phase 4: Orchestrator Single Path Flow.
 
-Tests for:
-- Tool execution flow with DB verification
-- No tool flow (plain response)
-- Synthesis after tool execution
-- Tool result storage with universal role
-- First pass storage before tool execution
+Requires PostgreSQL DB connection - these are integration tests.
 """
-
-from __future__ import annotations
-
 import pytest
+import os
+
+# Skip all tests in this module if no DB connection
+pytestmark = pytest.mark.skipif(
+    not all(os.getenv(v) for v in ["PGHOST", "PGPORT", "PGDATABASE", "PGUSER"]),
+    reason="Integration tests require PostgreSQL connection"
+)
 
 
 class TestOrchestratorSinglePath:
