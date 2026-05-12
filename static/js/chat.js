@@ -963,6 +963,7 @@ function isRenderableHistoryRole(role) {
 	return (
 		role === "user" ||
 		role === "assistant" ||
+		role === "tools" ||  // v3.1.0: universal tool role
 		(typeof role === "string" && role.endsWith("_tools"))
 	);
 }
