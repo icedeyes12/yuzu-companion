@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import re
+from enum import Enum, auto
 from typing import Any, Iterator
 
 from app.logging_config import get_logger
@@ -33,13 +34,11 @@ _MARKDOWN_IMAGE_PATH = re.compile(
 _MARKDOWN_IMAGE_ANY = re.compile(r'!\[[^\]]{0,200}\]\(([^)]{1,200})\)')
 _GENERATED_IMAGE_SRC = re.compile(r'src="(static/generated_images/[^"]+)"')
 
-# Maximum chars to buffer while sniffing for a leading /command.
-# Generous enough for any realistic command line, but bounded so we never
-# starve the user of streamed output if the model omits a newline.
-_COMMAND_SNIFF_LIMIT = 512
-
 # Maximum length for regex input to prevent ReDoS
 _REGEX_INPUT_LIMIT = 10000
+
+# Maximum chars to buffer for multi-line command detection
+_COMMAND_BUFFER_LIMIT = 16000
 
 
 def _safe_regex_search(pattern: re.Pattern, text: str) -> re.Match | None:
@@ -49,104 +48,233 @@ def _safe_regex_search(pattern: re.Pattern, text: str) -> re.Match | None:
     return pattern.search(text)
 
 
+class StreamState(Enum):
+    """StreamFilter state machine states."""
+    NORMAL = auto()  # Yielding text immediately
+    COMMAND_DETECTED = auto()  # Found '/' at line start, buffering
+    COMMAND_EXECUTING = auto()  # Tool running
+
+
 class StreamFilter:
-    """Stateful filter that holds back chunks until a /command on the first
-    line can be confirmed or ruled out.
+    """Stateful filter with line-buffering for command detection.
+
+    v3.1.0 refactor: line-buffering approach that preserves typing effect.
+
+    Behavior:
+      - Yield text immediately line-by-line
+      - Buffer ONLY lines that START with '/'
+      - On newline after '/': execute command, emit placeholder, continue
+      - Handle multi-line arguments (quoted strings, JSON blocks)
+
+    State Machine:
+      NORMAL → COMMAND_DETECTED: when line starts with '/'
+      COMMAND_DETECTED → COMMAND_EXECUTING: when newline received
+      COMMAND_EXECUTING → NORMAL: after tool completes
 
     Usage:
         sf = StreamFilter()
         for chunk in upstream:
-            for safe in sf.feed(chunk):
-                yield safe
-        for safe in sf.flush():
-            yield safe
+            for event in sf.feed(chunk):
+                if isinstance(event, str):
+                    yield event  # text chunk
+                elif isinstance(event, dict):
+                    # {"type": "command_detected", "command": {...}}
+                    # {"type": "tool_result", "result": {...}}
+                    yield event
+        for event in sf.flush():
+            yield event
 
         # After streaming completes:
         if sf.command:
-            ...  # don't render command line; suppressed via emit
+            ...  # command was executed
         full_text = sf.full_text
-
-    Behavior:
-      - First non-whitespace char is '/': buffer until newline (or limit).
-        On newline, parse the command, suppress that line, and stream the
-        rest live.
-      - First non-whitespace char is not '/': flush buffer immediately and
-        pass through every subsequent chunk untouched.
     """
 
-    __slots__ = ("_buffer", "_decided", "_is_command", "command", "full_text")
+    __slots__ = (
+        "_state",
+        "_buffer",
+        "_line_buffer",
+        "command",
+        "full_text",
+        "tool_result",
+    )
 
     def __init__(self) -> None:
+        self._state = StreamState.NORMAL
         self._buffer = ""
-        self._decided = False
-        self._is_command = False
-        self.command: dict[str, str] | None = None
+        self._line_buffer = ""
+        self.command: dict[str, Any] | None = None
         self.full_text = ""
+        self.tool_result: dict[str, Any] | None = None
 
-    def feed(self, chunk: str) -> Iterator[str]:  # type: ignore[name-defined]
+    def feed(self, chunk: str) -> Iterator[str | dict]:
         if not chunk:
             return
         self.full_text += chunk
 
-        if self._decided and not self._is_command:
-            yield chunk
-            return
+        # Process chunk character by character for line detection
+        for char in chunk:
+            if self._state == StreamState.NORMAL:
+                # In normal mode, yield immediately unless we see '/' at line start
+                if char == "/" and not self._line_buffer.strip():
+                    # Potential command at line start
+                    self._state = StreamState.COMMAND_DETECTED
+                    self._line_buffer += char
+                else:
+                    self._line_buffer += char
+                    # Always yield character immediately (typing effect)
+                    yield char
+                    # Clear line buffer after newline
+                    if char == "\n":
+                        self._line_buffer = ""
 
-        if self._decided and self._is_command:
-            # Command was already detected in a previous chunk.
-            # Any subsequent text is narration — yield it live.
-            yield chunk
-            return
+            elif self._state == StreamState.COMMAND_DETECTED:
+                self._line_buffer += char
+                self._buffer += char
 
-        self._buffer += chunk
+                if char == "\n":
+                    # End of command line - parse and execute
+                    self._execute_command()
+                    self._state = StreamState.NORMAL
+                    self._buffer = ""
+                    self._line_buffer = ""
 
-        if not self._decided:
-            stripped = self._buffer.lstrip()
-            if stripped and not stripped.startswith("/"):
-                # Definitely not a command.
-                self._decided = True
-                self._is_command = False
-                yield self._buffer
-                self._buffer = ""
-                return
-            if len(self._buffer) >= _COMMAND_SNIFF_LIMIT and "\n" not in self._buffer:
-                # Ran out of patience: treat as plain text.
-                self._decided = True
-                self._is_command = False
-                yield self._buffer
-                self._buffer = ""
-                return
-            if not stripped:
-                # Only whitespace so far; keep buffering.
-                return
-            # Starts with '/': wait for the newline (handled below).
+                elif len(self._buffer) >= _COMMAND_BUFFER_LIMIT:
+                    # Buffer overflow - treat as plain text
+                    yield self._line_buffer
+                    self._state = StreamState.NORMAL
+                    self._buffer = ""
+                    self._line_buffer = ""
 
-        if "\n" in self._buffer and not self._decided:
-            self._decided = True
-            self._is_command = True
-            first_line, _, rest = self._buffer.partition("\n")
-            self.command = detect_command(first_line)
+            elif self._state == StreamState.COMMAND_EXECUTING:
+                # Tool is running - buffer incoming text
+                self._line_buffer += char
+
+    def _execute_command(self) -> None:
+        """Parse and execute the buffered command line."""
+        command_line = "/" + self._buffer.rstrip("\n")
+        parsed = parse_command_with_multiline_args(command_line)
+
+        if parsed and parsed.get("command"):
+            self.command = parsed
+            # Execute the tool
+            tool_name, result = execute_command(parsed)
+            self.tool_result = {
+                "tool": tool_name,
+                "result": result,
+            }
+        else:
+            # Not a valid command - treat as plain text
+            self._line_buffer = command_line + "\n"
+
+    def flush(self) -> Iterator[str | dict]:
+        """Drain any held-back text. Call once after upstream completes."""
+        if self._state == StreamState.COMMAND_DETECTED and self._buffer:
+            # Stream ended mid-command - try to execute
+            self._execute_command()
+            self._state = StreamState.NORMAL
             self._buffer = ""
-            # Suppress the command line; the rest is rarely produced by the
-            # model when a /command is the first line, but pass it through
-            # for correctness.
-            if rest:
-                yield rest
 
-    def flush(self) -> Iterator[str]:  # type: ignore[name-defined]
-        """Drain any held-back text. Call once after the upstream completes."""
-        if not self._decided:
-            # Stream ended before we could decide. If the buffer starts with
-            # a slash and never produced a newline, treat it as a command on
-            # a single line.
-            stripped = self._buffer.lstrip()
-            if stripped.startswith("/"):
-                self._is_command = True
-                self.command = detect_command(self._buffer)
-            else:
-                yield self._buffer
-            self._buffer = ""
-            self._decided = True
+        if self._line_buffer:
+            yield self._line_buffer
+            self._line_buffer = ""
+
+
+# --------------------------------------------------------------------
+# Multi-line Argument Parsing (v3.1.0)
+# --------------------------------------------------------------------
+
+# Regex patterns for argument parsing
+_RX_QUOTED_STRING = re.compile(
+    r'(\w+)="((?:[^"\\]|\\.)*)"\s*', re.DOTALL
+)
+_RX_JSON_BLOCK = re.compile(r"^\s*\{[\s\S]*\}\s*$", re.DOTALL)
+
+
+def parse_command_with_multiline_args(
+    command_line: str,
+    following_lines: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """Parse command including multi-line arguments.
+
+    Supports:
+    - Single positional argument: /imagine cute cat
+    - Named args: /memory_store fact="value" category="Identity"
+    - Multi-line quoted strings: fact="line1
+                                  line2"
+    - JSON blocks after newline: /request POST url
+                                 {"key": "value"}
+
+    Returns:
+        {"command": str, "args": dict, "full_command": str}
+        or None if not a valid command.
+    """
+    if not command_line or not command_line.strip():
+        return None
+
+    # Get first line (command + potential args)
+    lines = command_line.strip().split("\n")
+    first_line = lines[0]
+    rest_lines = lines[1:] if len(lines) > 1 else (following_lines or [])
+
+    if not first_line.startswith("/"):
+        return None
+
+    # Parse command name and initial args
+    parts = first_line.split(None, 1)
+    command_name = parts[0][1:]  # strip leading /
+    args_str = parts[1] if len(parts) > 1 else ""
+
+    args: dict[str, Any] = {}
+
+    # Check for JSON block in remaining lines
+    if rest_lines:
+        rest_text = "\n".join(rest_lines).strip()
+        if _RX_JSON_BLOCK.match(rest_text):
+            try:
+                json_data = json.loads(rest_text)
+                if isinstance(json_data, dict):
+                    args.update(json_data)
+                else:
+                    args["json_payload"] = json_data
+                rest_text = ""
+            except json.JSONDecodeError:
+                pass
+
+        # If no JSON, treat as positional continuation
+        if rest_text and not args:
+            args_str = args_str + " " + rest_text if args_str else rest_text
+
+    # Parse named args from args_str (quoted strings)
+    if args_str:
+        # Try to extract quoted args
+        remaining = args_str
+        while True:
+            match = _RX_QUOTED_STRING.match(remaining)
+            if match:
+                key, value = match.group(1), match.group(2)
+                # Unescape
+                value = value.replace('\\"', '"').replace("\\\\", "\\")
+                args[key] = value
+                remaining = remaining[match.end() :]
+                continue
+            break
+
+        # If no named args found, treat as positional
+        if not args and remaining.strip():
+            positional = remaining.strip()
+            # Remove surrounding quotes if present
+            if len(positional) >= 2 and positional[0] == '"' == positional[-1]:
+                positional = positional[1:-1]
+            # Map to tool-specific key
+            tool_key = _STRING_ARG_TOOLS.get(command_name, "query")
+            args[tool_key] = positional
+
+    return {
+        "command": command_name,
+        "args": args,
+        "full_command": command_line.strip(),
+    }
 
 
 def detect_command(response_text: str | None) -> dict[str, str] | None:
