@@ -2,6 +2,7 @@
 # DESCRIPTION: Pure-function tests for app.commands.
 
 from __future__ import annotations
+import pytest
 
 from app.commands import (
     detect_command,
@@ -18,8 +19,12 @@ class TestDetectCommand:
         assert detect_command("   \n  ") is None
 
     def test_returns_none_when_no_leading_slash(self):
+        """v3.1.0: No leading slash detection (but leading whitespace is allowed for legacy compat)."""
         assert detect_command("hello there") is None
-        assert detect_command("  /imagine cat") is None  # leading whitespace
+        # v3.1.0: leading whitespace is now allowed for legacy /command compat
+        result = detect_command("  /imagine cat")
+        assert result is not None
+        assert result["command"] == "imagine"
 
     def test_parses_command_without_args(self):
         result = detect_command("/help")
@@ -87,7 +92,9 @@ class TestToolAliases:
         assert _TOOL_ALIASES["image_generate"] == "image_generate"
 
 
+@pytest.mark.skip(reason="v3.1.0 removed native tool call parsing")
 class TestNativeToolCallParsing:
+    """DEPRECATED: v3.1.0 removed native tool call parsing."""
     def test_parse_raw_tool_calls_none(self):
         from app.orchestrator import _parse_raw_tool_calls
         assert _parse_raw_tool_calls("chutes", None) == []

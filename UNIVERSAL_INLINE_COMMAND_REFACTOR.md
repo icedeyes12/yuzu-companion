@@ -364,11 +364,11 @@ ruff check app/commands.py
 
 **Files:**
 
-- [ ] `file app/orchestrator.py` — Major refactor
+- [x] `file app/orchestrator.py` — Major refactor
 
 **Tasks:**
 
-- [ ]   4.1 Remove native tool call functions
+- [x]   4.1 Remove native tool call functions
 
   - [ ]  Delete `_parse_raw_tool_calls()`
 

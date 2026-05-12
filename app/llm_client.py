@@ -254,6 +254,7 @@ def generate_ai_response(
     interface: str = "terminal",
     session_id: int | None = None,
     image_content_for_context: list[dict[str, Any]] | None = None,
+    tool_result_context: str | None = None,
 ) -> tuple[str | None, dict[str, Any] | None]:
     """Single (text, raw_response) AI generation pass.
 
@@ -275,7 +276,15 @@ def generate_ai_response(
 
     if image_content_for_context:
         messages.append({"role": "user", "content": image_content_for_context})
+
+    if tool_result_context:
+        messages.append({"role": "user", "content": f"[Tool Result]\n{tool_result_context}"})
+        log.info("injected tool result context for synthesis")
         log.info("injected base64 image context for second pass")
+
+    if tool_result_context:
+        messages.append({"role": "user", "content": f"[Tool Result]\n{tool_result_context}"})
+        log.info("injected tool result context for synthesis")
 
     text, raw = _send_to_provider(
         provider, model, messages, image_context=image_content_for_context
@@ -327,6 +336,7 @@ def generate_ai_response_streaming(
     provider: str | None = None,
     model: str | None = None,
     image_content_for_context: list[dict[str, Any]] | None = None,
+    tool_result_context: str | None = None,
 ) -> Iterator[str]:
     """Stream a response from the configured provider chunk by chunk.
 
@@ -350,6 +360,10 @@ def generate_ai_response_streaming(
 
     if image_content_for_context:
         messages.append({"role": "user", "content": image_content_for_context})
+
+    if tool_result_context:
+        messages.append({"role": "user", "content": f"[Tool Result]\n{tool_result_context}"})
+        log.info("injected tool result context for synthesis")
 
     yield from _stream_from_provider(
         resolved_provider,

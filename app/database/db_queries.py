@@ -533,7 +533,11 @@ def format_ai_history_rows(rows: list[dict]) -> list[dict]:
             formatted.append({"role": role, "content": f"{content} {ts}"})
         elif role in ("assistant", "system"):
             formatted.append({"role": role, "content": content})
+        elif role == TOOL_ROLE_UNIVERSAL:
+            # v3.1.0: tools role with XML format - pass through as-is
+            formatted.append({"role": role, "content": content})
         elif role in ALL_TOOL_ROLES:
+            # Legacy tool roles - expand into assistant + tool entries
             formatted.append({
                 "role": "assistant",
                 "content": extract_command_from_markdown_contract(content),

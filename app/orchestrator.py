@@ -1,6 +1,7 @@
 # FILE: app/orchestrator.py
 # DESCRIPTION: Single entrypoint for handling user messages.
 #              Coordinates: LLM call -> tool detection -> tool exec -> synthesis.
+# v3.1.0: Universal inline command path with placeholder emission.
 
 from __future__ import annotations
 
@@ -17,13 +18,14 @@ from app.commands import (
     parse_image_path,
 )
 from app.database import Database
+from app.database.db_queries import TOOL_ROLE_UNIVERSAL
 from app.llm_client import (
     generate_ai_response,
     generate_ai_response_streaming,
 )
 from app.logging_config import get_logger
 from app.tools import multimodal_tools
-from app.tools.registry import get_tool_role
+from app.tools.registry import execute_tool, get_tool_role
 from app.visual_context import store_visual_context
 
 log = get_logger(__name__)
@@ -33,9 +35,12 @@ _NESTED_COMMAND_PREFIXES = ("/request", "/imagine")
 _EMPTY_RESPONSE_FALLBACK = "I'm having trouble responding right now. Please try again."
 _MD_IMAGE_PATTERN = re.compile(r"!\[[^\]]{0,200}\]\(([^)]{1,200})\)")
 
+# Throttle: only check pipeline every Nth message
+_PIPELINE_CHECK_INTERVAL = 5
+
 
 # ---------------------------------------------------------------------------
-# Image-cache helpers (used to attach uploaded/markdown images to user msgs)
+# Image-cache helpers
 # ---------------------------------------------------------------------------
 
 
@@ -46,111 +51,46 @@ def _cache_uploaded_images(message: str) -> list[str]:
     
     import os
     paths: list[str] = []
-    
-    # Allowed directories for image paths
     allowed_dirs = ("static/", "uploads/", "generated_images/")
     
     for line in message.split("\n"):
         if line.startswith("IMAGE_UPLOAD:"):
             candidate = line[len("IMAGE_UPLOAD:"):].strip()
-            
-            # Security: validate path is within allowed directories
-            # Prevent path traversal attacks
             if not candidate:
                 continue
-            
-            # Normalize path to prevent traversal
             candidate = os.path.normpath(candidate)
-            
-            # Check for path traversal attempts
             if candidate.startswith("..") or candidate.startswith("/"):
                 log.warning("rejected path traversal attempt: %s", candidate[:50])
                 continue
-            
-            # Verify path is within allowed directories
             if not any(candidate.startswith(d) for d in allowed_dirs):
                 log.warning("rejected path outside allowed dirs: %s", candidate[:50])
                 continue
-            
             if os.path.isfile(candidate):
                 paths.append(candidate)
-    
     return paths
 
 
-# ---------------------------------------------------------------------------
-# Native tool-call helpers
-# ---------------------------------------------------------------------------
-
-def _parse_raw_tool_calls(
-    provider_name: str, raw_response: dict | None
-) -> list[dict]:
-    """Parse tool_calls from a raw provider API response.
-
-    Returns list of {"name": str, "arguments": dict} for each tool call.
-    """
-    if not raw_response:
-        return []
-    try:
-        from app.providers import get_ai_manager
-        manager = get_ai_manager()
-        provider = manager.providers.get(provider_name)
-        if not provider:
-            return []
-        calls = provider.parse_tool_calls(raw_response)
-        return [{"name": c["name"], "arguments": c["arguments"]} for c in calls if c.get("name")]
-    except Exception:
-        return []
-
-
-def _execute_tool_calls(
-    tool_calls: list[dict], session_id: int
-) -> list[tuple[str, dict]]:
-    """Execute a list of tool calls and return results."""
-    from app.commands import _TOOL_ALIASES
-    from app.tools.registry import execute_tool, is_terminal_tool
-
-    results: list[tuple[str, dict]] = []
-    for tc in tool_calls:
-        raw_name = tc["name"]
-        tool_name = _TOOL_ALIASES.get(raw_name, raw_name)
-        arguments = tc.get("arguments", {})
-        log.info("native tool_call: %s %s", tool_name, arguments)
-        result = execute_tool(tool_name, arguments, session_id=session_id)
-        results.append((tool_name, result))
-        if is_terminal_tool(tool_name) and result.get("ok"):
-            break  # terminal tool succeeded, stop processing
-    return results
-
-
 def _cache_images_from_message(message: str) -> list[str]:
-    """Resolve any image references in *message* to local cache paths, with validation."""
+    """Resolve image references in *message* to local cache paths."""
     import os
     uploaded = _cache_uploaded_images(message)
     if uploaded:
         return uploaded
 
-    # Allowed directories for image paths
     allowed_dirs = ("static/", "uploads/", "generated_images/")
-    
     cached: list[str] = []
+    
     for match in _MD_IMAGE_PATTERN.finditer(message):
         source = match.group(1)
-        
-        # Limit source length to prevent ReDoS
         if len(source) > 500:
             source = source[:500]
-        
         if source.startswith(("static/", "uploads/", "generated_images/")):
             local = source if source.startswith("static/") else f"static/{source}"
-            
-            # Security: validate normalized path
             local = os.path.normpath(local)
             if not any(local.startswith(d) for d in allowed_dirs):
                 continue
             if ".." in local or local.startswith("/"):
                 continue
-                
             if os.path.isfile(local):
                 cached.append(local)
         else:
@@ -167,7 +107,7 @@ def _cache_images_from_message(message: str) -> list[str]:
 
 
 def _load_image_base64(image_path: str) -> tuple[str | None, str | None]:
-    """Return (base64, mime) for a generated image file, or (None, None)."""
+    """Return (base64, mime) for a generated image file."""
     import base64
     import os
     if not os.path.exists(image_path):
@@ -200,10 +140,25 @@ def _persist_user(
     )
 
 
+def _persist_first_pass(text: str, session_id: int) -> None:
+    """Store first pass (acknowledgment + tool call) as assistant message."""
+    Database.add_message("assistant", text, session_id=session_id)
+
+
 def _persist_tool_result(
-    tool_name: str, markdown: str, session_id: int
+    tool_name: str,
+    xml: str,
+    markdown: str,
+    session_id: int,
+    use_universal: bool = True,
 ) -> None:
-    Database.add_message(get_tool_role(tool_name), markdown, session_id=session_id)
+    """Store tool result with appropriate role.
+    
+    v3.1.0: use_universal=True stores with 'tools' role.
+    """
+    role = TOOL_ROLE_UNIVERSAL if use_universal else get_tool_role(tool_name)
+    # Store XML format for synthesis, markdown for backward compat
+    Database.add_message(role, xml, session_id=session_id)
 
 
 def _strip_nested_commands(text: str) -> str:
@@ -221,14 +176,25 @@ def _strip_nested_commands(text: str) -> str:
 
 
 def _build_image_context(
-    tool_markdown: str, session_id: int
+    tool_result: dict, session_id: int
 ) -> list[dict[str, Any]] | None:
-    image_path = parse_image_path(tool_markdown)
+    """Build image context for synthesis from tool result."""
+    # Try to get image path from markdown or data
+    markdown = tool_result.get("markdown", "")
+    image_path = parse_image_path(markdown)
+    if not image_path:
+        # Check data for image_path
+        data = tool_result.get("data", {})
+        if isinstance(data, dict):
+            image_path = data.get("image_path")
+    
     if not image_path:
         return None
+    
     b64, mime = _load_image_base64(image_path)
     if not (b64 and mime):
         return None
+    
     store_visual_context(session_id, b64, mime)
     log.info("attached generated image to synthesis pass")
     return [{"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}]
@@ -238,7 +204,8 @@ def _run_synthesis(
     profile: dict[str, Any],
     session_id: int,
     interface: str,
-    tool_markdown: str,
+    first_pass_text: str,
+    tool_result: dict,
     is_image_tool: bool,
 ) -> str | None:
     """Run a 2nd LLM pass to narrate around the tool result.
@@ -247,10 +214,15 @@ def _run_synthesis(
     """
     image_context: list[dict[str, Any]] | None = None
     if is_image_tool:
-        image_context = _build_image_context(tool_markdown, session_id)
+        image_context = _build_image_context(tool_result, session_id)
 
+    # Build context with tool result
+    tool_xml = tool_result.get("xml", "")
+    
     text, _ = generate_ai_response(
-        profile, "", interface, session_id, image_content_for_context=image_context
+        profile, "", interface, session_id,
+        image_content_for_context=image_context,
+        tool_result_context=tool_xml,  # v3.1.0: pass tool result for synthesis
     )
     if not text or not text.strip():
         return None
@@ -265,7 +237,8 @@ def _run_synthesis(
             log.info("executing nested command: /%s", nested["command"])
             tool_name, nested_result = execute_command(nested, session_id=session_id)
             nested_md = nested_result.get("markdown", str(nested_result))
-            _persist_tool_result(tool_name, nested_md, session_id)
+            nested_xml = nested_result.get("xml", nested_md)
+            _persist_tool_result(tool_name, nested_xml, nested_md, session_id)
             cleaned = nested_md
     return cleaned
 
@@ -274,26 +247,26 @@ def _stream_synthesis(
     profile: dict[str, Any],
     session_id: int,
     interface: str,
-    tool_markdown: str,
+    first_pass_text: str,
+    tool_result: dict,
     is_image_tool: bool,
 ) -> Iterator[tuple[str, str]]:
     """Stream the 2nd LLM pass.
 
-    Yields (chunk, full_so_far) tuples. The orchestrator can pass `chunk`
-    straight to the consumer and persist `full_so_far` once the stream ends.
-    On nested-command detection we fall back to the non-streaming
-    _run_synthesis path because nested execution is structural, not a
-    streaming concern.
+    Yields (chunk, full_so_far) tuples.
     """
     image_context: list[dict[str, Any]] | None = None
     if is_image_tool:
-        image_context = _build_image_context(tool_markdown, session_id)
+        image_context = _build_image_context(tool_result, session_id)
 
+    tool_xml = tool_result.get("xml", "")
+    
     sf = StreamFilter()
     accumulated: list[str] = []
     for chunk in generate_ai_response_streaming(
         profile, "", interface, session_id,
         image_content_for_context=image_context,
+        tool_result_context=tool_xml,
     ):
         for safe in sf.feed(chunk):
             accumulated.append(safe)
@@ -306,9 +279,6 @@ def _stream_synthesis(
 # ---------------------------------------------------------------------------
 # Per-turn side effects
 # ---------------------------------------------------------------------------
-
-# Throttle: only check pipeline every Nth message (reduces gate checks by 80%)
-_PIPELINE_CHECK_INTERVAL = 5
 
 
 def _post_turn(
@@ -329,12 +299,10 @@ def _post_turn(
     if should_summarize_memory(profile, user_message, session_id):
         summarize_memory(profile, user_message, final_response, session_id)
     
-    # Throttle: only check pipeline every Nth message
     msg_count = Database.get_session_messages_count(session_id)
     if msg_count % _PIPELINE_CHECK_INTERVAL == 0:
         _trigger_memory_pipeline(session_id)
     
-    # Clear request-scoped caches
     try:
         from app.memory.memory import _clear_request_cache
         _clear_request_cache(session_id)
@@ -358,6 +326,47 @@ def _trigger_memory_pipeline(session_id: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# v3.1.0: Tool execution helpers
+# ---------------------------------------------------------------------------
+
+
+def _execute_tool_from_call(
+    tool_call: dict,
+    session_id: int,
+) -> tuple[str, dict]:
+    """Execute a tool from parsed tool_call dict.
+    
+    Args:
+        tool_call: {"name": str, "args": dict}
+        session_id: Session ID for tool execution
+        
+    Returns:
+        (tool_name, result_dict) where result_dict has ok, data, markdown, xml
+    """
+    from app.commands import _TOOL_ALIASES
+    
+    raw_name = tool_call.get("name", "")
+    tool_name = _TOOL_ALIASES.get(raw_name, raw_name)
+    args = tool_call.get("args", {})
+    
+    log.info("executing tool: %s %s", tool_name, args)
+    result = execute_tool(tool_name, args, session_id=session_id)
+    
+    return tool_name, result
+
+
+def _is_image_tool_result(tool_result: dict) -> bool:
+    """Check if tool result contains an image."""
+    markdown = tool_result.get("markdown", "")
+    if parse_image_path(markdown):
+        return True
+    data = tool_result.get("data", {})
+    if isinstance(data, dict) and data.get("image_path"):
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Public entry points
 # ---------------------------------------------------------------------------
 
@@ -365,12 +374,11 @@ def _trigger_memory_pipeline(session_id: int) -> None:
 def handle_user_message(user_message: str, interface: str = "terminal") -> str:
     """Process a user message end-to-end and return the assistant reply.
 
-    Guarantees:
-      - Exactly ONE primary LLM call per turn (plus optional synthesis pass).
-      - At most ONE tool execution per turn.
-      - At most ONE synthesis pass (with one level of nested-command recursion).
-      - Final response is never empty.
-      - Image tools are terminal: no plain-text synthesis without the image.
+    v3.1.0 Flow:
+      1. Store user message
+      2. LLM first pass (may include <tools> block)
+      3. If tool detected: store first pass, execute tool, store result, synthesis
+      4. If no tool: store response directly
     """
     profile = Database.get_profile()
     if not user_message.strip():
@@ -380,25 +388,23 @@ def handle_user_message(user_message: str, interface: str = "terminal") -> str:
     session_id = active_session["id"]
     cached_images = _cache_images_from_message(user_message)
 
-    # Fast-path: user typed /imagine directly — execute tool without LLM round-trip
+    # Fast-path: user typed /imagine directly
     stripped = user_message.strip()
     if stripped.startswith("/imagine"):
         prompt = stripped[len("/imagine"):].strip()
         if prompt:
             from app.commands import _TOOL_ALIASES, _parse_args
-            from app.tools.registry import execute_tool
             raw_name = "imagine"
             tool_name = _TOOL_ALIASES.get(raw_name, raw_name)
             args = _parse_args(raw_name, prompt)
             tool_result = execute_tool(tool_name, args, session_id=session_id)
+            tool_xml = tool_result.get("xml", tool_result.get("markdown", ""))
             tool_markdown = tool_result.get("markdown", str(tool_result))
-            _persist_tool_result(tool_name, tool_markdown, session_id)
+            _persist_tool_result(tool_name, tool_xml, tool_markdown, session_id)
             _post_turn(profile, user_message, tool_markdown, session_id, active_session)
             return tool_markdown
         else:
             return "Please provide a prompt after /imagine. Example: /imagine a cute anime cat"
-
-    provider_name = (profile.get("providers_config") or {}).get("preferred_provider", "ollama")
 
     try:
         text_response, raw_api_response = generate_ai_response(
@@ -423,61 +429,61 @@ def handle_user_message(user_message: str, interface: str = "terminal") -> str:
         )
         return IMAGE_SHORTCUT_WARNING
 
-    # Try native tool-call execution first (for providers that support it)
-    native_tool_executed = False
-    tool_results: list[tuple[str, dict]] = []
-    tool_calls = _parse_raw_tool_calls(provider_name, raw_api_response)
-    if tool_calls:
-        tool_results = _execute_tool_calls(tool_calls, session_id)
-        if tool_results:
-            native_tool_executed = True
-            tool_name, tool_result = tool_results[0]
-            tool_markdown = tool_result.get("markdown", str(tool_result))
-            _persist_tool_result(tool_name, tool_markdown, session_id)
+    # v3.1.0: Single path - check for <tools> block or legacy /command
+    sf = StreamFilter()
+    # Feed the full response to detect tools
+    for _ in sf.feed(text_response):
+        pass
+    for _ in sf.flush():
+        pass
 
-            is_image_tool = parse_image_path(tool_markdown) is not None
-            synthesis = _run_synthesis(
-                profile, session_id, interface, tool_markdown, is_image_tool
-            )
-
-            if synthesis:
-                Database.add_message("assistant", synthesis, session_id=session_id)
-                final_response = (
-                    f"{tool_markdown}\n\n{synthesis}" if is_image_tool else synthesis
-                )
-                _post_turn(profile, user_message, final_response, session_id, active_session)
-                return final_response
-
-            _post_turn(profile, user_message, tool_markdown, session_id, active_session)
-            return tool_markdown
-
-    if not native_tool_executed:
+    tool_call = sf.tool_call
+    
+    # Fallback: check for legacy /command format
+    if not tool_call:
         cmd_info = detect_command(text_response)
-        if not cmd_info:
-            Database.add_message("assistant", text_response, session_id=session_id)
-            _post_turn(profile, user_message, text_response, session_id, active_session)
-            return text_response
+        if cmd_info:
+            tool_call = {
+                "name": cmd_info.get("command", ""),
+                "args": cmd_info.get("args", {}),
+            }
 
-        # /command path
-        tool_name, tool_result = execute_command(cmd_info, session_id=session_id)
-        tool_markdown = tool_result.get("markdown", str(tool_result))
-        _persist_tool_result(tool_name, tool_markdown, session_id)
+    if not tool_call:
+        # No tool - plain response
+        Database.add_message("assistant", text_response, session_id=session_id)
+        _post_turn(profile, user_message, text_response, session_id, active_session)
+        return text_response
 
-        is_image_tool = parse_image_path(tool_markdown) is not None
-        synthesis = _run_synthesis(
-            profile, session_id, interface, tool_markdown, is_image_tool
+    # Tool execution path
+    # Store first pass (includes acknowledgment + tool call)
+    _persist_first_pass(text_response, session_id)
+    
+    # Execute tool
+    tool_name, tool_result = _execute_tool_from_call(tool_call, session_id)
+    tool_xml = tool_result.get("xml", tool_result.get("markdown", ""))
+    tool_markdown = tool_result.get("markdown", str(tool_result))
+    
+    # Store tool result with universal role
+    _persist_tool_result(tool_name, tool_xml, tool_markdown, session_id)
+    
+    # Check if image tool
+    is_image_tool = _is_image_tool_result(tool_result)
+    
+    # Run synthesis
+    synthesis = _run_synthesis(
+        profile, session_id, interface, text_response, tool_result, is_image_tool
+    )
+
+    if synthesis:
+        Database.add_message("assistant", synthesis, session_id=session_id)
+        final_response = (
+            f"{tool_markdown}\n\n{synthesis}" if is_image_tool else synthesis
         )
+        _post_turn(profile, user_message, final_response, session_id, active_session)
+        return final_response
 
-        if synthesis:
-            Database.add_message("assistant", synthesis, session_id=session_id)
-            final_response = (
-                f"{tool_markdown}\n\n{synthesis}" if is_image_tool else synthesis
-            )
-            _post_turn(profile, user_message, final_response, session_id, active_session)
-            return final_response
-
-        _post_turn(profile, user_message, tool_markdown, session_id, active_session)
-        return tool_markdown
+    _post_turn(profile, user_message, tool_markdown, session_id, active_session)
+    return tool_markdown
 
 
 def handle_user_message_streaming(
@@ -486,16 +492,17 @@ def handle_user_message_streaming(
     provider: str | None = None,
     model: str | None = None,
 ) -> Iterator[str]:
-    """Streaming entrypoint with true incremental chunk delivery.
+    """Streaming entrypoint with incremental chunk delivery.
 
-    Behavior:
-      - If user message starts with /imagine: execute tool directly, stream result.
-      - Buffers chunks only until a leading /command on the first
-        line can be confirmed or ruled out.
-      - When NO command: streams every subsequent chunk live.
-      - When a /command IS detected: suppresses the command line, executes
-        the tool, emits the tool result, then streams the synthesis pass
-        live.
+    v3.1.0 Flow:
+      1. Stream first pass, detect <tools> block
+      2. If tool detected:
+         - Emit placeholder event
+         - Store first pass
+         - Execute tool
+         - Emit result event
+         - Stream synthesis
+      3. If no tool: stream response live
     """
     profile = Database.get_profile()
     if not user_message.strip():
@@ -506,19 +513,19 @@ def handle_user_message_streaming(
     session_id = active_session["id"]
     cached_images = _cache_images_from_message(user_message)
 
-    # Fast-path: user typed /imagine directly — execute tool without LLM round-trip
+    # Fast-path: user typed /imagine directly
     stripped = user_message.strip()
     if stripped.startswith("/imagine"):
         prompt = stripped[len("/imagine"):].strip()
         if prompt:
             from app.commands import _TOOL_ALIASES, _parse_args
-            from app.tools.registry import execute_tool
             raw_name = "imagine"
             tool_name = _TOOL_ALIASES.get(raw_name, raw_name)
             args = _parse_args(raw_name, prompt)
             tool_result = execute_tool(tool_name, args, session_id=session_id)
+            tool_xml = tool_result.get("xml", tool_result.get("markdown", ""))
             tool_markdown = tool_result.get("markdown", str(tool_result))
-            _persist_tool_result(tool_name, tool_markdown, session_id)
+            _persist_tool_result(tool_name, tool_xml, tool_markdown, session_id)
             yield tool_markdown
             _post_turn(profile, user_message, tool_markdown, session_id, active_session)
             return
@@ -528,16 +535,26 @@ def handle_user_message_streaming(
 
     sf = StreamFilter()
     visible_chunks: list[str] = []
+    
     try:
         for chunk in generate_ai_response_streaming(
             profile, user_message, interface, session_id, provider, model
         ):
-            for safe in sf.feed(chunk):
-                visible_chunks.append(safe)
-                yield safe
-        for safe in sf.flush():
-            visible_chunks.append(safe)
-            yield safe
+            for output in sf.feed(chunk):
+                if isinstance(output, dict):
+                    # v3.1.0: Placeholder or result event
+                    yield output
+                else:
+                    # Normal text chunk
+                    visible_chunks.append(output)
+                    yield output
+                    
+        for output in sf.flush():
+            if isinstance(output, dict):
+                yield output
+            else:
+                visible_chunks.append(output)
+                yield output
     except Exception:
         _persist_user(user_message, session_id, cached_images)
         raise
@@ -547,8 +564,8 @@ def handle_user_message_streaming(
     full_response = _clean(sf.full_text) or _EMPTY_RESPONSE_FALLBACK
     visible_response = _clean("".join(visible_chunks))
 
-    log.info("[stream] full_response=%r, sf.command=%s, len=%d",
-             full_response[:200], sf.command, len(full_response))
+    log.info("[stream] full_response=%r, sf.tool_call=%s, len=%d",
+             full_response[:200], sf.tool_call, len(full_response))
 
     if is_markdown_image_shortcut(full_response):
         log.warning(
@@ -558,31 +575,50 @@ def handle_user_message_streaming(
         yield IMAGE_SHORTCUT_WARNING
         return
 
-    # Fallback: check if first line is a command
-    cmd_info = sf.command
-    if not cmd_info:
+    tool_call = sf.tool_call
+    
+    # Fallback: check for legacy /command
+    if not tool_call:
         cmd_info = detect_command(full_response)
+        if cmd_info:
+            tool_call = {
+                "name": cmd_info.get("command", ""),
+                "args": cmd_info.get("args", {}),
+            }
 
-    if not cmd_info:
-        # Plain response - already streamed live. Persist and finish.
+    if not tool_call:
+        # No tool - plain response (already streamed)
         text = visible_response or _EMPTY_RESPONSE_FALLBACK
         Database.add_message("assistant", text, session_id=session_id)
         _post_turn(profile, user_message, text, session_id, active_session)
         return
 
-    # Tool path - execute the detected command.
-    tool_name, tool_result = execute_command(cmd_info, session_id=session_id)
+    # Tool execution path
+    # Store first pass
+    _persist_first_pass(full_response, session_id)
+    
+    # Execute tool
+    tool_name, tool_result = _execute_tool_from_call(tool_call, session_id)
+    tool_xml = tool_result.get("xml", tool_result.get("markdown", ""))
     tool_markdown = tool_result.get("markdown", str(tool_result))
-    _persist_tool_result(tool_name, tool_markdown, session_id)
+    
+    # Store tool result
+    _persist_tool_result(tool_name, tool_xml, tool_markdown, session_id)
+    
+    # Emit tool result
     yield "\n\n" + tool_markdown
 
-    is_image_tool = parse_image_path(tool_markdown) is not None
+    # Check if image tool
+    is_image_tool = _is_image_tool_result(tool_result)
+    
+    # Stream synthesis
     synthesis_chunks: list[str] = []
     full_synthesis = ""
     yielded_synthesis_header = False
+    
     try:
         for chunk, full in _stream_synthesis(
-            profile, session_id, interface, tool_markdown, is_image_tool
+            profile, session_id, interface, full_response, tool_result, is_image_tool
         ):
             synthesis_chunks.append(chunk)
             full_synthesis = full
