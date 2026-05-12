@@ -443,9 +443,10 @@ def handle_user_message(user_message: str, interface: str = "terminal") -> str:
     if not tool_call:
         cmd_info = detect_command(text_response)
         if cmd_info:
+            from app.commands import _parse_args
             tool_call = {
                 "name": cmd_info.get("command", ""),
-                "args": cmd_info.get("args", {}),
+                "args": _parse_args(cmd_info.get("command", ""), cmd_info.get("args", "")),
             }
 
     if not tool_call:
@@ -597,9 +598,10 @@ def handle_user_message_streaming(
     if not tool_call:
         cmd_info = detect_command(full_response)
         if cmd_info:
+            from app.commands import _parse_args
             tool_call = {
                 "name": cmd_info.get("command", ""),
-                "args": cmd_info.get("args", {}),
+                "args": _parse_args(cmd_info.get("command", ""), cmd_info.get("args", "")),
             }
 
     if not tool_call:
