@@ -266,8 +266,14 @@ async def api_send_message_stream(request: StreamMessageRequest):
         def generate():
             for chunk in response_generator:
                 if chunk:
-                    escaped_chunk = json.dumps(chunk)
-                    yield f'data: {{"chunk": {escaped_chunk}}}\n\n'
+                    # v3.1.0: Handle dict events separately
+                    if isinstance(chunk, dict):
+                        # Event dict (tool_executing, tool_result, etc.)
+                        yield f'data: {json.dumps(chunk)}\\n\\n'
+                    else:
+                        # Normal text chunk
+                        escaped_chunk = json.dumps(chunk)
+                        yield f'data: {{\"chunk\": {escaped_chunk}}}\\n\\n'
         
         return StreamingResponse(generate(), media_type="text/event-stream")
         

@@ -191,7 +191,22 @@ class MultimodalManager {
 					if (line.startsWith("data: ")) {
 						try {
 							const json = JSON.parse(line.slice(6));
-							if (json.chunk) {
+							// v3.1.0: Handle tool events
+							if (json.type === "tool_executing") {
+								// Show placeholder for tool execution
+								if (firstChunk) {
+									hideTypingIndicator();
+									currentStreamMessage.style.display = "";
+									firstChunk = false;
+								}
+								const toolPlaceholder = this.createToolPlaceholder(json.name, json.args);
+								currentStreamMessage.querySelector(".message-content").appendChild(toolPlaceholder);
+								scrollToBottom();
+							} else if (json.type === "tool_result") {
+								// Update placeholder with result
+								this.updateToolPlaceholder(json.name, json.status, json.markdown);
+								scrollToBottom();
+							} else if (json.chunk) {
 								// Hide typing indicator and show message on first real content
 								if (firstChunk) {
 									hideTypingIndicator();
@@ -360,6 +375,46 @@ class MultimodalManager {
 
 	cleanupStreamState() {
 		currentStreamMessage = null;
+	}
+
+	// ==================== v3.1.0: TOOL PLACEHOLDER HANDLING ====================
+	createToolPlaceholder(toolName, args) {
+		const placeholder = document.createElement("div");
+		placeholder.className = "tool-placeholder executing";
+		placeholder.setAttribute("data-tool-name", toolName);
+		placeholder.innerHTML = `
+			<div class="tool-placeholder-header">
+				<div class="tool-placeholder-spinner"></div>
+				<span class="tool-placeholder-title">Executing ${toolName}...</span>
+			</div>
+			<div class="tool-placeholder-args">${JSON.stringify(args || {})}</div>
+		`;
+		return placeholder;
+	}
+
+	updateToolPlaceholder(toolName, status, markdown) {
+		const placeholder = document.querySelector(`.tool-placeholder[data-tool-name="${toolName}"]`);
+		if (!placeholder) return;
+
+		placeholder.className = `tool-placeholder ${status}`;
+
+		if (status === "ok") {
+			placeholder.innerHTML = `
+				<div class="tool-placeholder-header success">
+					<span class="tool-placeholder-icon">✓</span>
+					<span class="tool-placeholder-title">${toolName}</span>
+				</div>
+				<div class="tool-placeholder-result">${markdown || ""}</div>
+			`;
+		} else {
+			placeholder.innerHTML = `
+				<div class="tool-placeholder-header error">
+					<span class="tool-placeholder-icon">✗</span>
+					<span class="tool-placeholder-title">${toolName} failed</span>
+				</div>
+				<div class="tool-placeholder-error">${markdown || "Unknown error"}</div>
+			`;
+		}
 	}
 
 	async handleImageGeneration(prompt) {
@@ -693,6 +748,9 @@ class MultimodalManager {
 		if (input) {
 			input.value = "";
 			input.style.height = "auto";
+			if (typeof window.updateDynamicLayout === "function") {
+				window.updateDynamicLayout();
+			}
 		}
 	}
 }

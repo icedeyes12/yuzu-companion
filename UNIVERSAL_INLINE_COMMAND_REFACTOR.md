@@ -564,35 +564,35 @@ ruff check app/prompts.py
 
 **Files:**
 
-- [ ]   `file static/js/chat.js` — Add placeholder handling
+- [x]   `file static/js/chat.js` — Add placeholder handling
 
-- [ ]   `file static/css/chat.css` — Placeholder styles
+- [x]   `file static/css/chat.css` — Placeholder styles
 
 **Tasks:**
 
-- [ ]    7.1 Add placeholder message type
+- [x]    7.1 Add placeholder message type
 
-  - [ ]   `addMessage("tool_executing", data)` — shows loading state
+  - [x]   `addMessage("tool_executing", data)` — shows loading state
 
-  - [ ]   `updateToolMessage(id, result)` — replaces placeholder with result
+  - [x]   `updateToolMessage(id, result)` — replaces placeholder with result
 
-- [ ]    7.2 Handle streaming events
+- [x]    7.2 Handle streaming events
 
-  - [ ]   Parse `{"type": "tool_executing", ...}` from stream
+  - [x]   Parse `{"type": "tool_executing", ...}` from stream
 
-  - [ ]   Show placeholder immediately
+  - [x]   Show placeholder immediately
 
-  - [ ]   Parse `{"type": "tool_result", ...}` from stream
+  - [x]   Parse `{"type": "tool_result", ...}` from stream
 
-  - [ ]   Replace placeholder with result
+  - [x]   Replace placeholder with result
 
-- [ ]    7.3 Add placeholder styles
+- [x]    7.3 Add placeholder styles
 
-  - [ ]   `.tool-placeholder.executing` — loading spinner
+  - [x]   `.tool-placeholder.executing` — loading spinner
 
-  - [ ]   `.tool-placeholder.success` — checkmark, collapsible details
+  - [x]   `.tool-placeholder.success` — checkmark, collapsible details
 
-  - [ ]   `.tool-placeholder.error` — error icon, message
+  - [x]   `.tool-placeholder.error` — error icon, message
 
 - [ ]    7.4 Handle old `<details>` format (backward compat)
 

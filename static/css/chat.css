@@ -1267,3 +1267,77 @@ body {
 }
 
 /* Mermaid SVG styling - inherit theme colors */
+
+
+/* ==================== v3.1.0: TOOL PLACEHOLDER ==================== */
+.tool-placeholder {
+	margin: 0.5rem 0;
+	padding: 0.75rem 1rem;
+	border-radius: 8px;
+	background: var(--card-bg, rgba(40, 40, 45, 0.8));
+	border: 1px solid var(--border-color, rgba(80, 80, 90, 0.5));
+}
+
+.tool-placeholder.executing {
+	border-color: var(--accent-color, #6366f1);
+}
+
+.tool-placeholder-header {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin-bottom: 0.25rem;
+}
+
+.tool-placeholder-title {
+	font-weight: 500;
+	color: var(--text-primary, #e5e5e5);
+}
+
+.tool-placeholder-spinner {
+	width: 16px;
+	height: 16px;
+	border: 2px solid var(--border-color, rgba(80, 80, 90, 0.5));
+	border-top-color: var(--accent-color, #6366f1);
+	border-radius: 50%;
+	animation: tool-spin 1s linear infinite;
+}
+
+@keyframes tool-spin {
+	to { transform: rotate(360deg); }
+}
+
+.tool-placeholder-args {
+	font-size: 0.85rem;
+	color: var(--text-muted, #888);
+	font-family: monospace;
+	white-space: pre-wrap;
+	word-break: break-all;
+	max-height: 100px;
+	overflow: auto;
+}
+
+.tool-placeholder-header.success .tool-placeholder-icon {
+	color: var(--success-color, #22c55e);
+}
+
+.tool-placeholder-header.error .tool-placeholder-icon {
+	color: var(--error-color, #ef4444);
+}
+
+.tool-placeholder-result,
+.tool-placeholder-error {
+	margin-top: 0.5rem;
+	padding: 0.5rem;
+	border-radius: 4px;
+	font-size: 0.9rem;
+}
+
+.tool-placeholder-result {
+	background: rgba(34, 197, 94, 0.1);
+}
+
+.tool-placeholder-error {
+	background: rgba(239, 68, 68, 0.1);
+	color: var(--error-color, #ef4444);
+}
