@@ -27,12 +27,17 @@ from typing import Any
 # Tool-role constants (used by the message layer to dispatch tool results)
 # ---------------------------------------------------------------------------
 
+# v3.1.0: Universal tool role for inline command refactor
+# All tool results will use this single role instead of per-tool roles
+TOOL_ROLE_UNIVERSAL = "tools"
+
+# Legacy per-tool roles (kept for backward compatibility during transition)
 TOOL_ROLES: dict[str, str] = {
     "image_generate": "image_tools",
     "imagine": "image_tools",
     "request": "request_tools",
 }
-ALL_TOOL_ROLES: list[str] = sorted(set(TOOL_ROLES.values()))
+ALL_TOOL_ROLES: list[str] = sorted(set(TOOL_ROLES.values()) | {TOOL_ROLE_UNIVERSAL})
 
 
 # ---------------------------------------------------------------------------
@@ -470,6 +475,15 @@ _RX_HTML_TAGS = re.compile(r'<[^>]{1,500}>')
 _RX_LEADING_NL = re.compile(r'^\n+')
 _RX_TRAILING_NL = re.compile(r'\n+$')
 
+# v3.1.0: XML tool result patterns
+_RX_TOOL_RESULT_XML = re.compile(
+    r'<tool_result\s+name="([^"]+)"\s+status="([^"]+)">',
+    re.DOTALL
+)
+_RX_COMMAND_TAG = re.compile(r'<command>([^<]*)</command>', re.DOTALL)
+_RX_ERROR_TAG = re.compile(r'<error>([^<]*)</error>', re.DOTALL)
+_RX_DATA_TAG = re.compile(r'<data>([\s\S]*?)</data>', re.DOTALL)
+
 
 def extract_command_from_markdown_contract(content: str) -> str:
     """Pull the /command line out of a tool-contract markdown blob."""
@@ -496,6 +510,58 @@ def extract_raw_result_from_markdown_contract(content: str) -> str:
     return result.strip()
 
 
+def _is_xml_tool_result(content: str) -> bool:
+    """Check if content is a v3.1.0 XML tool result."""
+    return bool(_RX_TOOL_RESULT_XML.search(content))
+
+
+def _parse_xml_tool_result(content: str) -> dict:
+    """
+    Parse v3.1.0 XML tool result into structured dict.
+    
+    Returns:
+        {
+            "tool_name": str,
+            "status": "ok" | "error",
+            "command": str | None,
+            "data": dict | None,
+            "error": str | None,
+        }
+    """
+    result = {
+        "tool_name": None,
+        "status": "error",
+        "command": None,
+        "data": None,
+        "error": None,
+    }
+    
+    # Extract tool_result attributes
+    m = _RX_TOOL_RESULT_XML.search(content)
+    if m:
+        result["tool_name"] = m.group(1)
+        result["status"] = m.group(2)
+    
+    # Extract command
+    m = _RX_COMMAND_TAG.search(content)
+    if m:
+        result["command"] = m.group(1).strip()
+    
+    # Extract error (if present)
+    m = _RX_ERROR_TAG.search(content)
+    if m:
+        result["error"] = m.group(1).strip()
+    
+    # Extract data (if present)
+    m = _RX_DATA_TAG.search(content)
+    if m:
+        # Simple extraction: just return the raw content for now
+        # The LLM will parse it
+        result["data"] = m.group(1).strip()
+    
+    return result
+
+
 def _format_user_timestamp(ts: Any) -> str:
     try:
         if isinstance(ts, str):
@@ -508,14 +574,26 @@ def _format_user_timestamp(ts: Any) -> str:
 
 
 def format_ai_history_rows(rows: list[dict]) -> list[dict]:
-    """Convert raw message rows into the AI-context message list.
-
-    Behavior preserved exactly from the previous duplicated implementations:
+    """
+    Convert raw message rows into the AI-context message list.
+    
+    v3.1.0: Dual-path reader for backward compatibility.
+    
+    Legacy path (markdown contract):
+      - tool-role rows expand into TWO entries:
+        - assistant with /command
+        - tool-role with raw result
+    
+    New path (XML format):
+      - role="tools" rows contain <tool_result> XML
+      - Expand into:
+        - assistant with /command
+        - tools with full XML (LLM can parse)
+    
+    Behavior preserved from previous implementations:
       * 'event_log' rows are skipped.
       * 'user' rows get an appended formatted timestamp.
       * 'assistant' / 'system' rows pass through unchanged.
-      * tool-role rows expand into TWO entries: an assistant /command
-        line and a tool-role result entry.
     """
     formatted: list[dict] = []
     for msg in rows:
@@ -530,7 +608,21 @@ def format_ai_history_rows(rows: list[dict]) -> list[dict]:
             formatted.append({"role": role, "content": f"{content} {ts}"})
         elif role in ("assistant", "system"):
             formatted.append({"role": role, "content": content})
+        elif role == TOOL_ROLE_UNIVERSAL:
+            # v3.1.0: New XML format
+            parsed = _parse_xml_tool_result(content)
+            if parsed["command"]:
+                formatted.append({
+                    "role": "assistant",
+                    "content": parsed["command"],
+                })
+            # Keep the full XML for the 2nd pass
+            formatted.append({
+                "role": "tools",
+                "content": content,
+            })
         elif role in ALL_TOOL_ROLES:
+            # Legacy path: markdown contract
             formatted.append({
                 "role": "assistant",
                 "content": extract_command_from_markdown_contract(content),
@@ -596,8 +688,14 @@ def parse_json(s: str | None) -> dict:
         return {}
 
 
-def tool_role_for(tool_name: str) -> str:
-    """Return the canonical message-role for *tool_name*."""
+def tool_role_for(tool_name: str, use_universal: bool = False) -> str:
+    """Return the canonical message-role for *tool_name*.
+    
+    v3.1.0: Pass use_universal=True to get the new universal role.
+    This will become the default after Phase 5 cleanup.
+    """
+    if use_universal:
+        return TOOL_ROLE_UNIVERSAL
     return TOOL_ROLES.get(tool_name, f"{tool_name}_tools")
 
 
@@ -608,7 +706,7 @@ def format_session_event(content: str, interface: str) -> str:
 
 __all__ = [
     # Tool roles
-    "TOOL_ROLES", "ALL_TOOL_ROLES", "tool_role_for",
+    "TOOL_ROLES", "ALL_TOOL_ROLES", "TOOL_ROLE_UNIVERSAL", "tool_role_for",
     # Encryption
     "encrypt_api_key", "decrypt_api_key", "DECRYPTION_ERROR",
     # Schema

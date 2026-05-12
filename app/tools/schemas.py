@@ -6,6 +6,132 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+import re
+
+
+# --------------------------------------------------------------------
+# XML Sanitization (v3.1.0 — Universal Inline Command Refactor)
+# --------------------------------------------------------------------
+
+# Invalid control chars (0x00-0x1F except 0x09, 0x0A, 0x0D)
+_INVALID_XML_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def sanitize_xml_value(value: str) -> str:
+    """
+    Sanitize a string for safe inclusion in XML element content.
+
+    Handles:
+    - XML entities: & → &amp;, < → &lt;, > → &gt;, " → &quot;, ' → &apos;
+    - Invalid control characters (0x00-0x1F except 0x09, 0x0A, 0x0D): stripped
+    - NULL bytes: removed
+
+    This is NOT for attribute values — for those, wrap with double quotes.
+    """
+    if not isinstance(value, str):
+        value = str(value)
+
+    # Remove invalid control characters
+    value = _INVALID_XML_CHARS.sub("", value)
+
+    # Escape XML entities (order matters: & must be first)
+    value = value.replace("&", "&amp;")
+    value = value.replace("<", "&lt;")
+    value = value.replace(">", "&gt;")
+
+    return value
+
+
+def _sanitize_xml_attribute(value: str) -> str:
+    """Sanitize for XML attribute values (escapes quotes)."""
+    value = sanitize_xml_value(value)
+    value = value.replace('"', "&quot;")
+    value = value.replace("'", "&apos;")
+    return value
+
+
+# --------------------------------------------------------------------
+# XML Tool Result Formatting (v3.1.0 — Universal Inline Command Refactor)
+# --------------------------------------------------------------------
+
+MAX_TOOL_RESULT_CHARS = 4000  # ~1000 tokens
+MAX_TOOL_RESULT_LINES = 100
+
+
+def truncate_tool_result(content: str, max_chars: int = MAX_TOOL_RESULT_CHARS) -> str:
+    """Truncate tool result to prevent token overflow."""
+    if len(content) <= max_chars:
+        return content
+    return content[:max_chars] + "\n... [truncated]"
+
+
+def format_tool_result_xml(
+    tool_name: str,
+    status: str,
+    data: dict[str, Any] | None = None,
+    error: str | None = None,
+    command: str | None = None,
+    truncate: bool = True,
+) -> str:
+    """
+    Format tool result as XML for storage with role: "tools".
+
+    This is the NEW universal format replacing markdown <details> contract.
+
+    Output structure:
+    <tool_result name="tool_name" status="ok|error">
+        <command>/tool_name args...</command>
+        <data>
+            <key>value</key>
+            ...
+        </data>
+        <error>error message</error>
+    </tool_result>
+
+    For LLM context in 2nd pass, this XML is clean and parseable.
+    """
+    lines = [f'<tool_result name="{_sanitize_xml_attribute(tool_name)}" status="{status}">']
+
+    if command:
+        lines.append(f"  <command>{sanitize_xml_value(command)}</command>")
+
+    if status == "error" and error:
+        lines.append(f"  <error>{sanitize_xml_value(error)}</error>")
+
+    if data and status == "ok":
+        lines.append("  <data>")
+        for key, value in data.items():
+            if isinstance(value, dict):
+                # Nested dict — flatten with dot notation
+                for nested_key, nested_val in value.items():
+                    full_key = f"{key}.{nested_key}"
+                    safe_val = sanitize_xml_value(str(nested_val))
+                    if truncate:
+                        safe_val = truncate_tool_result(safe_val)
+                    lines.append(f"    <{full_key}>{safe_val}</{full_key}>")
+            elif isinstance(value, list):
+                # List — create multiple elements
+                for i, item in enumerate(value[:20]):  # Limit to 20 items
+                    safe_val = sanitize_xml_value(str(item))
+                    if truncate:
+                        safe_val = truncate_tool_result(safe_val)
+                    lines.append(f"    <{key}>{safe_val}</{key}>")
+                if len(value) > 20:
+                    lines.append(f"    <{key}>... and {len(value) - 20} more</{key}>")
+            else:
+                safe_val = sanitize_xml_value(str(value))
+                if truncate:
+                    safe_val = truncate_tool_result(safe_val)
+                lines.append(f"    <{key}>{safe_val}</{key}>")
+        lines.append("  </data>")
+
+    lines.append("</tool_result>")
+    return "\n".join(lines)
+
+
+# --------------------------------------------------------------------
+# Dual-format result builder (v3.1.0 transitional)
+# --------------------------------------------------------------------
 
 
 @dataclass
@@ -120,11 +246,22 @@ def ok_result(
     full_command: str,
     partner_name: str = "Yuzu",
 ) -> dict:
-    """Construct a successful tool result."""
+    """Construct a successful tool result with BOTH markdown and XML formats.
+
+    v3.1.0: Returns dual format for backward compatibility.
+    - "markdown": Legacy <details> block (UI rendering)
+    - "xml": New XML format (DB storage for 2nd pass)
+    """
     return {
         "ok": True,
         "data": data,
         "markdown": build_tool_contract(tool_def, full_command, _flatten_lines(data), partner_name),
+        "xml": format_tool_result_xml(
+            tool_name=tool_def.name,
+            status="ok",
+            data=data,
+            command=full_command,
+        ),
     }
 
 
@@ -134,11 +271,20 @@ def error_result(
     full_command: str,
     partner_name: str = "Yuzu",
 ) -> dict:
-    """Construct an error tool result."""
+    """Construct an error tool result with BOTH markdown and XML formats.
+
+    v3.1.0: Returns dual format for backward compatibility.
+    """
     return {
         "ok": False,
         "error": message,
         "markdown": build_tool_contract(tool_def, full_command, [f"Error: {message}"], partner_name),
+        "xml": format_tool_result_xml(
+            tool_name=tool_def.name,
+            status="error",
+            error=message,
+            command=full_command,
+        ),
     }
 
 
