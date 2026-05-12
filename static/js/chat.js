@@ -201,6 +201,7 @@ class MultimodalManager {
 								}
 								const toolPlaceholder = this.createToolPlaceholder(json.name, json.args);
 								currentStreamMessage.querySelector(".message-content").appendChild(toolPlaceholder);
+								this.isSynthesizing = true; // Track that we're past tool execution
 								scrollToBottom();
 							} else if (json.type === "tool_result") {
 								// Update placeholder with result
@@ -214,12 +215,25 @@ class MultimodalManager {
 									firstChunk = false;
 								}
 
-								// Immediately append and render - NO debounce
-								accumulatedText += json.chunk;
-
-								// Render immediately - real-time streaming
-								// renderStreamChunk already does full markdown rendering
-								this.renderStreamChunk(contentDiv, accumulatedText);
+								// v3.1.0: If synthesizing after tool, append to synthesis container instead
+								if (this.isSynthesizing) {
+									let synthesisDiv = currentStreamMessage.querySelector(".synthesis-content");
+									if (!synthesisDiv) {
+										synthesisDiv = document.createElement("div");
+										synthesisDiv.className = "synthesis-content";
+										currentStreamMessage.querySelector(".message-content").appendChild(synthesisDiv);
+									}
+									// Render synthesis text separately (don't overwrite placeholder)
+									if (typeof renderer !== "undefined" && renderer.isMarkedReady) {
+										synthesisDiv.innerHTML += json.chunk;
+									} else {
+										synthesisDiv.textContent += json.chunk;
+									}
+								} else {
+									// Normal streaming: accumulate and render
+									accumulatedText += json.chunk;
+									this.renderStreamChunk(contentDiv, accumulatedText);
+								}
 								scrollToBottom();
 							}
 						} catch (_e) {
@@ -375,6 +389,8 @@ class MultimodalManager {
 
 	cleanupStreamState() {
 		currentStreamMessage = null;
+		this.isSynthesizing = false;
+		this.synthesisText = "";
 	}
 
 	// ==================== v3.1.0: TOOL PLACEHOLDER HANDLING ====================
@@ -394,12 +410,20 @@ class MultimodalManager {
 
 	updateToolPlaceholder(toolName, status, markdown) {
 		const placeholder = document.querySelector(`.tool-placeholder[data-tool-name="${toolName}"]`);
-		if (!placeholder) return;
+		
+		// v3.1.0: If placeholder doesn't exist, create it first
+		if (!placeholder) {
+			const newPlaceholder = this.createToolPlaceholder(toolName, {});
+			currentStreamMessage.querySelector(".message-content").appendChild(newPlaceholder);
+		}
+		
+		const targetPlaceholder = placeholder || document.querySelector(`.tool-placeholder[data-tool-name="${toolName}"]`);
+		if (!targetPlaceholder) return;
 
-		placeholder.className = `tool-placeholder ${status}`;
+		targetPlaceholder.className = `tool-placeholder ${status}`;
 
 		if (status === "ok") {
-			placeholder.innerHTML = `
+			targetPlaceholder.innerHTML = `
 				<div class="tool-placeholder-header success">
 					<span class="tool-placeholder-icon">✓</span>
 					<span class="tool-placeholder-title">${toolName}</span>
@@ -407,7 +431,7 @@ class MultimodalManager {
 				<div class="tool-placeholder-result">${markdown || ""}</div>
 			`;
 		} else {
-			placeholder.innerHTML = `
+			targetPlaceholder.innerHTML = `
 				<div class="tool-placeholder-header error">
 					<span class="tool-placeholder-icon">✗</span>
 					<span class="tool-placeholder-title">${toolName} failed</span>

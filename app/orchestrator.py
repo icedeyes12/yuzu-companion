@@ -522,11 +522,27 @@ def handle_user_message_streaming(
             raw_name = "imagine"
             tool_name = _TOOL_ALIASES.get(raw_name, raw_name)
             args = _parse_args(raw_name, prompt)
+            
+            # v3.1.0: Emit tool_executing event
+            yield {
+                "type": "tool_executing",
+                "name": tool_name,
+                "args": args,
+            }
+            
             tool_result = execute_tool(tool_name, args, session_id=session_id)
             tool_xml = tool_result.get("xml", tool_result.get("markdown", ""))
             tool_markdown = tool_result.get("markdown", str(tool_result))
             _persist_tool_result(tool_name, tool_xml, tool_markdown, session_id)
-            yield tool_markdown
+            
+            # v3.1.0: Emit tool_result event
+            yield {
+                "type": "tool_result",
+                "name": tool_name,
+                "status": "ok" if tool_result.get("ok", True) else "error",
+                "markdown": tool_markdown,
+            }
+            
             _post_turn(profile, user_message, tool_markdown, session_id, active_session)
             return
         else:
@@ -596,6 +612,14 @@ def handle_user_message_streaming(
     # Tool execution path
     # Store first pass
     _persist_first_pass(full_response, session_id)
+    
+    # v3.1.0: Emit tool_executing event before execution
+    # (for legacy /command, placeholder wasn't shown during streaming)
+    yield {
+        "type": "tool_executing",
+        "name": tool_call["name"],
+        "args": tool_call.get("args", {}),
+    }
     
     # Execute tool
     tool_name, tool_result = _execute_tool_from_call(tool_call, session_id)
