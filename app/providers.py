@@ -25,39 +25,28 @@ class AIProvider:
         raise NotImplementedError
     
     def send_message(self, messages: list[dict], model: str, **kwargs) -> str | None:
-        """Send a message. Supports tools=[] kwarg for function calling.
+        """Send a message and return the text response.
         
-        Returns:
-            str: Natural text response. Tool execution is handled by caller
-                 via parse_tool_calls() on the raw response.
+        v3.1.0: Native tool calling removed - LLM outputs /commands inline instead.
         """
         raise NotImplementedError
 
     def send_message_raw(self, messages: list[dict], model: str, **kwargs) -> dict | None:
         """Send a message and return the full raw API response dict.
         
-        Returns the raw JSON response from the provider, or None on error.
-        Use this when you need to inspect tool_calls or other metadata.
+        v3.1.0: Returns minimal response - tool_calls removed.
         """
         # Default: fall back to send_message, no raw response available
         text = self.send_message(messages, model, **kwargs)
         if text is not None:
             # Synthesize a minimal raw response for providers that don't support raw
             return {
-                "choices": [{"message": {"content": text, "tool_calls": []}}]
+                "choices": [{"message": {"content": text}}]
             }
         return None
     
     def send_message_streaming(self, messages: list[dict], model: str, **kwargs) -> Generator[str, None, None]:
         raise NotImplementedError
-    
-    def parse_tool_calls(self, raw_response) -> list[dict]:
-        """Parse tool_calls from a provider-specific response object.
-
-        Returns list of {"name": str, "arguments": dict, "id": str} or empty list.
-        Override per-provider since response shapes differ.
-        """
-        return []
     
     def test_connection(self) -> bool:
         try:
@@ -462,10 +451,7 @@ class OpenRouterProvider(AIProvider):
                 "typical_p": typical_p,
                 "stream": False
             }
-            # Add tools if provided (for function calling)
-            tools = kwargs.get('tools')
-            if tools:
-                payload["tools"] = tools
+            # v3.1.0: Native tool calling removed - LLM outputs /commands inline instead
 
             # Debug: Log summary (not full payload)
             logger.debug(f"[OpenRouter] {model} | max_tokens={max_tokens or 'unlimited'}")
@@ -539,11 +525,7 @@ class OpenRouterProvider(AIProvider):
                 "typical_p": typical_p,
                 "stream": False,
             }
-
-            tools = kwargs.get('tools')
-            if tools:
-                payload["tools"] = tools
-                payload["tool_choice"] = "auto"
+            # v3.1.0: Native tool calling removed - LLM outputs /commands inline instead
             
             response = requests.post(
                 self.base_url,
@@ -631,28 +613,6 @@ class OpenRouterProvider(AIProvider):
                 
         except Exception as e:
             yield f"Error: {str(e)}"
-
-    def parse_tool_calls(self, raw_response) -> list[dict]:
-        """Parse tool_calls from OpenRouter API response.
-        
-        Returns list of {"name": str, "arguments": dict, "id": str}.
-        """
-        if not isinstance(raw_response, dict):
-            return []
-        try:
-            message = raw_response.get("choices", [{}])[0].get("message", {})
-            tool_calls = message.get("tool_calls", [])
-            results = []
-            for tc in tool_calls:
-                fn = tc.get("function", {})
-                results.append({
-                    "id": tc.get("id", ""),
-                    "name": fn.get("name", ""),
-                    "arguments": json.loads(fn.get("arguments", "{}")),
-                })
-            return results
-        except Exception:
-            return []
 
 class ChutesProvider(AIProvider):
     def __init__(self, config: dict | None = None):
