@@ -1,6 +1,6 @@
 # Yuzu Companion — Agent Operational Manual
 
-> **Version:** 3.0.3 · **Last Updated:** 2026-05-11
+> **Version:** 3.1.0 · **Last Updated:** 2026-05-12
 > This is the master behavior manual for any AI agent interacting with this codebase.
 
 ---
@@ -26,29 +26,31 @@
 
 Yuzu Companion is an intimate AI companion system. The codebase is Python 3.12+ (3.13 compatible) on the backend, vanilla JS on the frontend. Key facts:
 
-- **No ORM** — All database access is raw psycopg2 SQL. No SQLAlchemy, no Django ORM.
+- **No ORM** — All database access is raw psycopg (v3) SQL. No SQLAlchemy, no Django ORM.
 - **No SQLite** — PostgreSQL only, with pgvector extension for vector search.
 - **No build step** — Frontend is vanilla JS/ESM, no bundler, no npm.
 - **No Flask** — FastAPI only (migrated in v2.0.0).
 - **Pluggable LLM providers** — Ollama, Cerebras, OpenRouter, Chutes via `providers.py`.
 - **Memory is first-class** — The memory subsystem (`app/memory/`) is not an afterthought; it's a core architectural layer.
+- **Inline XML tools (v3.1.0)** — Tools are emitted inline by LLM as XML, not via native tool calling.
 
 ### Key Files at a Glance
 
 | File | Role |
 |---|---|
 | `app/orchestrator.py` | **Single entry point** for all user messages |
-| `app/llm_client.py` | LLM dispatch, vision routing, `chutes_chat()` helper |
-| `app/prompts.py` | System prompt assembly, message context building |
-| `app/commands.py` | `/command` detection, `StreamFilter`, image guards |
+| `app/llm_client.py` | LLM dispatch, vision routing, synthesis pass |
+| `app/prompts.py` | System prompt assembly, tool instructions |
+| `app/commands.py` | `StreamFilter` — detects inline `<tool>` XML during streaming |
 | `app/providers.py` | AI provider hierarchy + `AIProviderManager` singleton |
 | `app/tools/registry.py` | Central tool dispatch — **only** place tools are executed |
+| `app/tools/schemas.py` | XML formatting, `dual_format_result()` |
 | `app/memory/` | Full memory pipeline (extraction, embedding, retrieval, retention) |
-| `app/database/facade.py` | `Database` class — stable API over raw psycopg2 |
-| `app/database/db_queries.py` | **Single source of truth** for all SQL strings |
+| `app/database/facade.py` | `Database` class — stable API over raw psycopg |
+| `app/database/db_queries.py` | **Single source of truth** for all SQL strings + history formatting |
 | `web.py` | FastAPI entry point (~130 lines, minimal) |
 | `main.py` | CLI entry point (Rich TUI) |
-| `static/js/chat.js` | Chat UI, SSE streaming, typing indicator |
+| `static/js/chat.js` | Chat UI, SSE streaming, tool placeholder handling |
 | `static/js/renderer.js` | Marked.js v18 + Mermaid rendering |
 
 ---
@@ -128,14 +130,23 @@ python3 -m pytest tests/ -v
 7. **At most one tool execution per turn** — Terminal tools stop processing; non-terminal tools trigger synthesis.
 8. **Memory pipeline is throttled** — Pipeline gate check runs every 5th turn, not every turn.
 9. **Request caches are cleared at turn end** — Memory state cache and embedding cache must not leak across turns.
-10. **Tool results use markdown contracts** — All tool output wrapped in `<details>` blocks.
+10. **Tool results use XML format (v3.1.0)** — All tool output formatted as `<tool_result>` XML blocks, stored with role `tools`.
+
+### Tool Execution Flow (v3.1.0)
+
+11. **LLM emits XML tool calls inline** — `<tool name="..."><arg>value</arg></tool>` during streaming
+12. **StreamFilter detects and buffers tool calls** — Emits placeholder events to frontend
+13. **Tool executes, returns XML result** — `<tool_result><status>ok|error</status>...</tool_result>`
+14. **Synthesis pass uses tool_result_context** — 2nd LLM call receives tool results as context
+15. **Frontend shows placeholder during execution** — Visual feedback while tool runs
 
 ### What NOT to Change
 
-11. **Don't add new streaming pipelines** — The SSE streaming in `chat.js` and `handle_user_message_streaming()` is the only streaming path.
-12. **Don't add new LLM call sites** — All LLM calls go through `llm_client.py` (`generate_ai_response`, `generate_ai_response_streaming`, `chutes_chat`).
-13. **Don't modify the frontend buildless architecture** — No bundlers, no npm, no framework. Vanilla JS/ESM only.
-14. **Don't change the `semantic_facts` schema** without a migration plan — This table is the unified memory store.
+16. **Don't add new streaming pipelines** — The SSE streaming in `chat.js` and `handle_user_message_streaming()` is the only streaming path.
+17. **Don't add new LLM call sites** — All LLM calls go through `llm_client.py` (`generate_ai_response`, `generate_ai_response_streaming`).
+18. **Don't modify the frontend buildless architecture** — No bundlers, no npm, no framework. Vanilla JS/ESM only.
+19. **Don't change the `semantic_facts` schema** without a migration plan — This table is the unified memory store.
+20. **Don't re-add native tool calling** — Providers no longer receive `tools` parameter; tools are inline XML only.
 
 ---
 
@@ -145,64 +156,87 @@ python3 -m pytest tests/ -v
 User Message
     │
     ▼
-┌─────────────────────────────────────────────────────────┐
-│  orchestrator.py                                        │
-│                                                         │
-│  ┌─────────────┐    ┌──────────────┐                   │
-│  │ commands.py │    │ llm_client.py│                   │
-│  │ (detect /   │    │ (dispatch)   │                   │
-│  │  command)   │    └──────┬───────┘                   │
-│  └──────┬──────┘           │                            │
-│         │            ┌─────▼──────┐                    │
-│         │            │providers.py│                    │
-│         │            │(Ollama,    │                    │
-│         │            │ Cerebras,  │                    │
-│         │            │ OpenRouter,│                    │
-│         │            │ Chutes)    │                    │
-│         │            └─────┬──────┘                    │
-│         │                  │                            │
-│  ┌──────▼──────┐    ┌─────▼──────┐                    │
-│  │tools/       │    │prompts.py  │                    │
-│  │registry.py  │    │(system     │                    │
-│  │(execute     │    │ prompt +   │                    │
-│  │ tool)       │    │ context)   │                    │
-│  └──────┬──────┘    └─────┬──────┘                    │
-│         │                  │                            │
-│         │            ┌─────▼──────┐                    │
-│         │            │memory/     │                    │
-│         │            │retrieval.py│                    │
-│         │            │(combined   │                    │
-│         │            │ static +   │                    │
-│         │            │ dynamic)   │                    │
-│         │            └─────┬──────┘                    │
-│         │                  │                            │
-│  ┌──────▼──────────────────▼──────┐                    │
-│  │     database/facade.py         │                    │
-│  │     (Database class)           │                    │
-│  └──────────────┬─────────────────┘                    │
-│                 │                                       │
-│          ┌──────▼──────┐                               │
-│          │ PostgreSQL  │                               │
-│          │ + pgvector  │                               │
-│          └─────────────┘                               │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  orchestrator.py                                                │
+│                                                                 │
+│  ┌─────────────────┐                                            │
+│  │ prompts.py      │  Build system prompt + context             │
+│  │ (tool           │  AVAILABLE_TOOLS section in system prompt │
+│  │  instructions)  │                                            │
+│  └────────┬────────┘                                            │
+│           │                                                      │
+│           ▼                                                      │
+│  ┌─────────────────┐     ┌──────────────────┐                  │
+│  │ llm_client.py   │     │ providers.py     │                  │
+│  │ (dispatch)      │────▶│ (Ollama,         │                  │
+│  │                 │     │  Cerebras,       │                  │
+│  │                 │     │  OpenRouter,     │                  │
+│  │                 │     │  Chutes)         │                  │
+│  │                 │     │ NO tools param   │                  │
+│  └────────┬────────┘     └──────────────────┘                  │
+│           │                                                      │
+│           ▼  (streaming response with inline <tool> XML)        │
+│  ┌─────────────────┐                                            │
+│  │ commands.py     │  StreamFilter:                             │
+│  │ (StreamFilter)  │  - Detect <tool> tags                      │
+│  │                 │  - Buffer until </tool>                    │
+│  │                 │  - Emit placeholder event                  │
+│  └────────┬────────┘                                            │
+│           │                                                      │
+│           ▼  (tool detected)                                     │
+│  ┌─────────────────┐                                            │
+│  │ tools/          │  execute_tool(name, args)                  │
+│  │ registry.py     │  Returns XML <tool_result>                 │
+│  └────────┬────────┘                                            │
+│           │                                                      │
+│           ▼                                                      │
+│      ┌────┴────┐                                                 │
+│      │         │                                                 │
+│   Terminal  Non-terminal                                         │
+│   (image)  (memory, http)                                        │
+│      │         │                                                 │
+│      │         ▼                                                 │
+│      │    ┌─────────────────┐                                    │
+│      │    │ llm_client.py   │  Synthesis pass                    │
+│      │    │ (2nd call)      │  tool_result_context param         │
+│      │    └────────┬────────┘                                    │
+│      │             │                                              │
+│      │             ▼                                              │
+│      │    Final narrative response                               │
+│      │                                                           │
+│      ▼                                                           │
+│  Direct response (image shown)                                   │
+│                                                                 │
+│  ┌──────────────────────────────────────────┐                   │
+│  │     database/facade.py                   │                   │
+│  │     (Database class)                     │                   │
+│  │     Tool results stored with role=tools  │                   │
+│  └──────────────┬───────────────────────────┘                   │
+│                 │                                               │
+│          ┌──────▼──────┐                                        │
+│          │ PostgreSQL  │                                        │
+│          │ + pgvector  │                                        │
+│          └─────────────┘                                        │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### Key Interactions
+### Key Interactions (v3.1.0)
 
 | Caller | Callee | Purpose |
 |---|---|---|
-| `orchestrator.py` | `commands.py` | Detect `/command` in LLM response |
+| `orchestrator.py` | `commands.py` | StreamFilter detects `<tool>` XML in stream |
 | `orchestrator.py` | `llm_client.py` | Generate AI response (sync + stream) |
 | `orchestrator.py` | `tools/registry.py` | Execute detected tools |
 | `orchestrator.py` | `session_lifecycle.py` | Auto-name, summarize, pipeline trigger |
-| `llm_client.py` | `providers.py` | Dispatch to selected provider |
+| `llm_client.py` | `providers.py` | Dispatch to selected provider (no tools param) |
 | `llm_client.py` | `prompts.py` | Build system message + context |
 | `llm_client.py` | `tools/multimodal.py` | Vision routing, image caching |
 | `llm_client.py` | `visual_context.py` | Persistent visual context |
 | `prompts.py` | `memory/retrieval.py` | Combined memory retrieval |
 | `prompts.py` | `Database` facade | Profile, history, session data |
 | `tools/registry.py` | `tools/*.py` | Lazy-load and dispatch tool modules |
+| `tools/schemas.py` | Tool modules | `dual_format_result()` for XML output |
+| `db_queries.py` | `format_ai_history_rows()` | Convert tool results to XML for context |
 | `memory/retrieval.py` | `memory/embedder.py` | Query embedding |
 | `memory/embedder.py` | `providers.py` (Chutes) | Embedding API call |
 | `memory/pcl.py` | `memory/db_memory.py` | Fact consolidation CRUD |
@@ -271,26 +305,64 @@ User Message
 
 ## 8. Tool System Rules
 
+### Tool Call Format (v3.1.0)
+
+1. **LLM emits inline XML**: `<tool name="tool_name"><arg>value</arg></tool>`
+2. **StreamFilter detects during streaming**: Buffers until complete `</tool>` tag
+3. **Placeholder emitted to frontend**: `{"type": "tool_executing", "name": "..."}`
+4. **Tool executed via registry**: `execute_tool(name, args, session_id)`
+5. **Result formatted as XML**: `<tool_result><status>ok</status>...</tool_result>`
+
+### Tool Result Format
+
+```xml
+<tool_result>
+  <status>ok</status>
+  <data>
+    <key>value</key>
+    <items>
+      <item>...</item>
+    </items>
+  </data>
+</tool_result>
+```
+
+Or for errors:
+```xml
+<tool_result>
+  <status>error</status>
+  <error>Error message here</error>
+</tool_result>
+```
+
 ### Dispatch Rules
 
-1. **Single entry point**: `execute_tool(name, arguments, session_id)` in `registry.py`
-2. **Lazy loading**: Tool modules imported on first dispatch
-3. **Alias resolution**: `imagine` → `image_generate`, `request` → `http_request`
-4. **Terminal tools**: `image_generate` is terminal — no synthesis pass on success
-5. **Non-terminal tools**: Trigger synthesis pass (2nd LLM call)
+6. **Single entry point**: `execute_tool(name, arguments, session_id)` in `registry.py`
+7. **Lazy loading**: Tool modules imported on first dispatch
+8. **Alias resolution**: `imagine` → `image_generate`, `request` → `http_request`
+9. **Terminal tools**: `image_generate` is terminal — no synthesis pass on success
+10. **Non-terminal tools**: Trigger synthesis pass (2nd LLM call with tool_result_context)
 
-### Contract Rules
+### Storage Rules
 
-6. **All tool results** wrapped in `<details>` markdown blocks
-7. **Tool role mapping**: `get_tool_role()` maps tool name to DB role string
-8. **Error handling**: Tool errors return structured `{"ok": False, "error": ..., "markdown": ...}`
+11. **Tool role**: `TOOL_ROLE_UNIVERSAL = "tools"` for all tools (v3.1.0)
+12. **History format**: `format_ai_history_rows()` converts tool results to XML for context
+13. **Error handling**: Tool errors return `{"ok": False, "error": ..., "xml": "..."}`
 
 ### Adding a New Tool
 
 1. Create `app/tools/<tool_name>.py` with `TOOL_DEFINITION` dict and `execute()` function
-2. Add import in `registry.py` `_collect_definitions()` and `_load_tool_module()`
-3. Add alias in `commands.py` `_TOOL_ALIASES` and `_STRING_ARG_TOOLS` if needed
-4. Update `prompts.py` system prompt with command documentation
+2. Use `dual_format_result()` from `schemas.py` to return XML + dict
+3. Add import in `registry.py` `_collect_definitions()` and `_load_tool_module()`
+4. Add alias in `commands.py` `_TOOL_ALIASES` if needed
+5. Tool is automatically documented in `AVAILABLE_TOOLS` system prompt section
+6. Mark as terminal if it should skip synthesis: `terminal=True` in TOOL_DEFINITION
+
+### XML Sanitization
+
+14. **All values sanitized**: `xml_value()` escapes `&`, `<`, `>`, quotes
+15. **Nested data supported**: `xml_format_data()` handles dicts and lists
+16. **List limit**: 20 items max to prevent context bloat
 
 ---
 
@@ -304,17 +376,23 @@ User Message
 4. **Marked.js v18** for markdown rendering — Don't upgrade without testing Mermaid/code blocks.
 5. **Dynamic typing indicator** — JS-created `.typing-indicator-message`, not static HTML.
 
+### Tool Placeholder Handling (v3.1.0)
+
+6. **Frontend receives tool events** via SSE: `tool_executing`, `tool_result`
+7. **Placeholder shown during execution**: Visual feedback with tool name
+8. **Placeholder updated on completion**: Shows success/error status
+
 ### API Contract
 
-6. **Frontend fetches `/api/config`** on page load for vision model info
-7. **SSE endpoint**: `POST /api/send_message_stream` returns `text/event-stream`
-8. **Config shape**: `{status, vision: {models_by_provider, current_provider, current_model}}`
+9. **Frontend fetches `/api/config`** on page load for vision model info
+10. **SSE endpoint**: `POST /api/send_message_stream` returns `text/event-stream`
+11. **Config shape**: `{status, vision: {models_by_provider, current_provider, current_model}}`
 
 ### CSS Architecture
 
-9. **Theme tokens** in `theme.css` (CSS variables)
-10. **Markdown styles** in `marked.css`
-11. **Chat layout** in `chat.css` (flex-column, dynamic padding via JS)
+12. **Theme tokens** in `theme.css` (CSS variables)
+13. **Markdown styles** in `marked.css`
+14. **Chat layout** in `chat.css` (flex-column, dynamic padding via JS)
 
 ---
 
@@ -331,6 +409,7 @@ User Message
 | `tests/test_memory.py` | Memory operations |
 | `tests/test_profile_analysis.py` | Profile analysis |
 | `tests/test_stream_filter.py` | Streaming command detection |
+| `tests/test_v31_phase*.py` | v3.1.0 XML tool format tests |
 
 ### Running Tests
 
@@ -356,7 +435,6 @@ python3 -m pytest tests/ -v
 - Create feature/fix branches for all changes
 - Keep branches focused and short-lived
 
-
 ### Rollback
 
 - If behavior diverges from intent, **revert or hard reset** and re-approach with narrower scope
@@ -371,6 +449,7 @@ python3 -m pytest tests/ -v
 - Use `get_logger(__name__)` for all logging
 - Use `Database` facade for all DB access
 - Use `execute_tool()` for all tool dispatch
+- Use `dual_format_result()` for tool output (v3.1.0)
 - Use `db_queries.py` for SQL strings
 - Use `from __future__ import annotations` + modern type syntax
 - Use parameterized queries for user input
@@ -389,6 +468,7 @@ python3 -m pytest tests/ -v
 - Don't drop tables or hard-delete facts
 - Don't add npm/bundler to the frontend
 - Don't modify `web.py` for business logic
+- Don't pass `tools` parameter to providers (v3.1.0)
 
 ---
 

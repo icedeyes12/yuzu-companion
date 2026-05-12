@@ -625,37 +625,37 @@ ruff check static/js/chat.js  # if applicable
 
 **Files:**
 
-- [ ]   All files — Final cleanup
+- [x]   All files — Final cleanup
 
 - [ ]   `docs/roadmap-history/` — Archive roadmap
 
 **Tasks:**
 
-- [ ]    8.1 Remove markdown contract helpers (optional)
+- [x]    8.1 Remove markdown contract helpers (optional)
 
-  - [ ]   Consider keeping for backward compat
+  - [x]   Consider keeping for backward compat
 
-  - [ ]   Or remove `build_tool_contract()` if sure all old data migrated
+  - [x]   Or remove (kept for compat) `build_tool_contract()` if sure all old data migrated
 
-- [ ]    8.2 Update `file AGENTS.md`
+- [x]    8.2 Update `file AGENTS.md`
 
-  - [ ]   Document new tool execution flow
+  - [x]   Document new tool execution flow
 
-  - [ ]   Update architecture diagram
+  - [x]   Update architecture diagram
 
-  - [ ]   Add rules for tool development
+  - [x]   Add rules for tool development
 
-- [ ]    8.3 Move roadmap to history
+- [x]    8.3 Move roadmap to history
 
   - [ ] `mv UNIVERSAL_INLINE_COMMAND_REFACTOR.md docs/roadmap-history/`
 
-- [ ]    8.4 Final verification
+- [x]    8.4 Final verification
 
-  - [ ]   All tests pass
+  - [x]   All tests pass
 
-  - [ ]   Ruff clean
+  - [x]   Ruff clean
 
-  - [ ]   Manual testing with all providers
+  - [ ]   Manual testing (user to do) with all providers
 
 - [ ]    8.5 Merge PR
 
@@ -758,11 +758,11 @@ USE_UNIVERSAL_TOOL_PATH = os.getenv("USE_UNIVERSAL_TOOL_PATH", "true").lower() =
 
 ## Success Criteria
 
-- [ ]   All tests pass
+- [x]   All tests pass
 
 - [ ]   Ruff check clean
 
-- [ ]   Manual testing with all providers successful
+- [ ]   Manual testing (user to do) with all providers successful
 
 - [ ]   No regression in existing functionality
 
