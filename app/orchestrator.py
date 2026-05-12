@@ -605,8 +605,13 @@ def handle_user_message_streaming(
     # Store tool result
     _persist_tool_result(tool_name, tool_xml, tool_markdown, session_id)
     
-    # Emit tool result
-    yield "\n\n" + tool_markdown
+    # Emit tool result event (v3.1.0: proper event for frontend)
+    yield {
+        "type": "tool_result",
+        "name": tool_name,
+        "status": "ok" if tool_result.get("ok", True) else "error",
+        "markdown": tool_markdown,
+    }
 
     # Check if image tool
     is_image_tool = _is_image_tool_result(tool_result)
