@@ -121,11 +121,18 @@ def ok_result(
     full_command: str,
     partner_name: str = "Yuzu",
 ) -> dict:
-    """Construct a successful tool result."""
+    """Construct a successful tool result with dual format (v3.1.0)."""
+    markdown = build_tool_contract(tool_def, full_command, _flatten_lines(data), partner_name)
+    xml = format_tool_result_xml(
+        tool_name=tool_def.name,
+        status="ok",
+        data=data,
+    )
     return {
         "ok": True,
         "data": data,
-        "markdown": build_tool_contract(tool_def, full_command, _flatten_lines(data), partner_name),
+        "markdown": markdown,
+        "xml": xml,
     }
 
 
@@ -135,11 +142,18 @@ def error_result(
     full_command: str,
     partner_name: str = "Yuzu",
 ) -> dict:
-    """Construct an error tool result."""
+    """Construct an error tool result with dual format (v3.1.0)."""
+    markdown = build_tool_contract(tool_def, full_command, [f"Error: {message}"], partner_name)
+    xml = format_tool_result_xml(
+        tool_name=tool_def.name,
+        status="error",
+        error=message,
+    )
     return {
         "ok": False,
         "error": message,
-        "markdown": build_tool_contract(tool_def, full_command, [f"Error: {message}"], partner_name),
+        "markdown": markdown,
+        "xml": xml,
     }
 
 

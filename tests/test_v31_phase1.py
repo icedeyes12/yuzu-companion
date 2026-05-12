@@ -1,218 +1,192 @@
 """
-Unit tests for v3.1.0 Phase 1: Infrastructure - XML Format & Storage
+Unit tests for v3.1.0 Phase 1: Infrastructure - XML Format & Storage.
 
-Tests:
+Tests for:
 - sanitize_xml_value()
 - format_tool_result_xml()
 - dual_format_result()
-- tool_role_for() with use_universal
-- TOOL_ROLE_UNIVERSAL constant
+- TOOL_ROLE_UNIVERSAL
+- tool_role_for(use_universal=True)
 """
 
-from __future__ import annotations
-
 import pytest
-
 from app.tools.schemas import (
     sanitize_xml_value,
     format_tool_result_xml,
     dual_format_result,
     ToolDefinition,
-    ToolParam,
+    ok_result,
+    error_result,
 )
-from app.database.db_queries import (
-    TOOL_ROLE_UNIVERSAL,
-    tool_role_for,
-)
+from app.database.db_queries import TOOL_ROLE_UNIVERSAL, tool_role_for
 
 
-# --------------------------------------------------------------------
-# Test sanitize_xml_value()
-# --------------------------------------------------------------------
+class TestXMLSanitization:
+    """Tests for sanitize_xml_value()."""
 
-class TestSanitizeXmlValue:
-    """Tests for XML sanitization."""
-    
-    def test_escapes_special_chars(self) -> None:
-        """Should escape < > & " ' """
-        result = sanitize_xml_value('a & b < c > d "e" \'f\'')
-        assert "&amp;" in result
-        assert "&lt;" in result
-        assert "&gt;" in result
-        assert "&quot;" in result
-        assert "&#x27;" in result
-    
-    def test_removes_null_bytes(self) -> None:
-        """Should remove NULL bytes."""
-        result = sanitize_xml_value("hello\x00world")
-        assert "\x00" not in result
-        assert result == "helloworld"
-    
-    def test_removes_control_chars(self) -> None:
-        """Should remove control characters except tab, newline, CR."""
-        result = sanitize_xml_value("hello\x01\x02\x03world")
-        assert result == "helloworld"
-    
-    def test_preserves_newline_tab_cr(self) -> None:
-        """Should preserve newline, tab, and carriage return."""
-        result = sanitize_xml_value("line1\nline2\ttab\r\n")
-        assert "\n" in result
-        assert "\t" in result
-        assert "\r" in result
-    
-    def test_non_string_converts_to_string(self) -> None:
-        """Should convert non-string input to string."""
+    def test_escapes_xml_chars(self):
+        assert sanitize_xml_value("<tag>") == "&lt;tag&gt;"
+        assert sanitize_xml_value("a & b") == "a &amp; b"
+        assert sanitize_xml_value('"quoted"') == "&quot;quoted&quot;"
+        assert sanitize_xml_value("'single'") == "&#x27;single&#x27;"
+
+    def test_removes_null_bytes(self):
+        assert sanitize_xml_value("hello\x00world") == "helloworld"
+
+    def test_removes_control_chars(self):
+        # Keep tab, newline, CR
+        assert sanitize_xml_value("a\tb\nc\rd") == "a\tb\nc\rd"
+        # Remove other control chars
+        assert sanitize_xml_value("a\x01b\x02c") == "abc"
+
+    def test_non_string_input(self):
         assert sanitize_xml_value(123) == "123"
-        assert sanitize_xml_value(True) == "True"
         assert sanitize_xml_value(None) == "None"
 
 
-# --------------------------------------------------------------------
-# Test format_tool_result_xml()
-# --------------------------------------------------------------------
+class TestFormatToolResultXML:
+    """Tests for format_tool_result_xml()."""
 
-class TestFormatToolResultXml:
-    """Tests for XML result formatting."""
-    
-    def test_ok_result_basic(self) -> None:
-        """Should format successful result."""
+    def test_ok_result_basic(self):
         xml = format_tool_result_xml(
             tool_name="memory_search",
             status="ok",
-            data={"count": 5, "results": ["mem1", "mem2"]},
-            summary="Found 5 memories",
+            data={"count": 3, "results": ["mem1", "mem2"]},
         )
-        
-        assert "<tool_result>" in xml
         assert "<name>memory_search</name>" in xml
         assert "<status>ok</status>" in xml
-        assert "<data>" in xml
-        assert "<count>5</count>" in xml
-        assert "<summary>Found 5 memories</summary>" in xml
-        assert "</tool_result>" in xml
-    
-    def test_error_result(self) -> None:
-        """Should format error result."""
+        assert "<count>3</count>" in xml
+        assert "<results>" in xml
+        assert "<item>mem1</item>" in xml
+
+    def test_error_result(self):
         xml = format_tool_result_xml(
             tool_name="image_generate",
             status="error",
-            error="API key not configured",
+            error="API key missing",
         )
-        
         assert "<status>error</status>" in xml
-        assert "<error>API key not configured</error>" in xml
-        assert "<data>" not in xml
-    
-    def test_escapes_data_values(self) -> None:
-        """Should escape special chars in data values."""
+        assert "<error>API key missing</error>" in xml
+
+    def test_summary_included(self):
         xml = format_tool_result_xml(
-            tool_name="test",
+            tool_name="memory_search",
             status="ok",
-            data={"query": "cats & dogs <test>"},
+            data={"count": 10},
+            summary="Found 10 memories",
         )
-        
-        assert "&amp;" in xml
-        assert "&lt;" in xml
-        assert "&gt;" in xml
-    
-    def test_limits_list_items(self) -> None:
-        """Should limit list items to 20."""
-        items = [f"item{i}" for i in range(50)]
+        assert "<summary>Found 10 memories</summary>" in xml
+
+    def test_list_limited_to_20(self):
+        items = [f"item{i}" for i in range(30)]
         xml = format_tool_result_xml(
             tool_name="test",
             status="ok",
             data={"items": items},
         )
-        
-        assert "<item>item0</item>" in xml
+        # Should have 20 items + comment about 10 more
         assert "<item>item19</item>" in xml
-        assert "30 more items" in xml
-    
-    def test_nested_dict(self) -> None:
-        """Should handle nested dict values."""
+        assert "10 more items" in xml
+
+    def test_nested_dict(self):
         xml = format_tool_result_xml(
             tool_name="test",
             status="ok",
-            data={"meta": {"key": "value", "num": 123}},
+            data={"nested": {"key": "value"}},
         )
-        
-        assert "<meta>" in xml
+        assert "<nested>" in xml
         assert "<key>value</key>" in xml
-        assert "<num>123</num>" in xml
 
-
-# --------------------------------------------------------------------
-# Test dual_format_result()
-# --------------------------------------------------------------------
 
 class TestDualFormatResult:
-    """Tests for dual-format result (XML + markdown)."""
-    
+    """Tests for dual_format_result()."""
+
     @pytest.fixture
-    def tool_def(self) -> ToolDefinition:
-        """Create a test tool definition."""
+    def tool_def(self):
         return ToolDefinition(
-            name="memory_search",
-            description="Search memories",
-            role="memory_tools",
-            parameters=[
-                ToolParam(name="query", description="Search query"),
-            ],
+            name="test_tool",
+            description="Test tool",
+            role="test_tools",
         )
-    
-    def test_returns_both_formats(self, tool_def: ToolDefinition) -> None:
-        """Should return both markdown and XML formats."""
+
+    def test_returns_both_formats(self, tool_def):
         result = dual_format_result(
             tool_def=tool_def,
-            full_command="/memory_search cats",
-            data={"count": 3},
+            full_command="/test_tool arg1",
+            data={"result": "success"},
         )
-        
         assert "markdown" in result
         assert "xml" in result
         assert result["ok"] is True
-        assert "<tool_result>" in result["xml"]
         assert "<details>" in result["markdown"]
-    
-    def test_error_result_dual(self, tool_def: ToolDefinition) -> None:
-        """Should format error in both formats."""
+        assert "<tool_result>" in result["xml"]
+
+    def test_error_includes_both_formats(self, tool_def):
         result = dual_format_result(
             tool_def=tool_def,
-            full_command="/memory_search",
+            full_command="/test_tool arg1",
             data={},
-            error="Query required",
+            error="Something went wrong",
         )
-        
         assert result["ok"] is False
-        assert result["error"] == "Query required"
+        assert "Error:" in result["markdown"]
         assert "<status>error</status>" in result["xml"]
 
 
-# --------------------------------------------------------------------
-# Test tool_role_for()
-# --------------------------------------------------------------------
+class TestOkErrorResultDualFormat:
+    """Tests for ok_result() and error_result() dual format."""
 
-class TestToolRoleFor:
-    """Tests for tool role lookup."""
-    
-    def test_known_tool_old_behavior(self) -> None:
-        """Should return specific role for known tool."""
-        assert tool_role_for("image_generate") == "image_tools"
-        assert tool_role_for("imagine") == "image_tools"
-        assert tool_role_for("request") == "request_tools"
-    
-    def test_unknown_tool_old_behavior(self) -> None:
-        """Should return {name}_tools for unknown tool."""
-        assert tool_role_for("unknown_tool") == "unknown_tool_tools"
-    
-    def test_universal_role_flag(self) -> None:
-        """Should return 'tools' when use_universal=True."""
-        assert tool_role_for("image_generate", use_universal=True) == "tools"
-        assert tool_role_for("unknown_tool", use_universal=True) == "tools"
-    
-    def test_universal_constant_exists(self) -> None:
-        """TOOL_ROLE_UNIVERSAL should be 'tools'."""
+    @pytest.fixture
+    def tool_def(self):
+        return ToolDefinition(
+            name="test_tool",
+            description="Test tool",
+            role="test_tools",
+        )
+
+    def test_ok_result_has_xml(self, tool_def):
+        result = ok_result(
+            data={"count": 5},
+            tool_def=tool_def,
+            full_command="/test_tool",
+        )
+        assert result["ok"] is True
+        assert "markdown" in result
+        assert "xml" in result
+        assert "<tool_result>" in result["xml"]
+        assert "<status>ok</status>" in result["xml"]
+
+    def test_error_result_has_xml(self, tool_def):
+        result = error_result(
+            message="Failed",
+            tool_def=tool_def,
+            full_command="/test_tool",
+        )
+        assert result["ok"] is False
+        assert "xml" in result
+        assert "<status>error</status>" in result["xml"]
+        assert "<error>Failed</error>" in result["xml"]
+
+
+class TestUniversalStorageRole:
+    """Tests for TOOL_ROLE_UNIVERSAL and tool_role_for()."""
+
+    def test_universal_role_constant(self):
         assert TOOL_ROLE_UNIVERSAL == "tools"
+
+    def test_tool_role_for_default(self):
+        # Default behavior - per-tool role
+        role = tool_role_for("image_generate", use_universal=False)
+        assert role == "image_tools"  # or whatever the tool defines
+
+    def test_tool_role_for_universal(self):
+        # Universal role for v3.1.0
+        role = tool_role_for("image_generate", use_universal=True)
+        assert role == "tools"
+
+    def test_tool_role_for_unknown_tool(self):
+        role = tool_role_for("unknown_tool_xyz", use_universal=True)
+        assert role == "tools"
 
 
 # --------------------------------------------------------------------

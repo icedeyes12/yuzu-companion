@@ -223,33 +223,40 @@ python -m pytest tests/test_v31_phase1.py -v
 
 **Files:**
 
-- [ ] `app/tools/registry.py` — Update `execute_tool()` return format
+- [x] `app/tools/registry.py` — Update `execute_tool()` return format
+- [x] `app/tools/schemas.py` — Update `ok_result()`, `error_result()` to include xml
 
 **Tasks:**
 
-- [ ] 2.1 Update `execute_tool()` return format
-  - [ ] Return: `{"ok": bool, "data": dict, "markdown": str, "xml": str}`
-  - [ ] `xml` is new, `markdown` is kept for backward compat
+- [x] 2.1 Update `execute_tool()` return format
+  - [x] Return: `{"ok": bool, "data": dict, "markdown": str, "xml": str}`
+  - [x] `xml` is new, `markdown` is kept for backward compat
 
-- [ ] 2.2 Add `format_tool_result()` helper in registry
-  - [ ] Wraps `ok_result()` and `error_result()` to add `xml` field
-  - [ ] Uses `format_tool_result_xml()` from schemas
+- [x] 2.2 Update `ok_result()` and `error_result()` in schemas
+  - [x] Both now include `xml` field using `format_tool_result_xml()`
+  - [x] Backward compatible with existing callers
 
-- [ ] 2.3 Update each tool to use new format
-  - [ ] `image_generate.py` — verify returns `{"ok", "data", "markdown", "xml"}`
-  - [ ] `http_request.py` — verify returns `{"ok", "data", "markdown", "xml"}`
-  - [ ] `memory_store.py` — verify returns `{"ok", "data", "markdown", "xml"}`
-  - [ ] `memory_search.py` — verify returns `{"ok", "data", "markdown", "xml"}`
+- [x] 2.3 Verify all tools return dual format
+  - [x] `image_generate.py` — uses `ok_result()`/`error_result()` ✅
+  - [x] `http_request.py` — uses `ok_result()`/`error_result()` ✅
+  - [x] `memory_store.py` — uses `ok_result()`/`error_result()` ✅
+  - [x] `memory_search.py` — uses `ok_result()`/`error_result()` ✅
 
-- [ ] 2.4 Write integration tests
-  - [ ] `test_execute_tool_returns_both_formats()`
-  - [ ] Verify each tool returns `xml` field
+- [x] 2.4 Registry handles legacy tools
+  - [x] If tool returns dict without `xml`, registry adds it
+  - [x] If tool returns string (legacy), registry wraps with xml
+
+- [x] 2.5 Write tests
+  - [x] `test_ok_result_has_xml()`
+  - [x] `test_error_result_has_xml()`
+  - [x] 17 tests, all passing
 
 **Verification:**
 
 ```bash
-python -m pytest tests/test_registry.py -v
-ruff check app/tools/registry.py
+python -m pytest tests/test_v31_phase1.py -v
+# Expected: 17 passed
+ruff check .
 ```
 
 **Commit:** `feat(registry): Phase 2 - Dual output format (XML + markdown)`

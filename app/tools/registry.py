@@ -151,25 +151,38 @@ def execute_tool(tool_name: str, arguments: dict, session_id: Optional[str] = No
     This is the SINGLE source of truth for tool dispatch.
     All tool execution MUST go through this function.
 
-    Returns:
-        {"ok": True,  "data": {...}, "markdown": "..."}
-        {"ok": False, "error": "...", "markdown": "..."}
+    Returns (v3.1.0):
+        {"ok": True,  "data": {...}, "markdown": "...", "xml": "..."}
+        {"ok": False, "error": "...", "markdown": "...", "xml": "..."}
     """
-    from app.tools.schemas import error_result, build_tool_contract, ToolDefinition
+    from app.tools.schemas import (
+        error_result,
+        build_tool_contract,
+        ToolDefinition,
+        format_tool_result_xml,
+    )
 
     _collect_definitions()
 
     tool_def = _TOOL_DEFINITIONS.get(tool_name)
     if not tool_def:
+        # Unknown tool - construct error with xml
+        markdown = build_tool_contract(
+            ToolDefinition(name="", description="", role=f"{tool_name}_tools"),
+            f"/{tool_name}",
+            ["Error: Unknown tool. Available tools: " + ", ".join(_TOOL_DEFINITIONS.keys())],
+            "Yuzu",
+        )
+        xml = format_tool_result_xml(
+            tool_name=tool_name,
+            status="error",
+            error="Unknown tool",
+        )
         return {
             "ok": False,
             "error": f"Unknown tool: {tool_name}",
-            "markdown": build_tool_contract(
-                ToolDefinition(name="", description="", role=f"{tool_name}_tools"),
-                f"/{tool_name}",
-                ["Error: Unknown tool. Available tools: " + ", ".join(_TOOL_DEFINITIONS.keys())],
-                "Yuzu",
-            ),
+            "markdown": markdown,
+            "xml": xml,
         }
 
     # Inject session_id if tool expects it
@@ -178,29 +191,50 @@ def execute_tool(tool_name: str, arguments: dict, session_id: Optional[str] = No
 
     module = _load_tool_module(tool_name)
     if not module:
-        return error_result(
+        result = error_result(
             f"Tool module unavailable: {tool_name}",
             tool_def,
             f"/{tool_name}",
             _get_partner_name(),
         )
+        # error_result already includes xml (v3.1.0)
+        return result
 
     try:
         result = module.execute(arguments, session_id=session_id)
 
-        # New-style structured result (already a dict with ok/data/markdown)
+        # New-style structured result (v3.1.0 - has xml field)
         if isinstance(result, dict) and "ok" in result:
+            # Ensure xml field exists (backward compat for tools not yet updated)
+            if "xml" not in result:
+                result["xml"] = format_tool_result_xml(
+                    tool_name=tool_def.name,
+                    status="ok" if result.get("ok") else "error",
+                    data=result.get("data"),
+                    error=result.get("error"),
+                )
             return result
 
         # Old-style: tools still return markdown directly — wrap it
         if isinstance(result, str) and result.strip().startswith("<details>"):
+            xml = format_tool_result_xml(
+                tool_name=tool_def.name,
+                status="ok",
+                data={"result": "legacy markdown output"},
+            )
             return {
                 "ok": True,
                 "data": {},
                 "markdown": result,
+                "xml": xml,
             }
 
         # Fallback: treat as raw text
+        xml = format_tool_result_xml(
+            tool_name=tool_def.name,
+            status="ok",
+            data={"result": str(result)},
+        )
         return {
             "ok": True,
             "data": {"result": result},
@@ -210,16 +244,19 @@ def execute_tool(tool_name: str, arguments: dict, session_id: Optional[str] = No
                 [str(result)],
                 _get_partner_name(),
             ),
+            "xml": xml,
         }
 
     except Exception as e:
         logger.info(f"[tool_error] {tool_name}: {e}")
-        return error_result(
+        result = error_result(
             "Tool execution failed. Please try again later.",
             tool_def,
             f"/{tool_name}",
             _get_partner_name(),
         )
+        # error_result already includes xml (v3.1.0)
+        return result
 
 
 def _get_partner_name() -> str:
