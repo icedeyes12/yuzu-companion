@@ -285,6 +285,14 @@ User Message
 7. **Tool role mapping**: `get_tool_role()` maps tool name to DB role string
 8. **Error handling**: Tool errors return structured `{"ok": False, "error": ..., "markdown": ...}`
 
+> ⚠️ **PENDING REFACTOR**: All tool dispatch, contract, and role rules will change in v3.1.0.
+> See `UNIVERSAL_INLINE_COMMAND_REFACTOR.md` (root) for details.
+> Key changes:
+> - Universal inline `/command` format (no native tool calls)
+> - Single `role: "tools"` for all tool results (XML format)
+> - Always-run synthesis pass (no terminal tool exception)
+> - Line-buffering streaming (preserve typing effect)
+
 ### Adding a New Tool
 
 1. Create `app/tools/<tool_name>.py` with `TOOL_DEFINITION` dict and `execute()` function
@@ -389,6 +397,33 @@ python3 -m pytest tests/ -v
 - Don't drop tables or hard-delete facts
 - Don't add npm/bundler to the frontend
 - Don't modify `web.py` for business logic
+
+---
+
+## 13. Pending Refactors
+
+### v3.1.0: Universal Inline Command + 2-Pass Synthesis
+
+**Status:** Roadmap approved, implementation pending
+
+**Summary:** Refactor tool execution from native provider tool calling to universal inline `/command` + 2-pass synthesis for all tools.
+
+**Key Changes:**
+- LLM outputs `/command` inline in text (no native tool calling API dependency)
+- Tool results stored with `role: "tools"` in XML format (not markdown contract)
+- Synthesis pass always runs (no terminal tool exception)
+- StreamFilter uses line-buffering (preserves typing effect)
+- Multi-line argument support for tools
+- Token overflow prevention via truncation
+
+**Roadmap Document:** `UNIVERSAL_INLINE_COMMAND_REFACTOR.md` (root — will move to `docs/roadmap-history/` after completion)
+
+**Implementation Phases:**
+1. Infrastructure (XML formatting, sanitization, dual-path history)
+2. StreamFilter refactor (line-buffering, multi-line args)
+3. Prompt engineering (tool instructions, synthesis template)
+4. Orchestrator integration (2-pass always, truncation)
+5. Cleanup (remove markdown contract, native tool calls)
 
 ---
 
