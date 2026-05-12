@@ -15,7 +15,6 @@ from app.logging_config import get_logger
 from app.prompts import build_messages
 from app.providers import get_ai_manager
 from app.tools import multimodal_tools
-from app.tools.registry import get_tool_definitions
 from app.visual_context import (
     consume_visual_context,
     has_visual_reference,
@@ -161,31 +160,6 @@ def _inject_persistent_visual(
     log.info("re-injected persistent visual context")
 
 
-def _unique_tool_schemas() -> list[dict[str, Any]]:
-    seen: set[str] = set()
-    schemas: list[dict[str, Any]] = []
-    for tool in get_tool_definitions():
-        schema = tool.to_llm_schema()
-        name = schema.get("function", {}).get("name", "")
-        if name and name not in seen:
-            seen.add(name)
-            schemas.append(schema)
-    return schemas
-
-
-# ---------------------------------------------------------------------------
-# Direct /imagine handling (used by both response variants)
-# ---------------------------------------------------------------------------
-
-# REMOVED: _handle_imagine_command was a duplicate image-generation path
-# that bypassed the tool registry. All /imagine handling now goes through
-# the orchestrator -> detect_command -> execute_command -> execute_tool.
-
-
-# ---------------------------------------------------------------------------
-# Response generation
-# ---------------------------------------------------------------------------
-
 
 def _resolve_provider(
     profile: dict[str, Any], provider: str | None, model: str | None
@@ -206,20 +180,18 @@ def _send_to_provider(
 ) -> tuple[str | None, dict[str, Any] | None]:
     """Single LLM dispatch with timing log. Returns (text, raw_response)."""
     ai_manager = get_ai_manager()
-    schemas = _unique_tool_schemas()
 
     if image_context and provider in ai_manager.providers:
         v_provider, v_model = multimodal_tools.get_best_vision_provider()
         if v_provider and v_model:
             log.info("2nd-pass vision: %s/%s", v_provider, v_model)
             provider, model = v_provider, v_model
-            schemas = []  # vision models don't accept tool schemas
 
     started = time.time()
     raw_response: dict[str, Any] | None = None
     try:
         raw_response = ai_manager.send_message_raw(
-            provider, model, messages, timeout=180, tools=schemas
+            provider, model, messages, timeout=180
         )
     except Exception as e:  # noqa: BLE001
         log.error("send_message exception (%s/%s): %s", provider, model, e)
@@ -239,8 +211,8 @@ def _send_to_provider(
 
     if text:
         log.info(
-            "chat %s/%s | tools=%d | %.1fs ok",
-            provider, model, len(schemas), duration,
+            "chat %s/%s | %.1fs ok",
+            provider, model, duration,
         )
         return text, raw_response
 
