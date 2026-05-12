@@ -204,22 +204,24 @@ def _send_to_provider(
     *,
     image_context: list[dict[str, Any]] | None,
 ) -> tuple[str | None, dict[str, Any] | None]:
-    """Single LLM dispatch with timing log. Returns (text, raw_response)."""
+    """Single LLM dispatch with timing log. Returns (text, raw_response).
+    
+    v3.1.0: Removed native tool calling - LLM outputs /commands inline instead.
+    """
     ai_manager = get_ai_manager()
-    schemas = _unique_tool_schemas()
 
     if image_context and provider in ai_manager.providers:
         v_provider, v_model = multimodal_tools.get_best_vision_provider()
         if v_provider and v_model:
             log.info("2nd-pass vision: %s/%s", v_provider, v_model)
             provider, model = v_provider, v_model
-            schemas = []  # vision models don't accept tool schemas
 
     started = time.time()
     raw_response: dict[str, Any] | None = None
     try:
+        # v3.1.0: No tools array - LLM uses inline /commands
         raw_response = ai_manager.send_message_raw(
-            provider, model, messages, timeout=180, tools=schemas
+            provider, model, messages, timeout=180, tools=None
         )
     except Exception as e:  # noqa: BLE001
         log.error("send_message exception (%s/%s): %s", provider, model, e)
@@ -239,8 +241,8 @@ def _send_to_provider(
 
     if text:
         log.info(
-            "chat %s/%s | tools=%d | %.1fs ok",
-            provider, model, len(schemas), duration,
+            "chat %s/%s | %.1fs ok",
+            provider, model, duration,
         )
         return text, raw_response
 
