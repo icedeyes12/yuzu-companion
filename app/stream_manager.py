@@ -111,8 +111,8 @@ class StreamBuffer:
                 for q in self.queues:
                     await q.put(None)
 
-            # Persist successful completion
-            await self._persist_to_db(self.full_content, is_error=False)
+            # Persist successful completion (Handled entirely by orchestrator.py)
+            # await self._persist_to_db(self.full_content, is_error=False)
 
         except asyncio.CancelledError:
             # Stream was cancelled (user switched session, etc.)
