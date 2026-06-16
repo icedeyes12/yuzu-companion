@@ -347,6 +347,12 @@ def _parse_args(tool_name: str, raw_args: str) -> dict[str, Any]:
                 return {"path": parts[0], "content": ""}
             return {"path": "", "content": raw_args}
 
+        # Handle case where the LLM explicitly provides the key (e.g., command="pwd")
+        # but only if it maps to the exact single key expected by the tool
+        parsed_kv = _parse_key_value_args(raw_args)
+        if len(parsed_kv) == 1 and key in parsed_kv:
+            return parsed_kv
+
         return {key: raw_args}
 
     # Try JSON parse first
