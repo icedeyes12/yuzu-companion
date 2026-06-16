@@ -749,7 +749,7 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
             tool_markdown = tool_result.get("markdown", str(tool_result))
             tool_markdowns.append(tool_markdown)
 
-            from app.commands import is_terminal_tool
+            from app.tools.registry import is_terminal_tool
 
             if is_terminal_tool(tool_name):
                 terminal_tool_executed = True
@@ -1022,7 +1022,7 @@ async def handle_user_message_streaming(
             if p:
                 pass  # any_image_tool was unused and undefined properly here anyway
 
-            from app.commands import is_terminal_tool
+            from app.tools.registry import is_terminal_tool
 
             if is_terminal_tool(tool_name):
                 terminal_tool_executed = True
