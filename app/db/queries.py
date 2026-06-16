@@ -638,26 +638,26 @@ def format_ai_history_rows(
             # so the AI can actually read the tool output.
             raw = extract_raw_result_from_markdown_contract(content)
             entry = {"role": role, "content": raw}
-            
+
             # The schema uses tool_call_id and name for OpenAI tool messages
             tool_call_id = msg.get("tool_call_id")
             if tool_call_id:
                 entry["tool_call_id"] = tool_call_id
-                
+
             tool_name = msg.get("name")
             if not tool_name and tool_call_id in tool_call_name_map:
                 tool_name = tool_call_name_map[tool_call_id]
-                
+
             if tool_name:
                 entry["name"] = tool_name
-                
+
             # Normalize role to "tool" for OpenAI API
             entry["role"] = "tool"
-            
+
             if not tool_name and role != "tool":
                 # Fallback: if name is missing but role was the tool name, use the role as name
                 entry["name"] = role
-                
+
         else:
             entry = {"role": role, "content": content}
 

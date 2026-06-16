@@ -519,19 +519,21 @@ async def build_messages(
     history = _trim_history_to_token_limit(history, MAX_HISTORY_TOKENS)
 
     messages = [{"role": "system", "content": system_message}]
-    
+
     import re
-    
+
     for m in history:
         content = m["content"]
         if native_tools and isinstance(content, str):
             # Strip legacy <tools>...</tools> blocks from history so the model doesn't copy the format
-            content = re.sub(r'<tools>.*?</tools>', '', content, flags=re.DOTALL).strip()
-            
+            content = re.sub(
+                r"<tools>.*?</tools>", "", content, flags=re.DOTALL
+            ).strip()
+
         entry = {"role": m["role"], "content": content}
         if "image_paths" in m and m["image_paths"]:
             entry["image_paths"] = m["image_paths"]
-        
+
         # Include native tool calling fields if present
         if "tool_calls" in m and m["tool_calls"]:
             entry["tool_calls"] = m["tool_calls"]
@@ -539,7 +541,7 @@ async def build_messages(
             entry["tool_call_id"] = m["tool_call_id"]
         if "name" in m and m["name"]:
             entry["name"] = m["name"]
-            
+
         messages.append(entry)
 
     return messages

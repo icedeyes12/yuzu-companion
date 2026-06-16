@@ -717,7 +717,7 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
                     pass
 
         tool_calls = tool_calls[:3]
-        
+
         # Apply fallback only if there's no text AND no tool calls
         if not text_response and not tool_calls:
             text_response = _EMPTY_RESPONSE_FALLBACK
@@ -937,6 +937,7 @@ async def handle_user_message_streaming(
         final_full_response = full_response
 
         import re
+
         # Auto-close cognitive blocks
         for tag in ["analysis", "think", "decision"]:
             open_pattern = re.compile(rf"^\s*<{tag}>", re.IGNORECASE | re.MULTILINE)
@@ -980,14 +981,13 @@ async def handle_user_message_streaming(
         # Format tcalls strictly to OpenAI spec
         tcalls = []
         for tc in list(tool_call_acc.values())[:3]:
-            tcalls.append({
-                "id": tc["id"],
-                "type": "function",
-                "function": {
-                    "name": tc["name"],
-                    "arguments": tc["arguments"]
+            tcalls.append(
+                {
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": tc["arguments"]},
                 }
-            })
+            )
 
         await _persist_assistant_async(full_response, session_id, tool_calls=tcalls)
 
