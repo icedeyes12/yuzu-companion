@@ -940,8 +940,8 @@ async def handle_user_message_streaming(
 
         # Auto-close cognitive blocks
         for tag in ["analysis", "think", "decision"]:
-            open_pattern = re.compile(rf"^\s*<{tag}>", re.IGNORECASE | re.MULTILINE)
-            close_pattern = re.compile(rf"^\s*</{tag}>", re.IGNORECASE | re.MULTILINE)
+            open_pattern = re.compile(rf"^[ \t]*<{tag}>[ \t]*$", re.IGNORECASE | re.MULTILINE)
+            close_pattern = re.compile(rf"^[ \t]*</{tag}>[ \t]*$", re.IGNORECASE | re.MULTILINE)
             open_count = len(open_pattern.findall(full_response))
             close_count = len(close_pattern.findall(full_response))
             if open_count > close_count:
