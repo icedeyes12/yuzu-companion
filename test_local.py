@@ -2,6 +2,7 @@ import asyncio
 from app.orchestrator import handle_user_message
 from app.db import Database
 
+
 async def main():
     await Database.init_async()
     try:
@@ -9,6 +10,8 @@ async def main():
         print("Reply:", reply)
     except Exception:
         import traceback
+
         traceback.print_exc()
+
 
 asyncio.run(main())

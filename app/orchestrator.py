@@ -284,7 +284,11 @@ async def _persist_assistant_async(
 ) -> None:
     """Persist an assistant response, with optional image paths (async)."""
     await Database.add_message_async(
-        "assistant", content, session_id=session_id, image_paths=image_paths, tool_calls=tool_calls
+        "assistant",
+        content,
+        session_id=session_id,
+        image_paths=image_paths,
+        tool_calls=tool_calls,
     )
 
 

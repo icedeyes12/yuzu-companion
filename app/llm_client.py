@@ -388,9 +388,7 @@ async def _stream_from_provider(
         provider_instance = ai_manager.providers.get(provider)
         if not provider_instance:
             return
-        async for chunk in provider_instance.chat_stream(
-            messages, model, tools=tools
-        ):
+        async for chunk in provider_instance.chat_stream(messages, model, tools=tools):
             if chunk:
                 yield chunk
     except asyncio.CancelledError:

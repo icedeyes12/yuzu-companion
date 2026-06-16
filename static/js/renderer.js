@@ -693,7 +693,10 @@ class MessageRenderer {
 			// Handle unclosed tags during streaming (no closing tag yet)
 			// Matches <tag> without a matching </tag>, stopping if it hits a tool block (<details>)
 			if (openCount > closeCount) {
-				const unclosedPattern = new RegExp(`<${tag}>([\\s\\S]*?)(?=<details>|$)`, "gi");
+				const unclosedPattern = new RegExp(
+					`<${tag}>([\\s\\S]*?)(?=<details>|$)`,
+					"gi",
+				);
 				result = result.replace(unclosedPattern, (_match, content) => {
 					const trimmedContent = content.trim();
 					if (!trimmedContent) return "";
