@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import logging
+import tempfile
 from pathlib import Path
 from datetime import datetime
 from app.tools.schemas import ToolDefinition, ToolParam, ok_result, error_result
@@ -18,7 +19,9 @@ ALLOWED_BASE_DIRS = [
     Path("~/workspace").expanduser(),
     Path("~/.config").expanduser(),
     Path("~/.local").expanduser(),
-    Path("/tmp"),
+    Path(tempfile.gettempdir()).resolve(),
+    Path(os.environ.get("HOME", "/data/data/com.termux/files/home")).resolve(),
+    Path("/tmp").resolve(), # for tests that hardcode /tmp
 ]
 
 # Maximum file size for read operations (1MB)
@@ -116,6 +119,35 @@ TOOL_RM = ToolDefinition(
     is_terminal=False,
 )
 
+TOOL_PATCH = ToolDefinition(
+    name="patch",
+    description="Modify an existing file using string replacement. "
+    "Replaces exactly 'target_content' with 'replacement_content'. "
+    "Useful for making targeted edits without overwriting the entire file.",
+    role="fs_tools",
+    parameters=[
+        ToolParam(
+            name="path",
+            description="File path to edit.",
+            type="string",
+            required=True,
+        ),
+        ToolParam(
+            name="target_content",
+            description="The exact string to be replaced. Must match exactly, including indentation and newlines.",
+            type="string",
+            required=True,
+        ),
+        ToolParam(
+            name="replacement_content",
+            description="The new string to replace the target_content with.",
+            type="string",
+            required=True,
+        ),
+    ],
+    is_terminal=False,
+)
+
 # Registry-compatible TOOL_DEFINITION (maps name -> definition)
 TOOL_DEFINITION = TOOL_READ  # Default for registry lookup
 
@@ -163,8 +195,7 @@ def _resolve_path(path: str) -> Path | None:
 
     if not is_allowed:
         logger.warning(f"[fs] Path outside allowed dirs: {normalized}")
-        # Still allow, but log warning - user can access their own Termux
-        is_allowed = True
+        return None
 
     return normalized
 
@@ -202,6 +233,8 @@ def execute(arguments: dict, session_id: int | None = None, **kwargs) -> dict:
         return execute_mkdir(arguments, session_id)
     elif tool_name == "rm":
         return execute_rm(arguments, session_id)
+    elif tool_name == "patch":
+        return execute_patch(arguments, session_id)
     else:
         return error_result(
             f"Unknown fs operation: {tool_name}",
@@ -565,6 +598,88 @@ def execute_rm(arguments: dict, session_id: int | None = None) -> dict:
             "deleted": True,
         },
         TOOL_RM,
+        full_command,
+        partner_name,
+    )
+
+
+def execute_patch(arguments: dict, session_id: int | None = None) -> dict:
+    """Patch a file using exact string replacement."""
+    partner_name = _get_partner_name()
+    path_arg = arguments.get("path", "")
+    target = arguments.get("target_content", "")
+    replacement = arguments.get("replacement_content", "")
+
+    if not path_arg or not target:
+        return error_result(
+            "Path and target_content are required",
+            TOOL_PATCH,
+            "/patch",
+            partner_name,
+        )
+
+    full_command = f"/patch {path_arg}"
+    resolved = _resolve_path(path_arg)
+
+    if resolved is None:
+        return error_result(
+            f"Invalid or unsafe path: {path_arg}",
+            TOOL_PATCH,
+            full_command,
+            partner_name,
+        )
+
+    if not resolved.exists() or not resolved.is_file():
+        return error_result(
+            f"File not found: {path_arg}",
+            TOOL_PATCH,
+            full_command,
+            partner_name,
+        )
+
+    try:
+        content = resolved.read_text(encoding="utf-8")
+        
+        # Check if target exists
+        if target not in content:
+            # Fallback check with normalized line endings
+            if target.replace('\r\n', '\n') in content.replace('\r\n', '\n'):
+                content = content.replace('\r\n', '\n')
+                target = target.replace('\r\n', '\n')
+            else:
+                return error_result(
+                    "target_content not found in file. Ensure exact match including indentation.",
+                    TOOL_PATCH,
+                    full_command,
+                    partner_name,
+                )
+            
+        occurrences = content.count(target)
+        if occurrences > 1:
+            return error_result(
+                f"target_content found {occurrences} times. Must be unique to safely patch.",
+                TOOL_PATCH,
+                full_command,
+                partner_name,
+            )
+            
+        new_content = content.replace(target, replacement)
+        resolved.write_text(new_content, encoding="utf-8")
+        
+    except OSError as e:
+        return error_result(
+            f"Cannot modify file: {e}",
+            TOOL_PATCH,
+            full_command,
+            partner_name,
+        )
+
+    return ok_result(
+        {
+            "path": str(resolved),
+            "patched": True,
+        },
+        TOOL_PATCH,
         full_command,
         partner_name,
     )

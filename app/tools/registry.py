@@ -63,7 +63,7 @@ def _load_tool_module(tool_name: str):
 
             _TOOL_MODULES[tool_name] = multimodal
         # File system tools
-        elif tool_name in ("read", "write", "ls", "mkdir", "rm"):
+        elif tool_name in ("read", "write", "ls", "mkdir", "rm", "patch"):
             from app.tools import fs_operations
 
             _TOOL_MODULES[tool_name] = fs_operations
@@ -135,7 +135,7 @@ def _collect_definitions():
     try:
         from app.tools import fs_operations
 
-        for name in ["read", "write", "ls", "mkdir", "rm"]:
+        for name in ["read", "write", "ls", "mkdir", "rm", "patch"]:
             _TOOL_DEFINITIONS[name] = getattr(fs_operations, f"TOOL_{name.upper()}")
         _TOOL_MODULES["fs_operations"] = fs_operations
     except Exception as e:
