@@ -629,10 +629,24 @@ def format_ai_history_rows(
             if tool_calls_str:
                 parsed_tcalls = parse_json(tool_calls_str)
                 if parsed_tcalls:
-                    entry["tool_calls"] = parsed_tcalls
+                    corrected_tcalls = []
                     for tc in parsed_tcalls:
-                        if isinstance(tc, dict) and "id" in tc and "function" in tc:
-                            tool_call_name_map[tc["id"]] = tc["function"].get("name")
+                        if isinstance(tc, dict):
+                            if "function" not in tc:
+                                # Fix legacy malformed tool_calls
+                                corrected_tcalls.append({
+                                    "id": tc.get("id", ""),
+                                    "type": "function",
+                                    "function": {
+                                        "name": tc.get("name", ""),
+                                        "arguments": tc.get("arguments", "{}")
+                                    }
+                                })
+                                tool_call_name_map[tc.get("id")] = tc.get("name")
+                            else:
+                                corrected_tcalls.append(tc)
+                                tool_call_name_map[tc.get("id")] = tc["function"].get("name")
+                    entry["tool_calls"] = corrected_tcalls
         elif role in ALL_TOOL_ROLES or role == "tool":
             # Strip tool-contract markdown and keep only the raw result
             # so the AI can actually read the tool output.
