@@ -246,10 +246,12 @@ class Database:
         content: str,
         session_id: int | None = None,
         image_paths: list[str] | None = None,
+        tool_calls: list[dict] | None = None,
+        tool_call_id: str | None = None,
     ) -> int | None:
         """Add a message to a session (defaults to active session)."""
         return _pg_add_message(
-            _resolve_session_id(session_id), role, content, image_paths
+            _resolve_session_id(session_id), role, content, image_paths, tool_calls, tool_call_id
         )
 
     @staticmethod
@@ -258,10 +260,12 @@ class Database:
         content: str,
         session_id: int | None = None,
         image_paths: list[str] | None = None,
+        tool_calls: list[dict] | None = None,
+        tool_call_id: str | None = None,
     ) -> int | None:
         """Add a message to a session (defaults to active session)."""
         return await _pg_add_message_async(
-            await _resolve_session_id_async(session_id), role, content, image_paths
+            await _resolve_session_id_async(session_id), role, content, image_paths, tool_calls, tool_call_id
         )
 
     @staticmethod

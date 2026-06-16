@@ -325,6 +325,8 @@ def add_message(
     role: str,
     content: str,
     image_paths: list[str] | None = None,
+    tool_calls: list[dict] | None = None,
+    tool_call_id: str | None = None,
 ) -> int | None:
     """Insert a message row, bump the session's message_count, return id.
 
@@ -332,10 +334,11 @@ def add_message(
     """
     try:
         paths_json = json.dumps(image_paths or [])
+        tcalls_json = json.dumps(tool_calls) if tool_calls else None
         with PgSession() as s:
             row = s.execute_returning(
                 SQL_MESSAGE_INSERT,
-                (session_id, role, content, paths_json),  # timestamp handled by DB
+                (session_id, role, content, paths_json, tcalls_json, tool_call_id),
             )
             if row:
                 increment_message_count(session_id)
