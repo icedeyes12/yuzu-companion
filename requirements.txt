@@ -45,6 +45,8 @@ prompt-toolkit>=3.0.0
 # ----------
 # HTTP requests for AI providers and image downloads
 requests>=2.33.0
+# OpenAI-compatible SDK for LLM provider communication
+openai>=1.30.0
 
 # Development Tools (optional)
 # ----------------------------

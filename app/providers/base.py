@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json as _json
 import logging
 import time
 import asyncio
 from typing import AsyncGenerator
 from contextlib import asynccontextmanager
+
+from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletion, ChatCompletionChunk
 
 from app.db import get_api_key_async
 from app.tools import multimodal_tools
@@ -236,6 +240,35 @@ class AIProvider:
     def parse_tool_calls(self, raw_response) -> list[dict]:
         return []
 
+    # ── New primary interface (abstract) ──────────────────────────────────
+
+    async def chat_complete(
+        self,
+        messages: list[dict],
+        model: str,
+        tools: list[dict] | None = None,
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+        **kwargs,
+    ) -> ChatCompletion:
+        """New primary interface. Returns structured ChatCompletion."""
+        raise NotImplementedError
+
+    async def chat_stream(
+        self,
+        messages: list[dict],
+        model: str,
+        tools: list[dict] | None = None,
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+        **kwargs,
+    ) -> AsyncGenerator[ChatCompletionChunk, None]:
+        """New primary streaming interface. Yields structured chunks."""
+        raise NotImplementedError
+        yield  # Keep as async generator
+
+    # ── Connection & vision helpers ───────────────────────────────────────
+
     async def test_connection(self) -> bool:
         try:
             models = await self.get_models()
@@ -283,6 +316,182 @@ class AIProvider:
             else:
                 normalized.append(msg)
         return normalized
+
+
+# ── OpenAI-compatible provider base ─────────────────────────────────────────
+
+
+class OpenAICompatibleProvider(AIProvider):
+    """Base for providers with OpenAI-compatible /v1/chat/completions endpoints.
+
+    Subclasses only need to set provider-specific config in __init__ and
+    optionally override chat_complete/chat_stream for custom behavior.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        config: dict | None = None,
+        *,
+        base_url: str = "",
+        default_headers: dict[str, str] | None = None,
+    ):
+        super().__init__(name, config)
+        self._base_url = base_url
+        self._default_headers = default_headers
+        self._client: AsyncOpenAI | None = None  # Created after API key loads
+
+    async def initialize(self) -> None:
+        """Load API key, then create the AsyncOpenAI client."""
+        await super().initialize()
+        if self.api_key or self.name == "ollama":
+            self._client = AsyncOpenAI(
+                api_key=self.api_key or "ollama",
+                base_url=self._base_url,
+                default_headers=self._default_headers,
+            )
+
+    # ── New primary interface ─────────────────────────────────────────────
+
+    async def chat_complete(
+        self,
+        messages: list[dict],
+        model: str,
+        tools: list[dict] | None = None,
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+        **kwargs,
+    ) -> ChatCompletion:
+        if not self._client:
+            raise RuntimeError(f"Provider {self.name} not initialized")
+
+        messages = self._normalize_messages(messages)
+        params: dict = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            **kwargs,
+        }
+        if max_tokens is not None:
+            params["max_tokens"] = max_tokens
+        if tools:
+            params["tools"] = tools
+            params.setdefault("tool_choice", "auto")
+        return await self._client.chat.completions.create(**params)
+
+    async def chat_stream(
+        self,
+        messages: list[dict],
+        model: str,
+        tools: list[dict] | None = None,
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+        **kwargs,
+    ) -> AsyncGenerator[ChatCompletionChunk, None]:
+        if not self._client:
+            raise RuntimeError(f"Provider {self.name} not initialized")
+
+        messages = self._normalize_messages(messages)
+        params: dict = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True,
+            **kwargs,
+        }
+        if max_tokens is not None:
+            params["max_tokens"] = max_tokens
+        if tools:
+            params["tools"] = tools
+            params.setdefault("tool_choice", "auto")
+        stream = await self._client.chat.completions.create(**params)
+        async for chunk in stream:
+            yield chunk
+
+    # ── Deprecated shims: bridge old interface to new ────────────────────
+
+    async def get_models(self) -> list[str]:
+        """Fetch models from /v1/models endpoint."""
+        if not self._client:
+            return []
+        try:
+            response = await self._client.models.list()
+            return sorted(m.id for m in response.data)
+        except Exception as e:
+            logger.warning("[%s] Failed to fetch models: %s", self.name, e)
+            return []
+
+    async def send_message(
+        self, messages: list[dict], model: str, source: str = "llm", **kwargs
+    ) -> str | None:
+        """DEPRECATED shim — delegates to chat_complete()."""
+        try:
+            # Strip kwargs that chat_complete doesn't understand
+            kwargs.pop("source", None)
+            kwargs.pop("skip_vision", None)
+            kwargs.pop("log_prefix", None)
+            kwargs.pop("model", None)
+            kwargs.pop("model_name", None)
+            resp = await self.chat_complete(messages, model, **kwargs)
+            content = resp.choices[0].message.content
+            return content.strip() if content else ""
+        except Exception as e:
+            logger.error("[%s] send_message shim error: %s", self.name, e)
+            return None
+
+    async def send_message_raw(
+        self, messages: list[dict], model: str, source: str = "llm", **kwargs
+    ) -> dict | None:
+        """DEPRECATED shim — delegates to chat_complete()."""
+        try:
+            kwargs.pop("source", None)
+            kwargs.pop("skip_vision", None)
+            kwargs.pop("log_prefix", None)
+            kwargs.pop("model", None)
+            kwargs.pop("model_name", None)
+            resp = await self.chat_complete(messages, model, **kwargs)
+            return resp.model_dump()
+        except Exception as e:
+            logger.error("[%s] send_message_raw shim error: %s", self.name, e)
+            return None
+
+    async def send_message_streaming(
+        self, messages: list[dict], model: str, source: str = "llm", **kwargs
+    ) -> AsyncGenerator[str, None]:
+        """DEPRECATED shim — delegates to chat_stream()."""
+        try:
+            kwargs.pop("source", None)
+            kwargs.pop("skip_vision", None)
+            kwargs.pop("log_prefix", None)
+            kwargs.pop("model", None)
+            kwargs.pop("model_name", None)
+            async for chunk in self.chat_stream(messages, model, **kwargs):
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error("[%s] send_message_streaming shim error: %s", self.name, e)
+            yield f"Error: {e}"
+
+    def parse_tool_calls(self, raw_response) -> list[dict]:
+        """Parse tool_calls from a model_dump() dict."""
+        if not isinstance(raw_response, dict):
+            return []
+        try:
+            message = raw_response.get("choices", [{}])[0].get("message", {})
+            tool_calls = message.get("tool_calls") or []
+            results = []
+            for tc in tool_calls:
+                fn = tc.get("function", {})
+                results.append({
+                    "id": tc.get("id", ""),
+                    "name": fn.get("name", ""),
+                    "arguments": _json.loads(fn.get("arguments", "{}")),
+                })
+            return results
+        except Exception:
+            return []
 
 
 class AIProviderManager:
