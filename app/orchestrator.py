@@ -965,6 +965,43 @@ async def handle_user_message_streaming(
                 final_full_response += closing_tag
                 yield closing_tag
 
+        # --- Fallback for Gemma TEE native tool calls leaked as text ---
+        import json as _json
+        import uuid
+
+        gemma_tool_pattern = re.compile(
+            r"<\|tool_call>call:([a-zA-Z0-9_]+)\{(.*?)\}<tool_call\|>", re.DOTALL
+        )
+        gemma_matches = list(gemma_tool_pattern.finditer(full_response))
+
+        if not tool_call_acc and gemma_matches:
+            for match in gemma_matches:
+                name = match.group(1)
+                args_str = match.group(2)
+                args = {}
+                arg_pattern = re.compile(
+                    r'([a-zA-Z0-9_]+):<\|"\|>(.*?)<\|"\|>', re.DOTALL
+                )
+                for arg_match in arg_pattern.finditer(args_str):
+                    args[arg_match.group(1)] = arg_match.group(2)
+
+                tc_id = "chatcmpl-tool-" + uuid.uuid4().hex[:16]
+                tool_call_acc[tc_id] = {
+                    "id": tc_id,
+                    "name": name,
+                    "arguments": _json.dumps(args),
+                }
+
+            # Clean up the text
+            full_response = gemma_tool_pattern.sub("", full_response)
+            full_response = full_response.replace(
+                "I'm having trouble responding right now. Please try again.", ""
+            ).strip()
+            final_full_response = full_response
+
+            finish_reason = "tool_calls"
+        # ---------------------------------------------------------------
+
         if not tool_call_acc and finish_reason != "tool_calls":
             if loop_count == 1:
                 if not _clean(full_response):

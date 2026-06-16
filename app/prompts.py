@@ -527,9 +527,7 @@ async def build_messages(
         if native_tools and isinstance(content, str):
             # Strip hallucinated <tools>...</tools> and legacy <tool>...</tool> blocks from assistant history
             if m["role"] == "assistant":
-                content = re.sub(
-                    r"<tools>.*?</tools>", "", content, flags=re.DOTALL
-                )
+                content = re.sub(r"<tools>.*?</tools>", "", content, flags=re.DOTALL)
                 content = re.sub(
                     r"<tool>.*?</tool>", "", content, flags=re.DOTALL
                 ).strip()
