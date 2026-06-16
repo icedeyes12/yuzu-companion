@@ -989,6 +989,15 @@ async def handle_user_message_streaming(
         yield IMAGE_SHORTCUT_WARNING
         return
 
+    # === PHASE 3.5: Auto-close cognitive blocks ===
+    for tag in ["analysis", "think", "decision"]:
+        open_count = full_response.count(f"<{tag}>")
+        close_count = full_response.count(f"</{tag}>")
+        if open_count > close_count:
+            closing_tag = f"\n</{tag}>\n" * (open_count - close_count)
+            full_response += closing_tag
+            yield closing_tag
+
     # === PHASE 4: Parse and execute tool commands ===
     any_image_tool = False
     all_generated_paths = []
