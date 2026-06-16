@@ -696,7 +696,7 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
             return final_response_text
 
         text_response = response.choices[0].message.content or ""
-        text_response = _clean(text_response) or _EMPTY_RESPONSE_FALLBACK
+        text_response = _clean(text_response)
 
         finish_reason = getattr(response.choices[0], "finish_reason", None)
 
@@ -717,6 +717,10 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
                     pass
 
         tool_calls = tool_calls[:3]
+        
+        # Apply fallback only if there's no text AND no tool calls
+        if not text_response and not tool_calls:
+            text_response = _EMPTY_RESPONSE_FALLBACK
 
         tc_dicts = None
         if getattr(response.choices[0].message, "tool_calls", None):
@@ -932,10 +936,13 @@ async def handle_user_message_streaming(
         full_response = "".join(response_chunks)
         final_full_response = full_response
 
+        import re
         # Auto-close cognitive blocks
         for tag in ["analysis", "think", "decision"]:
-            open_count = full_response.count(f"<{tag}>")
-            close_count = full_response.count(f"</{tag}>")
+            open_pattern = re.compile(rf"^\s*<{tag}>", re.IGNORECASE | re.MULTILINE)
+            close_pattern = re.compile(rf"^\s*</{tag}>", re.IGNORECASE | re.MULTILINE)
+            open_count = len(open_pattern.findall(full_response))
+            close_count = len(close_pattern.findall(full_response))
             if open_count > close_count:
                 closing_tag = f"\n</{tag}>\n" * (open_count - close_count)
                 full_response += closing_tag

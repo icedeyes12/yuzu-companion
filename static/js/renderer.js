@@ -672,16 +672,20 @@ class MessageRenderer {
 
 		for (const { tag, label } of cognitiveBlocks) {
 			// Pattern matches both closed tags and unclosed tags (streaming)
-			// Uses [\s\S] with 's' flag equivalent for multiline matching
-			const openPattern = new RegExp(`<${tag}>`, "gi");
-			const closePattern = new RegExp(`</${tag}>`, "gi");
+			// Require the tag to be at the start of a line (with optional whitespace)
+			// to avoid matching `<analysis>` when the LLM writes about its own tags inline.
+			const openPattern = new RegExp(`^\\s*<${tag}>`, "gim");
+			const closePattern = new RegExp(`^\\s*</${tag}>`, "gim");
 
 			// Count open and close tags to handle streaming edge case
 			const openCount = (result.match(openPattern) || []).length;
 			const closeCount = (result.match(closePattern) || []).length;
 
 			// Full pattern for complete blocks (closed tags)
-			const fullPattern = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, "gi");
+			const fullPattern = new RegExp(
+				`^\\s*<${tag}>([\\s\\S]*?)^\\s*<\\/${tag}>`,
+				"gim",
+			);
 
 			result = result.replace(fullPattern, (_match, content) => {
 				const trimmedContent = content.trim();
@@ -694,8 +698,8 @@ class MessageRenderer {
 			// Matches <tag> without a matching </tag>, stopping if it hits a tool block (<details>)
 			if (openCount > closeCount) {
 				const unclosedPattern = new RegExp(
-					`<${tag}>([\\s\\S]*?)(?=<details>|$)`,
-					"gi",
+					`^\\s*<${tag}>([\\s\\S]*?)(?=<details>|$)`,
+					"gim",
 				);
 				result = result.replace(unclosedPattern, (_match, content) => {
 					const trimmedContent = content.trim();
