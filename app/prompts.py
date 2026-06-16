@@ -407,6 +407,7 @@ async def build_system_message_async(
         tools_doc = """# TOOL EXECUTION
 - You MUST use the provided native function calling capabilities (JSON schemas) to execute tools.
 - **CRITICAL**: DO NOT use legacy `<command>` or `<tool>` XML blocks. They are disabled. ONLY use native function calls.
+- **CRITICAL HALLUCINATION PREVENTION**: Never output `<tools>`, `</tools>`, or fake console outputs like `[STDOUT]`. If you want to use a tool, do NOT type it out as text. Invoke it via the native function call API!
 - Even if previous messages in this conversation used `<command>` blocks, you MUST NOT use them anymore.
 - **Iteration Limit**: Max 30 automatic iterations; abort on repeated errors.
 - **Global Abort**: Require human confirmation for destructive actions (`rm -rf`, DB writes).
@@ -517,13 +518,19 @@ async def build_messages(
     # Apply token-based trimming
     history = _trim_history_to_token_limit(history, MAX_HISTORY_TOKENS)
 
-    return [{"role": "system", "content": system_message}] + [
-        {
-            "role": m["role"],
-            "content": m["content"],
-            "image_paths": m.get("image_paths"),
-        }
-        if "image_paths" in m
-        else {"role": m["role"], "content": m["content"]}
-        for m in history
-    ]
+    messages = [{"role": "system", "content": system_message}]
+    
+    import re
+    
+    for m in history:
+        content = m["content"]
+        if native_tools and isinstance(content, str):
+            # Strip legacy <tools>...</tools> blocks from history so the model doesn't copy the format
+            content = re.sub(r'<tools>.*?</tools>', '', content, flags=re.DOTALL).strip()
+            
+        entry = {"role": m["role"], "content": content}
+        if "image_paths" in m and m["image_paths"]:
+            entry["image_paths"] = m["image_paths"]
+        messages.append(entry)
+
+    return messages
