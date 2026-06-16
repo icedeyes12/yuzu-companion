@@ -470,7 +470,7 @@ LIMIT %s
 SQL_MESSAGE_HISTORY_FOR_AI_ASC_LIMIT = """
 SELECT id, role, content, image_paths, tool_calls, tool_call_id, timestamp
 FROM messages
-WHERE session_id = %s AND role IN ('user', 'assistant')
+WHERE session_id = %s AND role != 'system_observation'
 ORDER BY timestamp ASC
 LIMIT %s
 """
@@ -478,7 +478,7 @@ LIMIT %s
 SQL_MESSAGE_HISTORY_FOR_AI_DESC_LIMIT = """
 SELECT id, role, content, image_paths, tool_calls, tool_call_id, timestamp
 FROM messages
-WHERE session_id = %s AND role IN ('user', 'assistant')
+WHERE session_id = %s AND role != 'system_observation'
 ORDER BY timestamp DESC
 LIMIT %s
 """
@@ -486,7 +486,7 @@ LIMIT %s
 SQL_MESSAGE_HISTORY_FOR_AI_ASC_ALL = """
 SELECT id, role, content, image_paths, tool_calls, tool_call_id, timestamp
 FROM messages
-WHERE session_id = %s AND role IN ('user', 'assistant')
+WHERE session_id = %s AND role != 'system_observation'
 ORDER BY timestamp ASC
 """
 

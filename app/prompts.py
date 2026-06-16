@@ -532,7 +532,11 @@ async def build_messages(
                     r"<tool>.*?</tool>", "", content, flags=re.DOTALL
                 ).strip()
 
-        entry = {"role": m["role"], "content": content}
+        role = m["role"]
+        if native_tools and role.endswith("_tools"):
+            role = "tool"
+
+        entry = {"role": role, "content": content}
         if "image_paths" in m and m["image_paths"]:
             entry["image_paths"] = m["image_paths"]
 
