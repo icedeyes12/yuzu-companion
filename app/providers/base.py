@@ -310,9 +310,16 @@ class AIProvider:
         for msg in messages:
             role = msg.get("role", "")
             if role not in standard_roles:
-                content = msg.get("content", "")
-                normalized_content = f"[{role}]\n{content}"
-                normalized.append({"role": "assistant", "content": normalized_content})
+                if msg.get("tool_call_id"):
+                    # This is a tool result, MUST be 'tool' role for OpenAI schema
+                    msg["role"] = "tool"
+                    normalized.append(msg)
+                else:
+                    content = msg.get("content", "")
+                    normalized_content = f"[{role}]\n{content}"
+                    normalized.append(
+                        {"role": "assistant", "content": normalized_content}
+                    )
             else:
                 normalized.append(msg)
         return normalized
@@ -404,6 +411,9 @@ class OpenAICompatibleProvider(AIProvider):
         if tools:
             params["tools"] = tools
             params.setdefault("tool_choice", "auto")
+        import json
+
+        logger.info(f"DEBUG CHUTES PAYLOAD: {json.dumps(params, indent=2)}")
         stream = await self._client.chat.completions.create(**params)
         async for chunk in stream:
             yield chunk

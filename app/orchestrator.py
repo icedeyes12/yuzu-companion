@@ -744,12 +744,23 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
         tool_results = await _execute_tool_calls_async(tool_calls, session_id)
 
         tool_markdowns = []
+        terminal_tool_executed = False
         for tool_name, tool_result, tc_id in tool_results:
             tool_markdown = tool_result.get("markdown", str(tool_result))
             tool_markdowns.append(tool_markdown)
+
+            from app.commands import is_terminal_tool
+
+            if is_terminal_tool(tool_name):
+                terminal_tool_executed = True
+
             await _persist_tool_result_async(
                 tool_name, tool_markdown, session_id, tool_call_id=tc_id
             )
+
+        if terminal_tool_executed:
+            log.info("[orchestrator] Terminal tool executed, skipping synthesis pass")
+            break
 
     await _post_turn_async(
         profile, user_message, final_response_text, session_id, active_session
@@ -940,8 +951,12 @@ async def handle_user_message_streaming(
 
         # Auto-close cognitive blocks
         for tag in ["analysis", "think", "decision"]:
-            open_pattern = re.compile(rf"^[ \t]*<{tag}>[ \t]*$", re.IGNORECASE | re.MULTILINE)
-            close_pattern = re.compile(rf"^[ \t]*</{tag}>[ \t]*$", re.IGNORECASE | re.MULTILINE)
+            open_pattern = re.compile(
+                rf"^[ \t]*<{tag}>[ \t]*$", re.IGNORECASE | re.MULTILINE
+            )
+            close_pattern = re.compile(
+                rf"^[ \t]*</{tag}>[ \t]*$", re.IGNORECASE | re.MULTILINE
+            )
             open_count = len(open_pattern.findall(full_response))
             close_count = len(close_pattern.findall(full_response))
             if open_count > close_count:
@@ -958,6 +973,8 @@ async def handle_user_message_streaming(
                 elif is_markdown_image_shortcut(full_response):
                     final_full_response = IMAGE_SHORTCUT_WARNING
                     yield IMAGE_SHORTCUT_WARNING
+
+            await _persist_assistant_async(final_full_response, session_id)
             break
 
         tool_calls_list = []
@@ -976,6 +993,7 @@ async def handle_user_message_streaming(
                 pass
 
         if not tool_calls_list:
+            await _persist_assistant_async(final_full_response, session_id)
             break
 
         # Format tcalls strictly to OpenAI spec
@@ -989,18 +1007,26 @@ async def handle_user_message_streaming(
                 }
             )
 
-        await _persist_assistant_async(full_response, session_id, tool_calls=tcalls)
+        await _persist_assistant_async(
+            final_full_response, session_id, tool_calls=tcalls
+        )
 
         results = await _execute_tool_calls_async(tool_calls_list, session_id)
 
         tool_markdowns = []
-        any_image_tool = False
+        terminal_tool_executed = False
         for tool_name, result, tc_id in results:
             tm = result.get("markdown", str(result))
             tool_markdowns.append(tm)
             p = parse_image_path(tm)
             if p:
-                any_image_tool = True
+                pass  # any_image_tool was unused and undefined properly here anyway
+
+            from app.commands import is_terminal_tool
+
+            if is_terminal_tool(tool_name):
+                terminal_tool_executed = True
+
             await _persist_tool_result_async(
                 tool_name, tm, session_id, tool_call_id=tc_id
             )
@@ -1008,6 +1034,10 @@ async def handle_user_message_streaming(
         combined_tool_markdown = "\n\n".join(tool_markdowns)
         if combined_tool_markdown:
             yield "\n\n" + combined_tool_markdown
+
+        if terminal_tool_executed:
+            log.info("[stream] Terminal tool executed, skipping synthesis pass")
+            break
 
     await _finalize_and_persist_async(
         session_id,

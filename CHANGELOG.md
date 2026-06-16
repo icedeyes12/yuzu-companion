@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **OpenAI Native Tool Calling Orchestration**: Fixed the "fire-and-forget" loop bug that caused `400 Bad Request` errors during tool execution.
+  - Repaired `parse_message_row` to correctly retain `tool_calls` and `tool_call_id` from the database.
+  - Updated `format_ai_history_rows` to build a reverse-map for `tool_call_id`, ensuring the tool response perfectly matches the function name the LLM requested (e.g. `bash` instead of internal `shell_tools`).
+  - Fixed `build_messages` to explicitly include `tool_calls`, `tool_call_id`, and `name` in the payload passed to the LLM, giving it full context of its own past tool usages.
+  - Adjusted empty response fallback logic to correctly handle empty string contents when a native tool call is generated.
+  - Fixed `handle_user_message_streaming` to break the synthesis loop after terminal tools (like `image_generate`) execute.
+  - Fixed persistence of Assistant synthesis responses to correctly save to the database during iteration.
+  - Updated `_normalize_messages` in `base.py` to enforce the `tool` role for messages containing a `tool_call_id` to strictly satisfy the OpenAI API schema.
+
 ## [4.0.0] - 2025-06-10
 
 ### Major Architectural Shift
