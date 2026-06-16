@@ -620,11 +620,32 @@ def format_ai_history_rows(
             }
         elif role in ("assistant", "system"):
             entry = {"role": role, "content": content}
-        elif role in ALL_TOOL_ROLES:
+            tool_calls_str = msg.get("tool_calls")
+            if tool_calls_str:
+                parsed_tcalls = parse_json(tool_calls_str)
+                if parsed_tcalls:
+                    entry["tool_calls"] = parsed_tcalls
+        elif role in ALL_TOOL_ROLES or role == "tool":
             # Strip tool-contract markdown and keep only the raw result
             # so the AI can actually read the tool output.
             raw = extract_raw_result_from_markdown_contract(content)
             entry = {"role": role, "content": raw}
+            # The schema uses tool_call_id and name for OpenAI tool messages
+            tool_call_id = msg.get("tool_call_id")
+            if tool_call_id:
+                entry["tool_call_id"] = tool_call_id
+                
+            tool_name = msg.get("name")
+            if tool_name:
+                entry["name"] = tool_name
+            # role="tool" expects role to be "tool", but our DB might have specific tool names as role 
+            # (e.g. "shell_tools", "memory_store"). We MUST normalize the role to "tool" for OpenAI!
+            entry["role"] = "tool"
+            
+            if not tool_name and role != "tool":
+                # Fallback: if name is missing but role was the tool name, use the role as name
+                entry["name"] = role
+                
         else:
             entry = {"role": role, "content": content}
 

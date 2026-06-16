@@ -346,12 +346,8 @@ async def _run_synthesis_async(
     session_id: int,
     interface: str,
     tool_markdown: str,
-    ephemeral_context: list[dict[str, str]] | None = None,
 ) -> str | None:
-    """Run a 2nd LLM pass to narrate around the tool result (async).
-
-    ephemeral_context: In-memory conversation turns not yet in DB.
-    """
+    """Run a 2nd LLM pass to narrate around the tool result (async)."""
     image_context = await _build_image_context_async(tool_markdown, session_id)
 
     response = await generate_ai_response(
@@ -360,7 +356,6 @@ async def _run_synthesis_async(
         interface,
         session_id,
         image_content_for_context=image_context,
-        ephemeral_context=ephemeral_context,
         is_tool_loop=True,
         tools=get_openai_tools(),
     )
@@ -379,7 +374,6 @@ async def _stream_synthesis_async(
     session_id: int,
     interface: str,
     tool_markdown: str,
-    ephemeral_context: list[dict[str, str]] | None = None,
 ) -> AsyncIterator[str]:
     """Stream the 2nd LLM pass (async).
 
@@ -395,7 +389,6 @@ async def _stream_synthesis_async(
         interface,
         session_id,
         image_content_for_context=image_context,
-        ephemeral_context=ephemeral_context,
         is_tool_loop=True,
         tools=get_openai_tools(),
     ):
@@ -497,7 +490,6 @@ async def _run_orchestration_loop_async(
     session_id: int,
     interface: str,
     current_synthesis_context: str,
-    ephemeral_context: list[dict[str, str]],
     any_image_tool: bool,
     fence_id: int,
     abort_check: callable[[], bool] | None,
@@ -531,7 +523,6 @@ async def _run_orchestration_loop_async(
                 session_id,
                 interface,
                 current_synthesis_context,
-                ephemeral_context=ephemeral_context,
             ):
                 if chunk:
                     if abort_check and abort_check():
@@ -591,7 +582,6 @@ async def _run_orchestration_loop_async(
             return
 
         # Append synthesis + next tool results to ephemeral context
-        ephemeral_context.append({"role": "assistant", "content": synthesis})
 
         next_results = await execute_commands(next_commands, session_id=session_id)
         next_markdowns: list[str] = []
@@ -607,7 +597,6 @@ async def _run_orchestration_loop_async(
             yield "\n\n" + tm
 
         next_combined = "\n\n".join(next_markdowns)
-        ephemeral_context.append({"role": "user", "content": next_combined})
         current_synthesis_context = next_combined
 
     # Max loops reached
@@ -679,7 +668,6 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
     await _persist_user_async(user_message, session_id, cached_images)
 
     loop_count = 0
-    ephemeral_context = []
     final_response_text = ""
     start_time = asyncio.get_event_loop().time()
 
@@ -698,7 +686,6 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
                 interface,
                 session_id,
                 tools=get_openai_tools(),
-                ephemeral_context=ephemeral_context,
                 is_tool_loop=(loop_count > 1),
             )
         except Exception:
@@ -741,9 +728,6 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
             await _persist_assistant_async(
                 text_response, session_id, tool_calls=tc_dicts
             )
-            ephemeral_context.append(
-                {"role": "assistant", "content": text_response, "tool_calls": tc_dicts}
-            )
 
         final_response_text = text_response
 
@@ -761,9 +745,6 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
             tool_markdowns.append(tool_markdown)
             await _persist_tool_result_async(
                 tool_name, tool_markdown, session_id, tool_call_id=tc_id
-            )
-            ephemeral_context.append(
-                {"role": "tool", "content": tool_markdown, "tool_call_id": tc_id}
             )
 
     await _post_turn_async(
@@ -874,7 +855,6 @@ async def handle_user_message_streaming(
     log.info(f"[stream] fence {fence_id} acquired for session {session_id}")
 
     loop_count = 0
-    ephemeral_context = []
     final_full_response = ""
     any_image_tool = False
     start_time = asyncio.get_event_loop().time()
@@ -903,7 +883,6 @@ async def handle_user_message_streaming(
                 session_id,
                 provider,
                 model,
-                ephemeral_context=ephemeral_context,
                 is_tool_loop=(loop_count > 1),
                 tools=get_openai_tools(),
             ):
@@ -991,11 +970,19 @@ async def handle_user_message_streaming(
         if not tool_calls_list:
             break
 
-        tcalls = list(tool_call_acc.values())[:3]
+        # Format tcalls strictly to OpenAI spec
+        tcalls = []
+        for tc in list(tool_call_acc.values())[:3]:
+            tcalls.append({
+                "id": tc["id"],
+                "type": "function",
+                "function": {
+                    "name": tc["name"],
+                    "arguments": tc["arguments"]
+                }
+            })
+
         await _persist_assistant_async(full_response, session_id, tool_calls=tcalls)
-        ephemeral_context.append(
-            {"role": "assistant", "content": full_response, "tool_calls": tcalls}
-        )
 
         results = await _execute_tool_calls_async(tool_calls_list, session_id)
 
@@ -1009,9 +996,6 @@ async def handle_user_message_streaming(
                 any_image_tool = True
             await _persist_tool_result_async(
                 tool_name, tm, session_id, tool_call_id=tc_id
-            )
-            ephemeral_context.append(
-                {"role": "tool", "content": tm, "tool_call_id": tc_id}
             )
 
         combined_tool_markdown = "\n\n".join(tool_markdowns)

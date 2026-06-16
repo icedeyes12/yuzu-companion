@@ -271,7 +271,6 @@ async def generate_ai_response(
     interface: str = "terminal",
     session_id: int | None = None,
     image_content_for_context: list[dict[str, Any]] | None = None,
-    ephemeral_context: list[dict[str, str]] | None = None,
     is_tool_loop: bool = False,
     tools: list[dict] | None = None,
 ) -> Any:
@@ -282,9 +281,6 @@ async def generate_ai_response(
 
     NOTE: build_messages() fetches full history including the just-persisted
     user message. We do NOT re-append user_message to avoid duplication.
-
-    ephemeral_context: In-memory context (assistant tool calls + results)
-    not yet persisted to DB. Stitched after build_messages() for synthesis.
     """
     if session_id is None:
         session_id = (await Database.get_active_session_async())["id"]
@@ -309,10 +305,6 @@ async def generate_ai_response(
         include_image_paths=True,
         native_tools=bool(tools),
     )
-
-    # Stitch in-memory context (assistant tool calls + results) not yet in DB
-    if ephemeral_context:
-        messages.extend(ephemeral_context)
 
     # DO NOT re-append user_message here - it's already in history
     # The history from build_messages() is authoritative
@@ -410,7 +402,6 @@ async def generate_ai_response_streaming(
     provider: str | None = None,
     model: str | None = None,
     image_content_for_context: list[dict[str, Any]] | None = None,
-    ephemeral_context: list[dict[str, str]] | None = None,
     is_tool_loop: bool = False,
     tools: list[dict] | None = None,
 ) -> AsyncIterator[Any]:
@@ -448,10 +439,6 @@ async def generate_ai_response_streaming(
         include_image_paths=True,
         native_tools=bool(tools),
     )
-
-    # Stitch in-memory context (assistant tool calls + results) not yet in DB
-    if ephemeral_context:
-        messages.extend(ephemeral_context)
 
     # DO NOT re-append user_message here - it's already in history
     # The history from build_messages() is authoritative
