@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import os
-import subprocess
+import asyncio
 import re
 
 from app.logging_config import get_logger
@@ -215,7 +215,7 @@ def _parse_psql_output(
 # ------------------------------------------------------------
 
 
-def execute(
+async def execute(
     arguments: dict, session_id: int | None = None, tool_name: str = "sql"
 ) -> dict:
     """Execute SQL query and return structured result.
@@ -263,16 +263,55 @@ def execute(
     try:
         cmd = _build_psql_command(query, write_mode)
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=QUERY_TIMEOUT,
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
 
-        stdout = result.stdout.strip()
-        stderr = result.stderr.strip()
-        exit_code = result.returncode
+        stdout_lines = []
+        stderr = ""
+        exit_code = 0
+
+        try:
+            async def read_stdout():
+                # Read up to MAX_ROWS + 1 lines to prevent OOM
+                while len(stdout_lines) <= MAX_ROWS + 5:
+                    line = await process.stdout.readline()
+                    if not line:
+                        break
+                    stdout_lines.append(line.decode(errors="replace").strip())
+                if not process.stdout.at_eof():
+                    try:
+                        process.terminate()
+                    except Exception:
+                        pass
+
+            async def read_stderr():
+                data = await process.stderr.read()
+                return data.decode(errors="replace").strip()
+
+            _, stderr = await asyncio.wait_for(
+                asyncio.gather(read_stdout(), read_stderr()),
+                timeout=QUERY_TIMEOUT
+            )
+            exit_code = await process.wait()
+            
+            # If we terminated early due to MAX_ROWS, it's not a failure
+            if exit_code != 0 and len(stdout_lines) > MAX_ROWS:
+                exit_code = 0
+
+        except asyncio.TimeoutError:
+            try:
+                process.kill()
+                await process.wait()
+            except Exception:
+                pass
+            return error_result(
+                f"Query timed out after {QUERY_TIMEOUT}s",
+                TOOL_DEFINITION,
+                query[:100],
+            )
 
         # Parse output
         if exit_code != 0:
@@ -286,9 +325,9 @@ def execute(
         rows = []
         columns = []
 
-        if stdout:
+        if stdout_lines:
             # Simple parsing - each line is a row
-            lines = [line for line in stdout.split("\n") if line.strip()]
+            lines = [line for line in stdout_lines if line.strip()]
             if lines:
                 # Try to detect columns from first row
                 first_values = lines[0].split(",")
@@ -321,12 +360,6 @@ def execute(
             _get_partner_name(),
         )
 
-    except subprocess.TimeoutExpired:
-        return error_result(
-            f"Query timed out after {QUERY_TIMEOUT}s",
-            TOOL_DEFINITION,
-            query[:100],
-        )
     except FileNotFoundError:
         return error_result(
             "psql not found. Please install postgresql-client.",

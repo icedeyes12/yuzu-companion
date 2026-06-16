@@ -9,6 +9,7 @@ import tempfile
 import os
 import re
 import time
+import asyncio
 
 from app.logging_config import get_logger
 from app.tools.schemas import ToolDefinition, ToolParam, error_result, ok_result
@@ -126,7 +127,7 @@ def _check_security(code: str) -> tuple[bool, str]:
     return True, ""
 
 
-def _execute_python(code: str) -> tuple[bool, str, str, int]:
+async def _execute_python(code: str) -> tuple[bool, str, str, int]:
     """Execute Python code and return results.
 
     Returns:
@@ -141,44 +142,49 @@ def _execute_python(code: str) -> tuple[bool, str, str, int]:
         temp_path = f.name
 
     try:
-        result = subprocess.run(
-            ["python3", temp_path],
-            capture_output=True,
-            text=True,
-            timeout=TIMEOUT_SECONDS,
+        process = await asyncio.create_subprocess_exec(
+            "python3", temp_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
             cwd=DEFAULT_CWD,
             env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         )
 
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                process.communicate(), timeout=TIMEOUT_SECONDS
+            )
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            duration_ms = int((time.time() - start_time) * 1000)
+            return (
+                False,
+                "",
+                f"Timeout: code execution exceeded {TIMEOUT_SECONDS} seconds",
+                duration_ms,
+            )
+
         duration_ms = int((time.time() - start_time) * 1000)
 
-        stdout = result.stdout
-        stderr = result.stderr
+        stdout = stdout_bytes.decode(errors="replace")
+        stderr = stderr_bytes.decode(errors="replace")
 
         # Truncate output if too large
         if len(stdout) > MAX_OUTPUT_SIZE:
             stdout = (
                 stdout[:MAX_OUTPUT_SIZE]
-                + f"\n... [truncated, {len(result.stdout)} total chars]"
+                + f"\n... [truncated, {len(stdout)} total chars]"
             )
 
         if len(stderr) > MAX_OUTPUT_SIZE:
             stderr = (
                 stderr[:MAX_OUTPUT_SIZE]
-                + f"\n... [truncated, {len(result.stderr)} total chars]"
+                + f"\n... [truncated, {len(stderr)} total chars]"
             )
 
-        success = result.returncode == 0
+        success = process.returncode == 0
         return success, stdout, stderr, duration_ms
-
-    except subprocess.TimeoutExpired:
-        duration_ms = int((time.time() - start_time) * 1000)
-        return (
-            False,
-            "",
-            f"Timeout: code execution exceeded {TIMEOUT_SECONDS} seconds",
-            duration_ms,
-        )
 
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
@@ -197,7 +203,7 @@ def _execute_python(code: str) -> tuple[bool, str, str, int]:
 # --------------------------------------------------------------------
 
 
-def execute(
+async def execute(
     arguments: dict, session_id: int | None = None, tool_name: str = TOOL_NAME
 ) -> dict:
     """Execute Python code and return result dict.
@@ -238,7 +244,7 @@ def execute(
         log.info("[python] Executing code (%d chars)", len(code))
 
     # Execute
-    success, stdout, stderr, duration_ms = _execute_python(code)
+    success, stdout, stderr, duration_ms = await _execute_python(code)
 
     # Mapping success ke Exit Code standar
     exit_code = 0 if success else 1

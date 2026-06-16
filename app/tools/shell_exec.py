@@ -156,6 +156,16 @@ def _execute_in_session(
         error_thread.start()
 
         output_thread.join(timeout=timeout)
+        
+        if output_thread.is_alive():
+            logger.warning("[shell] Persistent session command timed out. Killing session.")
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            reset_session()
+            return 1, "".join(output_buffer), f"Timeout: Command execution exceeded {timeout}s"
+            
         error_thread.join(timeout=0.5)
 
         # Parse output
