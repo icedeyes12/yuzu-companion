@@ -21,7 +21,7 @@ ALLOWED_BASE_DIRS = [
     Path("~/.local").expanduser(),
     Path(tempfile.gettempdir()).resolve(),
     Path(os.environ.get("HOME", "/data/data/com.termux/files/home")).resolve(),
-    Path("/tmp").resolve(), # for tests that hardcode /tmp
+    Path("/tmp").resolve(),  # for tests that hardcode /tmp
 ]
 
 # Maximum file size for read operations (1MB)
@@ -639,13 +639,13 @@ def execute_patch(arguments: dict, session_id: int | None = None) -> dict:
 
     try:
         content = resolved.read_text(encoding="utf-8")
-        
+
         # Check if target exists
         if target not in content:
             # Fallback check with normalized line endings
-            if target.replace('\r\n', '\n') in content.replace('\r\n', '\n'):
-                content = content.replace('\r\n', '\n')
-                target = target.replace('\r\n', '\n')
+            if target.replace("\r\n", "\n") in content.replace("\r\n", "\n"):
+                content = content.replace("\r\n", "\n")
+                target = target.replace("\r\n", "\n")
             else:
                 return error_result(
                     "target_content not found in file. Ensure exact match including indentation.",
@@ -653,7 +653,7 @@ def execute_patch(arguments: dict, session_id: int | None = None) -> dict:
                     full_command,
                     partner_name,
                 )
-            
+
         occurrences = content.count(target)
         if occurrences > 1:
             return error_result(
@@ -662,10 +662,10 @@ def execute_patch(arguments: dict, session_id: int | None = None) -> dict:
                 full_command,
                 partner_name,
             )
-            
+
         new_content = content.replace(target, replacement)
         resolved.write_text(new_content, encoding="utf-8")
-        
+
     except OSError as e:
         return error_result(
             f"Cannot modify file: {e}",

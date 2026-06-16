@@ -156,16 +156,22 @@ def _execute_in_session(
         error_thread.start()
 
         output_thread.join(timeout=timeout)
-        
+
         if output_thread.is_alive():
-            logger.warning("[shell] Persistent session command timed out. Killing session.")
+            logger.warning(
+                "[shell] Persistent session command timed out. Killing session."
+            )
             try:
                 proc.kill()
             except Exception:
                 pass
             reset_session()
-            return 1, "".join(output_buffer), f"Timeout: Command execution exceeded {timeout}s"
-            
+            return (
+                1,
+                "".join(output_buffer),
+                f"Timeout: Command execution exceeded {timeout}s",
+            )
+
         error_thread.join(timeout=0.5)
 
         # Parse output
@@ -315,9 +321,12 @@ async def execute(
 
         # Use asyncio.create_subprocess_exec
         import shutil
+
         bash_path = shutil.which("bash") or "/bin/bash"
         process = await asyncio.create_subprocess_exec(
-            bash_path, "-c", command,
+            bash_path,
+            "-c",
+            command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(DEFAULT_CWD),

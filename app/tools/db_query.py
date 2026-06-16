@@ -274,6 +274,7 @@ async def execute(
         exit_code = 0
 
         try:
+
             async def read_stdout():
                 # Read up to MAX_ROWS + 1 lines to prevent OOM
                 while len(stdout_lines) <= MAX_ROWS + 5:
@@ -292,11 +293,10 @@ async def execute(
                 return data.decode(errors="replace").strip()
 
             _, stderr = await asyncio.wait_for(
-                asyncio.gather(read_stdout(), read_stderr()),
-                timeout=QUERY_TIMEOUT
+                asyncio.gather(read_stdout(), read_stderr()), timeout=QUERY_TIMEOUT
             )
             exit_code = await process.wait()
-            
+
             # If we terminated early due to MAX_ROWS, it's not a failure
             if exit_code != 0 and len(stdout_lines) > MAX_ROWS:
                 exit_code = 0

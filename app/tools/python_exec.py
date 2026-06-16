@@ -143,7 +143,8 @@ async def _execute_python(code: str) -> tuple[bool, str, str, int]:
 
     try:
         process = await asyncio.create_subprocess_exec(
-            "python3", temp_path,
+            "python3",
+            temp_path,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=DEFAULT_CWD,
