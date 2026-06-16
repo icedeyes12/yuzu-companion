@@ -323,7 +323,7 @@ class ChutesProvider(OpenAICompatibleProvider, AIProvider):
             # Track source for the rate-limit context
             self._last_source = source
 
-            async for chunk in self._chat_stream(
+            async for content, event in self._chat_stream(
                 model,
                 messages,
                 temperature=temperature,
@@ -331,7 +331,24 @@ class ChutesProvider(OpenAICompatibleProvider, AIProvider):
                 top_p=top_p,
                 extra=extra,
             ):
-                yield chunk
+                if content is not None:
+                    yield content
+                elif event is not None:
+                    kind = event.get("kind")
+                    if kind == "tool_call_delta":
+                        # Streaming tool-call deltas are accumulated by the
+                        # SDK; the orchestrator reads the final tool_calls via
+                        # the non-streaming path. We just log them here.
+                        logger.debug(
+                            "[chutes:stream] tool_call_delta idx=%s name=%s",
+                            event.get("index"),
+                            event.get("name"),
+                        )
+                    elif kind == "finish":
+                        logger.debug(
+                            "[chutes:stream] finish_reason=%s",
+                            event.get("finish_reason"),
+                        )
 
         except asyncio.CancelledError:
             raise

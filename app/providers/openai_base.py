@@ -158,11 +158,21 @@ class OpenAICompatibleProvider:
         tools: list[dict] | None = None,
         tool_choice: str | None = None,
         extra: dict[str, Any] | None = None,
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[tuple[str | None, dict[str, Any] | None], None]:
         """Streaming chat completion via the SDK.
 
-        Yields content deltas (string) only. Providers can layer additional
-        metadata (e.g. tool_call deltas) on top if needed.
+        Yields structured stream events as (content, event) tuples:
+
+        - Content chunk:  (str_content, None)
+        - Tool-call delta: (None, {"kind": "tool_call_delta", "index": int,
+                                   "id": str | None, "name": str | None,
+                                   "arguments": str | None})
+        - Stream finish:  (None, {"kind": "finish", "finish_reason": str,
+                                  "role": "assistant"})
+
+        Callers accumulate the deltas per index to reconstruct the full
+        ChatCompletionMessage.tool_calls list, then stitch tool results back
+        into the message list as {"role": "tool", "tool_call_id": id, ...}.
         """
         client = self._ensure_client()
         kwargs: dict[str, Any] = {
@@ -189,10 +199,35 @@ class OpenAICompatibleProvider:
             async for chunk in stream:
                 if not chunk.choices:
                     continue
-                delta = chunk.choices[0].delta
+                choice = chunk.choices[0]
+                delta = choice.delta
+
+                # 1) Plain content chunk
                 content = getattr(delta, "content", None)
                 if content:
-                    yield content
+                    yield content, None
+                    continue
+
+                # 2) Tool-call deltas — accumulate by index
+                tc_deltas = getattr(delta, "tool_calls", None) or []
+                for tc in tc_deltas:
+                    fn = getattr(tc, "function", None)
+                    yield None, {
+                        "kind": "tool_call_delta",
+                        "index": getattr(tc, "index", 0) or 0,
+                        "id": getattr(tc, "id", None),
+                        "name": getattr(fn, "name", None) if fn else None,
+                        "arguments": getattr(fn, "arguments", None) if fn else None,
+                    }
+
+                # 3) Finish reason (sent on the last chunk)
+                finish_reason = getattr(choice, "finish_reason", None)
+                if finish_reason:
+                    yield None, {
+                        "kind": "finish",
+                        "finish_reason": finish_reason,
+                        "role": getattr(delta, "role", "assistant") or "assistant",
+                    }
 
 
 __all__ = ["OpenAICompatibleProvider"]

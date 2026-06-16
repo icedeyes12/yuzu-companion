@@ -227,7 +227,7 @@ class OpenRouterProvider(OpenAICompatibleProvider, AIProvider):
             messages, params = self._prepare_messages_and_kwargs(
                 messages, model, True, **kwargs
             )
-            async for chunk in self._chat_stream(
+            async for content, event in self._chat_stream(
                 model,
                 messages,
                 temperature=params["temperature"],
@@ -235,7 +235,8 @@ class OpenRouterProvider(OpenAICompatibleProvider, AIProvider):
                 top_p=params["top_p"],
                 extra=params["extra"],
             ):
-                yield chunk
+                if content is not None:
+                    yield content
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001

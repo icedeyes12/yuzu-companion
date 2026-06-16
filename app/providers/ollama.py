@@ -217,14 +217,15 @@ class OllamaProvider(OpenAICompatibleProvider, AIProvider):
             messages, params, _timeout = self._build_params(
                 model, messages, True, **kwargs
             )
-            async for chunk in self._chat_stream(
+            async for content, event in self._chat_stream(
                 model,
                 messages,
                 temperature=params["temperature"],
                 top_p=params["top_p"],
                 extra=params["extra"],
             ):
-                yield chunk
+                if content is not None:
+                    yield content
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001

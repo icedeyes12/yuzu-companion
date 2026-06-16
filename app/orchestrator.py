@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 from pathlib import Path
@@ -13,11 +14,10 @@ from typing import Any, AsyncIterator
 
 from app.commands import (
     IMAGE_SHORTCUT_WARNING,
-    execute_commands,
-    has_tool_blocks,
+    _parse_user_fastpath_command,
+    _resolve_user_alias,
     is_markdown_image_shortcut,
     parse_image_path,
-    parse_tool_blocks,
 )
 from app.db import Database
 from app.llm_client import (
@@ -217,42 +217,106 @@ def _load_image_base64(image_path: str) -> tuple[str | None, str | None]:
 async def _parse_raw_tool_calls_async(
     provider_name: str, raw_response: dict | None
 ) -> list[dict]:
-    """Parse tool_calls from a raw provider API response (async)."""
-    if not raw_response:
-        return []
-    try:
-        # WORKAROUND: Lazy import to prevent circular dependency with app.providers
-        from app.providers import get_ai_manager
+    """Parse native tool_calls from a raw provider API response (async).
 
-        manager = await get_ai_manager()
-        provider = manager.providers.get(provider_name)
-        if not provider:
+    Phase E: Intercepts OpenAI-shaped tool_calls directly from the
+    ChatCompletion.choices[0].message.tool_calls payload produced by
+    AsyncOpenAI. Preserves ``tool_call_id`` so the result can be stitched
+    back into ``ephemeral_context`` as the SDK-shaped tool message:
+
+        {"role": "tool", "tool_call_id": tc.id, "content": ...}
+
+    Returns a list of ``{"id", "name", "arguments"}`` dicts. Empty list
+    if the response carries no tool_calls (the model emitted plain text).
+    """
+    if not raw_response or not isinstance(raw_response, dict):
+        return []
+
+    # Fast path: directly read the OpenAI-shape on the response itself.
+    # All four migrated providers (chutes, openrouter, cerebras, ollama)
+    # funnel through AsyncOpenAI now, so the response shape is uniform.
+    try:
+        choices = raw_response.get("choices") or []
+        if not choices:
             return []
-        calls = provider.parse_tool_calls(raw_response)
-        return [
-            {"name": c["name"], "arguments": c["arguments"]}
-            for c in calls
-            if c.get("name")
-        ]
-    except Exception:
+        message = choices[0].get("message") or {}
+        tool_calls = message.get("tool_calls") or []
+        if not tool_calls:
+            return []
+
+        results: list[dict] = []
+        import json as _json
+
+        for tc in tool_calls:
+            if not isinstance(tc, dict):
+                continue
+            fn = tc.get("function") or {}
+            name = fn.get("name") or tc.get("name") or ""
+            tc_id = tc.get("id") or ""
+            if not name or not tc_id:
+                # tool_call_id and name are both required for SDK stitching
+                continue
+            raw_args = fn.get("arguments", "{}")
+            # AsyncOpenAI may return arguments as either a str (when the model
+            # streams partial JSON) or a dict (when the SDK has already
+            # parsed it). Normalise to a dict.
+            if isinstance(raw_args, dict):
+                arguments = raw_args
+            elif isinstance(raw_args, str):
+                try:
+                    arguments = _json.loads(raw_args) if raw_args.strip() else {}
+                except _json.JSONDecodeError:
+                    # The model emitted a partial/invalid JSON fragment.
+                    # Surface the raw string so the tool can still attempt
+                    # to extract a useful argument.
+                    log.warning(
+                        "tool_call arguments not valid JSON for %s: %r",
+                        name,
+                        raw_args[:200],
+                    )
+                    arguments = {"_raw": raw_args}
+            else:
+                arguments = {}
+            results.append(
+                {"id": tc_id, "name": name, "arguments": arguments}
+            )
+        return results
+    except Exception as e:  # noqa: BLE001
+        log.warning("native tool_call parse failed: %s", e)
         return []
 
 
 async def _execute_tool_calls_async(
     tool_calls: list[dict], session_id: int
-) -> list[tuple[str, dict]]:
-    """Execute a list of tool calls and return results (async)."""
-    from app.commands import _TOOL_ALIASES
+) -> list[tuple[str, str, dict]]:
+    """Execute a list of native tool calls and return SDK-shaped results.
+
+    Phase E: each ``tool_calls`` entry carries an OpenAI ``tool_call_id``
+    (str). The orchestrator uses that id to build the matching
+    ``{"role": "tool", "tool_call_id": ...}`` message when stitching the
+    result back into ``ephemeral_context`` for the next LLM call.
+
+    Returns a list of ``(tool_call_id, tool_name, result_dict)`` tuples.
+    The dispatcher short-circuits on the first terminal tool (e.g. image
+    generation) to avoid an unbounded tool loop.
+    """
     from app.tools.registry import execute_tool, is_terminal_tool
 
-    results: list[tuple[str, dict]] = []
+    results: list[tuple[str, str, dict]] = []
     for tc in tool_calls:
         raw_name = tc["name"]
-        tool_name = _TOOL_ALIASES.get(raw_name, raw_name)
-        arguments = tc.get("arguments", {})
-        log.info("native tool_call: %s %s", tool_name, arguments)
+        # Native tool_calls arrive with the canonical name from the SDK
+        # schema, but we still resolve aliases for safety.
+        tool_name = _resolve_user_alias(raw_name)
+        arguments = tc.get("arguments", {}) or {}
+        log.info(
+            "native tool_call id=%s name=%s args=%s",
+            tc.get("id", ""),
+            tool_name,
+            str(arguments)[:200],
+        )
         result = await execute_tool(tool_name, arguments, session_id=session_id)
-        results.append((tool_name, result))
+        results.append((tc.get("id", ""), tool_name, result))
         if is_terminal_tool(tool_name) and result.get("ok"):
             break
     return results
@@ -425,55 +489,6 @@ async def _post_turn_async(
 # --------------------------------------------------------------------
 
 
-async def _process_tool_commands_async(
-    full_response: str,
-    session_id: int,
-) -> tuple[str, bool, list[str]]:
-    """Parse and execute tool commands, yielding tool markdown chunks.
-
-    Yields:
-        tuple of (tool_markdown, is_image_tool, generated_paths)
-
-    Returns:
-        Combined tool markdown string and list of all generated image paths.
-    """
-    commands, clean_text = parse_tool_blocks(full_response)
-
-    if not commands:
-        return ("", False, [])
-
-    log.info("[stream] found %d tool block(s)", len(commands))
-
-    results = await execute_commands(commands, session_id=session_id)
-
-    # SAFEGUARD: Persist clean_text BEFORE tool execution
-    # This ensures linear message order: user → assistant (clean) → tool → synthesis
-    if clean_text and clean_text.strip():
-        await _persist_assistant_async(clean_text, session_id)
-        log.info("[stream] persisted clean_text (pre-tool assistant message)")
-
-    tool_markdowns: list[str] = []
-    any_image_tool = False
-    all_generated_paths: list[str] = []
-
-    for tool_name, result in results:
-        tool_markdown = result.get("markdown", str(result))
-        tool_markdowns.append(tool_markdown)
-
-        # SAFEGUARD: Persist each tool result immediately
-        await _persist_tool_result_async(tool_name, tool_markdown, session_id)
-        log.info(f"[stream] persisted tool result for {tool_name}")
-        p = parse_image_path(tool_markdown)
-        if p is not None:
-            any_image_tool = True
-            all_generated_paths.append(p)
-
-    combined_tool_markdown = "\n\n".join(tool_markdowns)
-
-    # Return results for coordination
-    return (combined_tool_markdown, any_image_tool, all_generated_paths)
-
-
 async def _run_orchestration_loop_async(
     profile: dict[str, Any],
     session_id: int,
@@ -486,14 +501,24 @@ async def _run_orchestration_loop_async(
     user_message: str,
     active_session: dict[str, Any],
 ) -> AsyncIterator[str]:
-    """Run the orchestration loop for synthesis with tool block detection.
+    """Run the orchestration loop with native tool_call detection.
 
-    Handles iterative synthesis passes that may contain additional tool blocks.
-    Continues until synthesis has no more tool blocks or max loops reached.
+    Phase E: each synthesis iteration either:
+      1. Returns the final assistant text (no tool_calls, no text → done), or
+      2. Emits native tool_calls, which we execute and stitch back into
+         ephemeral_context as SDK-shaped ``{role: "tool", tool_call_id: id}``
+         messages, then loop.
 
     Yields:
         Synthesis chunks and tool result markdown.
     """
+    from app.llm_client import (
+        _parse_accumulated_tool_calls,
+    )
+    from app.llm_client import (
+        generate_ai_response_streaming_with_tool_calls as _stream_with_tc,
+    )
+
     loop_count = 0
     all_generated_paths: list[str] = []
 
@@ -506,28 +531,33 @@ async def _run_orchestration_loop_async(
 
         synthesis_chunks: list[str] = []
         full_synthesis = ""
+        # The streaming generator yields (content, snapshot) tuples where
+        # `snapshot` is the full accumulated tool_calls list at that point
+        # in time (per-index entries with partial JSON arguments). Keep
+        # only the latest snapshot — earlier ones are strictly dominated.
+        last_snapshot: list[dict] | None = None
 
         try:
-            async for chunk in _stream_synthesis_async(
+            async for chunk, tc_snapshot in _stream_with_tc(
                 profile,
-                session_id,
+                "",
                 interface,
-                current_synthesis_context,
+                session_id,
                 ephemeral_context=ephemeral_context,
+                is_tool_loop=True,
             ):
+                if abort_check and abort_check():
+                    return
                 if chunk:
-                    if abort_check and abort_check():
-                        return
-
                     synthesis_chunks.append(chunk)
                     full_synthesis += chunk
-
-                    # Yield chunk with proper formatting
                     yield (
                         "\n\n" + chunk
                         if any_image_tool and not synthesis_chunks[:-1]
                         else chunk
                     )
+                if tc_snapshot is not None:
+                    last_snapshot = tc_snapshot
         except asyncio.CancelledError:
             log.info(
                 "[stream] cancelled in synthesis loop - propagating to StreamBuffer"
@@ -537,9 +567,12 @@ async def _run_orchestration_loop_async(
             log.error("[stream] error in synthesis loop: %s", e)
             raise
 
+        # Resolve the latest snapshot into OpenAI-shaped tool_calls
+        resolved_tcs = _parse_accumulated_tool_calls(last_snapshot)
         synthesis = _clean(full_synthesis) if full_synthesis else None
 
-        if not synthesis:
+        # Empty response with no tool calls → finalise
+        if not synthesis and not resolved_tcs:
             await StreamFence.complete(session_id, fence_id)
             await _post_turn_async(
                 profile,
@@ -550,7 +583,8 @@ async def _run_orchestration_loop_async(
             )
             return
 
-        if not has_tool_blocks(synthesis):
+        # No further tool calls → this is the final synthesis
+        if not resolved_tcs:
             final_response = (
                 f"{current_synthesis_context}\n\n{synthesis}"
                 if any_image_tool
@@ -563,34 +597,55 @@ async def _run_orchestration_loop_async(
             )
             return
 
-        log.info("[stream] synthesis contains tool blocks, continuing loop")
+        # Native tool_calls detected → execute, stitch, loop
+        log.info(
+            "[stream] synthesis contains %d native tool_call(s), continuing loop",
+            len(resolved_tcs),
+        )
+        results = await _execute_tool_calls_async(
+            resolved_tcs, session_id=session_id
+        )
 
-        next_commands, _ = parse_tool_blocks(synthesis)
-        if not next_commands:
-            await _post_turn_async(
-                profile, user_message, synthesis, session_id, active_session
-            )
-            return
+        # Persist the assistant turn that issued the tool calls
+        if synthesis and synthesis.strip():
+            await _persist_assistant_async(synthesis, session_id)
+            log.info("[stream] persisted synthesis (with native tool_calls)")
 
-        # Append synthesis + next tool results to ephemeral context
-        ephemeral_context.append({"role": "assistant", "content": synthesis})
+        # Stitch SDK-shaped messages into ephemeral_context
+        ephemeral_context.append(
+            {
+                "role": "assistant",
+                "content": synthesis or "",
+                "tool_calls": [
+                    {
+                        "id": tc.get("id", ""),
+                        "type": "function",
+                        "function": {
+                            "name": tc.get("name", ""),
+                            "arguments": json.dumps(tc.get("arguments", {})),
+                        },
+                    }
+                    for tc in resolved_tcs
+                ],
+            }
+        )
 
-        next_results = await execute_commands(next_commands, session_id=session_id)
         next_markdowns: list[str] = []
         any_image_tool = False
-
-        for tool_name, result in next_results:
+        for tc_id, tool_name, result in results:
             tm = result.get("markdown", str(result))
             next_markdowns.append(tm)
+            await _persist_tool_result_async(tool_name, tm, session_id)
+            ephemeral_context.append(
+                {"role": "tool", "tool_call_id": tc_id, "content": tm}
+            )
             p = parse_image_path(tm)
             if p:
                 any_image_tool = True
                 all_generated_paths.append(p)
             yield "\n\n" + tm
 
-        next_combined = "\n\n".join(next_markdowns)
-        ephemeral_context.append({"role": "user", "content": next_combined})
-        current_synthesis_context = next_combined
+        current_synthesis_context = "\n\n".join(next_markdowns)
 
     # Max loops reached
     await StreamFence.complete(session_id, fence_id)
@@ -639,50 +694,54 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
     # If it downloads, it should be async. Let's check multimodal_tools.
     cached_images = await asyncio.to_thread(_cache_images_from_message, user_message)
 
-    # Fast-path: user typed /imagine directly
+    # Fast-path: user typed /imagine directly (narrowly-scoped direct input
+    # parser, NOT the LLM-side <command> parser which has been removed in
+    # Phase E).
     stripped = user_message.strip()
-    if stripped.startswith("/imagine ") or stripped.startswith("<command>"):
-        commands, _ = parse_tool_blocks(stripped)
-        if commands or stripped.startswith("/imagine"):
-            if stripped.startswith("/imagine"):
-                commands = [stripped]
+    if stripped.startswith("/imagine"):
+        parsed = _parse_user_fastpath_command(stripped)
+        if parsed:
+            raw_name = parsed["command"]
+            tool_name = _resolve_user_alias(raw_name)
+            # /imagine always means "image_generate" in the fast-path
+            if tool_name == "image_generate":
+                from app.tools.registry import execute_tool
 
-            await _persist_user_async(user_message, session_id, cached_images)
-
-            results = await execute_commands(commands, session_id=session_id)
-            tool_markdowns = []
-
-            for tool_name, result in results:
-                tool_markdown = result.get("markdown", str(result))
-                tool_markdowns.append(tool_markdown)
-                await _persist_tool_result_async(tool_name, tool_markdown, session_id)
-
-            combined = "\n\n".join(tool_markdowns)
-
-            generated_paths = []
-            for tm in tool_markdowns:
-                path = parse_image_path(tm)
-                if path:
-                    generated_paths.append(path)
-
-            # Run synthesis
-            synthesis = await _run_synthesis_async(
-                profile, session_id, interface, combined
-            )
-            if synthesis:
-                await _persist_assistant_async(synthesis, session_id, generated_paths)
-                final = (
-                    f"{combined}\n\n{synthesis}"
-                    if parse_image_path(combined)
-                    else synthesis
+                arguments = {"prompt": parsed["args"]}
+                await _persist_user_async(user_message, session_id, cached_images)
+                result = await execute_tool(
+                    tool_name, arguments, session_id=session_id
                 )
-            else:
-                final = combined
+                tool_markdown = result.get("markdown", str(result))
+                await _persist_tool_result_async(
+                    tool_name, tool_markdown, session_id
+                )
 
-            await _post_turn_async(
-                profile, user_message, final, session_id, active_session
-            )
-            return final
+                generated_paths = []
+                p = parse_image_path(tool_markdown)
+                if p:
+                    generated_paths.append(p)
+
+                # Run synthesis
+                synthesis = await _run_synthesis_async(
+                    profile, session_id, interface, tool_markdown
+                )
+                if synthesis:
+                    await _persist_assistant_async(
+                        synthesis, session_id, generated_paths
+                    )
+                    final = (
+                        f"{tool_markdown}\n\n{synthesis}"
+                        if parse_image_path(tool_markdown)
+                        else synthesis
+                    )
+                else:
+                    final = tool_markdown
+
+                await _post_turn_async(
+                    profile, user_message, final, session_id, active_session
+                )
+                return final
 
     provider_name = (profile.get("providers_config") or {}).get(
         "preferred_provider", "ollama"
@@ -707,7 +766,9 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
     if is_markdown_image_shortcut(text_response):
         return IMAGE_SHORTCUT_WARNING
 
-    # Try native tool-call execution first
+    # Try native tool-call execution first.
+    # Phase E: read ChatCompletion.choices[0].message.tool_calls directly
+    # and stitch the result back as {"role": "tool", "tool_call_id": id}.
     tool_calls = await _parse_raw_tool_calls_async(provider_name, raw_api_response)
     if tool_calls:
         tool_results = await _execute_tool_calls_async(tool_calls, session_id)
@@ -718,7 +779,7 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
             log.info("[non-stream] persisted clean text_response (pre-tool)")
 
         if tool_results:
-            tool_name, tool_result = tool_results[0]
+            tc_id, tool_name, tool_result = tool_results[0]
             tool_markdown = tool_result.get("markdown", str(tool_result))
             await _persist_tool_result_async(tool_name, tool_markdown, session_id)
 
@@ -727,10 +788,37 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
                 [parse_image_path(tool_markdown)] if is_image_tool else None
             )
 
-            # Build ephemeral context for synthesis
-            ephemeral_context = [
-                {"role": "assistant", "content": text_response},
-                {"role": "user", "content": tool_markdown},
+            # Build SDK-shaped ephemeral context for the synthesis pass.
+            # The assistant turn must carry the original tool_calls payload
+            # (with id) so the SDK can match the tool response back to it.
+            assistant_tool_calls = []
+            for tc in tool_calls:
+                fn = tc.get("function") or {}
+                assistant_tool_calls.append(
+                    {
+                        "id": tc.get("id", ""),
+                        "type": "function",
+                        "function": {
+                            "name": fn.get("name", tc.get("name", "")),
+                            "arguments": (
+                                fn.get("arguments", "{}")
+                                if isinstance(fn.get("arguments"), str)
+                                else json.dumps(fn.get("arguments", {}))
+                            ),
+                        },
+                    }
+                )
+            ephemeral_context: list[dict[str, Any]] = [
+                {
+                    "role": "assistant",
+                    "content": text_response or "",
+                    "tool_calls": assistant_tool_calls,
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": tc_id,
+                    "content": tool_markdown,
+                },
             ]
 
             synthesis = await _run_synthesis_async(
@@ -844,9 +932,11 @@ async def handle_user_message_streaming(
     FENCE PROTECTION: Wraps user message persistence in a fence to prevent
     ghost turns if stream is interrupted before completion.
 
-    COORDINATOR: Delegates tool execution to _process_tool_commands_async,
-    synthesis loops to _run_orchestration_loop_async, and finalization
-    to _finalize_and_persist_async.
+    COORDINATOR: Streams the first LLM pass via
+    ``generate_ai_response_streaming_with_tool_calls``, executes any
+    accumulated native tool_calls inline, then delegates the synthesis
+    loop to ``_run_orchestration_loop_async`` and finalisation to
+    ``_finalize_and_persist_async``.
     """
     profile = await Database.get_profile_async()
     if not user_message.strip() and not image_paths:
@@ -877,11 +967,18 @@ async def handle_user_message_streaming(
     fence_id = await StreamFence.acquire(session_id, user_msg_id or 0)
     log.info(f"[stream] fence {fence_id} acquired for session {session_id}")
 
-    # === PHASE 1: Initial LLM response streaming ===
+    # === PHASE 1: Initial LLM response streaming (with native tool_calls) ===
+    # Phase E: The model emits native tool_calls. The streaming generator
+    # yields (content_chunk, accumulated_tool_calls_or_None) tuples. We
+    # capture the last non-None accumulated list and pass it to the
+    # native tool execution path.
     response_chunks: list[str] = []
+    last_accumulated_tool_calls: list[dict] | None = None
 
     try:
-        async for chunk in generate_ai_response_streaming(
+        from app.llm_client import generate_ai_response_streaming_with_tool_calls
+
+        async for chunk, accumulated_tool_calls in generate_ai_response_streaming_with_tool_calls(
             profile, user_message, interface, session_id, provider, model
         ):
             if chunk:
@@ -891,6 +988,7 @@ async def handle_user_message_streaming(
 
                 response_chunks.append(chunk)
                 yield chunk
+            last_accumulated_tool_calls = accumulated_tool_calls
     except asyncio.CancelledError:
         log.info("[stream] cancelled in first pass - propagating to StreamBuffer")
         log.warning(f"[stream] fence {fence_id} incomplete due to cancellation")
@@ -921,22 +1019,76 @@ async def handle_user_message_streaming(
         yield IMAGE_SHORTCUT_WARNING
         return
 
-    # === PHASE 4: Parse and execute tool commands ===
-    tool_result = await _process_tool_commands_async(full_response, session_id)
-    combined_tool_markdown, any_image_tool, all_generated_paths = tool_result
+    # === PHASE 4: Execute native tool_calls (or skip if none) ===
+    # Phase E: the LLM emits native tool_calls (no more <command> XML
+    # blocks). The orchestrator executes them and stitches results back
+    # into ephemeral_context with matching tool_call_ids.
+    from app.llm_client import _parse_accumulated_tool_calls
 
-    # Yield tool markdown chunks
-    if combined_tool_markdown:
-        yield "\n\n" + combined_tool_markdown
+    parsed_tool_calls = _parse_accumulated_tool_calls(
+        last_accumulated_tool_calls
+    )
 
-    # === PHASE 5: Build ephemeral context for synthesis ===
-    ephemeral_context: list[dict[str, str]] = [
-        {"role": "assistant", "content": full_response},
-        {"role": "user", "content": combined_tool_markdown},
-    ]
+    combined_tool_markdown = ""
+    any_image_tool = False
+    all_generated_paths: list[str] = []
+    ephemeral_context: list[dict[str, Any]] = []
 
-    current_synthesis_context = combined_tool_markdown
-    # all_generated_paths is already a list from _process_tool_commands_async
+    if parsed_tool_calls:
+        tool_results = await _execute_tool_calls_async(
+            parsed_tool_calls, session_id
+        )
+        tool_markdowns: list[str] = []
+        for tc_id, tool_name, result in tool_results:
+            tool_markdown = result.get("markdown", str(result))
+            tool_markdowns.append(tool_markdown)
+            await _persist_tool_result_async(tool_name, tool_markdown, session_id)
+            log.info("[stream] persisted tool result for %s", tool_name)
+            p = parse_image_path(tool_markdown)
+            if p is not None:
+                any_image_tool = True
+                all_generated_paths.append(p)
+
+        combined_tool_markdown = "\n\n".join(tool_markdowns)
+
+        # Yield tool markdown chunks to UI
+        if combined_tool_markdown:
+            yield "\n\n" + combined_tool_markdown
+
+        # Build SDK-shaped ephemeral_context. The assistant turn carries
+        # the original tool_calls payload (with id + name + arguments as
+        # string) so the SDK can match the tool response back to it.
+        assistant_tool_calls: list[dict[str, Any]] = []
+        for tc in parsed_tool_calls:
+            args = tc.get("arguments", {}) or {}
+            if not isinstance(args, str):
+                args = json.dumps(args)
+            assistant_tool_calls.append(
+                {
+                    "id": tc.get("id", ""),
+                    "type": "function",
+                    "function": {
+                        "name": tc.get("name", ""),
+                        "arguments": args,
+                    },
+                }
+            )
+        ephemeral_context = [
+            {
+                "role": "assistant",
+                "content": full_response or "",
+                "tool_calls": assistant_tool_calls,
+            }
+        ]
+        for tc_id, tool_name, result in tool_results:
+            tool_markdown = result.get("markdown", str(result))
+            ephemeral_context.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc_id,
+                    "content": tool_markdown,
+                }
+            )
 
     if not combined_tool_markdown:
         # No tool output, just finalize
@@ -945,7 +1097,11 @@ async def handle_user_message_streaming(
         )
         return
 
-    # === PHASE 6: Run orchestration loop (synthesis with potential tool blocks) ===
+    # === PHASE 5: Run orchestration loop (synthesis with native tool_calls) ===
+    # Phase E: _run_orchestration_loop_async now detects native tool_calls
+    # in the streamed synthesis and re-invokes the tool executor; the
+    # legacy <command> block detection has been removed.
+    current_synthesis_context = combined_tool_markdown
     async for chunk in _run_orchestration_loop_async(
         profile=profile,
         session_id=session_id,

@@ -1,194 +1,66 @@
 # FILE: tests/test_commands.py
-# DESCRIPTION: Pure-function tests for app.commands.
-#              Tests the <command>...</command> protocol parser.
+# DESCRIPTION: Tests for app.commands.
+#              As of Phase E, the LLM-side <command>...</command> parser has been
+#              removed in favour of native OpenAI tool_calls. This module now
+#              only tests the narrow direct-user-input helpers and the
+#              image-path post-processing helpers that survived the cut-down.
 
 from __future__ import annotations
-import pytest
 
 from app.commands import (
-    execute_commands,
-    format_observation,
-    has_tool_blocks,
+    _parse_user_fastpath_command,
+    _resolve_user_alias,
+    extract_markdown_image_path,
+    is_markdown_image_shortcut,
     parse_image_path,
-    parse_tool_blocks,
 )
 
 
-class TestParseToolBlocks:
-    """Tests for the core <command> block parser."""
+class TestParseUserFastpathCommand:
+    """Tests for the narrowly-scoped direct user input parser."""
 
-    def test_empty_text(self):
-        commands, clean_text = parse_tool_blocks("")
-        assert commands == []
-        assert clean_text == ""
+    def test_empty_input(self):
+        assert _parse_user_fastpath_command("") is None
+        assert _parse_user_fastpath_command("   ") is None
 
-    def test_no_tool_blocks(self):
-        text = "Hello there, this is just plain text.\nNo tools here."
-        commands, clean_text = parse_tool_blocks(text)
-        assert commands == []
-        assert "Hello there" in clean_text
-        assert "No tools here" in clean_text
+    def test_slash_prefix(self):
+        parsed = _parse_user_fastpath_command("/imagine a cat")
+        assert parsed is not None
+        assert parsed["command"] == "imagine"
+        assert parsed["args"] == "a cat"
+        assert parsed["full_command"] == "/imagine a cat"
 
-    def test_single_tool_block(self):
-        text = """Baik saya cek dulu
-<command>
-ls -la
-</command>
-Mari tunggu hasilnya"""
-        commands, clean_text = parse_tool_blocks(text)
-        assert commands == ["ls -la"]
-        assert "Baik saya cek dulu" in clean_text
-        assert "Mari tunggu hasilnya" in clean_text
-        assert "<command>" not in clean_text
-        assert "</command>" not in clean_text
+    def test_no_slash_prefix(self):
+        parsed = _parse_user_fastpath_command("imagine a cat")
+        assert parsed is not None
+        assert parsed["command"] == "imagine"
+        assert parsed["args"] == "a cat"
 
-    def test_multiple_tool_blocks(self):
-        text = """<command>
-echo "hello"
-</command>
-<command>
-pwd
-</command>
-<command>
-ls
-</command>"""
-        commands, clean_text = parse_tool_blocks(text)
-        assert len(commands) == 3
-        assert commands[0] == 'echo "hello"'
-        assert commands[1] == "pwd"
-        assert commands[2] == "ls"
-
-    def test_max_three_tool_blocks(self):
-        """More than 3 tool blocks should be ignored."""
-        text = """<command>cmd1</command>
-<command>cmd2</command>
-<command>cmd3</command>
-<command>cmd4</command>
-<command>cmd5</command>"""
-        commands, clean_text = parse_tool_blocks(text)
-        assert len(commands) == 3
-        assert commands == ["cmd1", "cmd2", "cmd3"]
-
-    def test_empty_tool_block_ignored(self):
-        text = """<command>
-   
-</command>
-<command>
-echo "real"
-</command>"""
-        commands, clean_text = parse_tool_blocks(text)
-        assert len(commands) == 1
-        assert commands[0] == 'echo "real"'
-
-    def test_multiline_command(self):
-        text = """<command>
-for i in 1 2 3; do
-    echo $i
-done
-</command>"""
-        commands, clean_text = parse_tool_blocks(text)
-        assert len(commands) == 1
-        assert "for i in 1 2 3" in commands[0]
-        assert "echo $i" in commands[0]
-
-    def test_whitespace_stripped(self):
-        text = """<command>
-   
-   ls -la   
-   
-</command>"""
-        commands, clean_text = parse_tool_blocks(text)
-        assert commands == ["ls -la"]
-
-    def test_preserves_conversational_text(self):
-        text = """Baik saya akan cek filenya.
-
-<command>
-cat config.json
-</command>
-
-Ini hasilnya ya."""
-        commands, clean_text = parse_tool_blocks(text)
-        assert commands == ["cat config.json"]
-        assert "Baik saya akan cek filenya" in clean_text
-        assert "Ini hasilnya ya" in clean_text
-
-    def test_no_nested_tool_support(self):
-        """Nested <command> tags are not supported - outer block wins."""
-        text = """<command>
-outer <command>inner</command> command
-</command>"""
-        commands, clean_text = parse_tool_blocks(text)
-        # Behavior: regex is non-greedy, so it matches first <command>...</command>
-        # The inner <command> is just text inside the outer block
-        assert len(commands) == 1
-        assert "outer" in commands[0]
-        # The "inner" is just text, not parsed as a separate block
+    def test_no_args(self):
+        parsed = _parse_user_fastpath_command("/imagine")
+        assert parsed is not None
+        assert parsed["command"] == "imagine"
+        assert parsed["args"] == ""
 
 
-class TestHasToolBlocks:
-    """Tests for the has_tool_blocks helper."""
+class TestResolveUserAlias:
+    """Tests for the alias resolver used by direct user input."""
 
-    def test_returns_true_for_tool_blocks(self):
-        assert has_tool_blocks("<command>ls</command>") is True
+    def test_imagine_alias(self):
+        assert _resolve_user_alias("imagine") == "image_generate"
 
-    def test_returns_false_for_no_tool_blocks(self):
-        assert has_tool_blocks("just text") is False
+    def test_request_alias(self):
+        assert _resolve_user_alias("request") == "http_request"
 
-    def test_returns_false_for_empty(self):
-        assert has_tool_blocks("") is False
+    def test_ask_rei_alias(self):
+        assert _resolve_user_alias("ask-rei") == "ask_rei"
 
-    def test_returns_true_with_narration(self):
-        assert has_tool_blocks("hello <command>cmd</command> world") is True
-
-
-class TestFormatObservation:
-    """Tests for the observation formatter."""
-
-    def test_single_success_result(self):
-        results = [
-            (
-                "bash",
-                {
-                    "ok": True,
-                    "data": {
-                        "command": "ls",
-                        "exit_code": 0,
-                        "stdout": "file1.txt\nfile2.txt",
-                        "stderr": "",
-                    },
-                },
-            )
-        ]
-        obs = format_observation(results)
-        assert "<SYSTEM_OBSERVATION>" in obs
-        assert "</SYSTEM_OBSERVATION>" in obs
-        assert "Command 1:" in obs
-        assert "TOOL: bash" in obs
-        assert "STATUS: SUCCESS" in obs
-        assert "COMMAND: ls" in obs
-        assert "EXIT_CODE: 0" in obs
-        assert "file1.txt" in obs
-
-    def test_multiple_results(self):
-        results = [
-            ("bash", {"ok": True, "data": {"exit_code": 0, "stdout": "ok"}}),
-            ("bash", {"ok": False, "error": "Command failed"}),
-        ]
-        obs = format_observation(results)
-        assert "Command 1:" in obs
-        assert "Command 2:" in obs
-        assert "STATUS: SUCCESS" in obs
-        assert "STATUS: FAILED" in obs
-        assert "ERROR: Command failed" in obs
-
-    def test_empty_results(self):
-        obs = format_observation([])
-        assert obs == ""
+    def test_passthrough_unknown(self):
+        assert _resolve_user_alias("bash") == "bash"
 
 
 class TestParseImagePath:
-    """Tests for image path extraction from tool results."""
+    """Tests for image path extraction from tool result markdown."""
 
     def test_extracts_generated_image_src(self):
         contract = (
@@ -201,20 +73,42 @@ class TestParseImagePath:
         assert parse_image_path("<details>no image</details>") is None
         assert parse_image_path("") is None
 
+    def test_rejects_absolute_paths(self):
+        contract = '<img src="/static/generated_images/abc.png" />'
+        assert parse_image_path(contract) is None
 
-class TestExecuteCommands:
-    """Tests for command execution (integration-ish)."""
+    def test_rejects_traversal(self):
+        contract = '<img src="static/../etc/passwd" />'
+        assert parse_image_path(contract) is None
 
-    @pytest.mark.asyncio
-    async def test_empty_commands(self):
-        results = await execute_commands([])
-        assert results == []
 
-    @pytest.mark.asyncio
-    async def test_invalid_command_format(self):
-        """Invalid command string should return error result."""
-        results = await execute_commands(["   "])  # Empty/whitespace command
-        assert len(results) == 1
-        tool_name, result = results[0]
-        assert tool_name == "unknown"
-        assert result.get("ok") is False
+class TestIsMarkdownImageShortcut:
+    """Tests for the markdown-image-shortcut guard."""
+
+    def test_returns_true_for_static_path(self):
+        text = "look ![alt](static/generated_images/foo.png)"
+        assert is_markdown_image_shortcut(text) is True
+
+    def test_returns_true_for_uploads_path(self):
+        text = "look ![alt](uploads/foo.png)"
+        assert is_markdown_image_shortcut(text) is True
+
+    def test_returns_false_for_external_url(self):
+        text = "look ![alt](https://example.com/foo.png)"
+        assert is_markdown_image_shortcut(text) is False
+
+    def test_returns_false_for_empty(self):
+        assert is_markdown_image_shortcut("") is False
+        assert is_markdown_image_shortcut(None) is False
+
+
+class TestExtractMarkdownImagePath:
+    """Tests for the markdown image path extractor."""
+
+    def test_extracts_first_image(self):
+        text = "first ![a](static/a.png) then ![b](static/b.png)"
+        assert extract_markdown_image_path(text) == "static/a.png"
+
+    def test_returns_none_when_no_image(self):
+        assert extract_markdown_image_path("no image here") is None
+        assert extract_markdown_image_path("") is None

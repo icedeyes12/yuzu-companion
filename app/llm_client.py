@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from typing import Any, Iterable, AsyncIterator
 
@@ -485,3 +486,226 @@ async def generate_ai_response_streaming(
         source="chat",
     ):
         yield chunk
+
+
+async def _stream_from_provider_with_tool_calls(
+    provider: str,
+    model: str,
+    messages: list[dict[str, Any]],
+    *,
+    image_context: list[dict[str, Any]] | None,
+    source: str = "chat",
+) -> AsyncIterator[tuple[str, list[dict] | None]]:
+    """Yield (content_chunk, accumulated_tool_calls_or_None) tuples.
+
+    ``accumulated_tool_calls`` is None until the first tool_call_delta is
+    seen, after which it carries a list of partial tool_calls (one per
+    index) with the fields that have streamed in so far:
+
+        [
+            {"id": str, "name": str, "arguments": str},  # partial JSON
+            ...
+        ]
+
+    Callers should treat the LAST non-None value as the final tool_calls.
+    The list is reset at the start of every new call.
+    """
+    from app.providers.openai_base import OpenAICompatibleProvider
+
+    ai_manager = await get_ai_manager()
+    provider_obj = ai_manager.providers.get(provider)
+    use_native_stream = (
+        isinstance(provider_obj, OpenAICompatibleProvider)
+        and provider_obj._ensure_client is not None
+    )
+
+    accumulated: dict[int, dict] = {}
+
+    if image_context and provider in ai_manager.providers:
+        if multimodal_tools.is_vision_model(model, provider):
+            log.info(
+                "streaming 2nd-pass: %s/%s is vision-capable, reusing for image synthesis",
+                provider,
+                model,
+            )
+        else:
+            v_provider, v_model = multimodal_tools.get_best_vision_provider()
+            if v_provider and v_model:
+                log.info(
+                    "streaming 2nd-pass vision fallback: %s/%s (non-vision) -> %s/%s",
+                    provider,
+                    model,
+                    v_provider,
+                    v_model,
+                )
+                provider, model = v_provider, v_model
+
+    received = 0
+    try:
+        if use_native_stream:
+            client = provider_obj._ensure_client()
+            from openai import AsyncOpenAI as _AsyncOpenAI  # noqa: F401
+            from app.providers.rate_limit import _rate_limit_provider
+
+            kwargs: dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "stream": True,
+            }
+            schemas = _unique_tool_schemas()
+            if schemas:
+                kwargs["tools"] = schemas
+                kwargs["tool_choice"] = "auto"
+
+            async with _rate_limit_provider(provider, model, source):
+                stream = await client.chat.completions.create(**kwargs)
+                async for chunk in stream:
+                    if not chunk.choices:
+                        continue
+                    choice = chunk.choices[0]
+                    delta = choice.delta
+
+                    content = getattr(delta, "content", None)
+                    if content:
+                        received += len(content)
+                        yield content, _snapshot_tool_calls(accumulated)
+
+                    tc_deltas = getattr(delta, "tool_calls", None) or []
+                    if tc_deltas:
+                        for tc in tc_deltas:
+                            idx = getattr(tc, "index", 0) or 0
+                            entry = accumulated.setdefault(
+                                idx, {"id": "", "name": "", "arguments": ""}
+                            )
+                            if getattr(tc, "id", None):
+                                entry["id"] = tc.id
+                            fn = getattr(tc, "function", None)
+                            if fn is not None:
+                                if getattr(fn, "name", None):
+                                    entry["name"] += fn.name
+                                if getattr(fn, "arguments", None):
+                                    entry["arguments"] += fn.arguments
+                        yield "", _snapshot_tool_calls(accumulated)
+        else:
+            # Fallback: legacy per-provider streaming returns plain text
+            async for chunk in ai_manager.send_message_streaming(
+                provider, model, messages, source=source, timeout=180
+            ):
+                if chunk:
+                    received += len(chunk)
+                    yield chunk, None
+    except asyncio.CancelledError:
+        log.info(
+            "stream cancelled by user at llm_client layer (%d chars received)",
+            received,
+        )
+        raise
+    except Exception as e:  # noqa: BLE001
+        log.error("streaming exception (%s/%s): %s", provider, model, e)
+        return
+
+
+def _snapshot_tool_calls(accumulated: dict[int, dict]) -> list[dict] | None:
+    if not accumulated:
+        return None
+    return [accumulated[k] for k in sorted(accumulated.keys())]
+
+
+def _parse_accumulated_tool_calls(
+    accumulated: list[dict] | None,
+) -> list[dict]:
+    """Resolve accumulated tool_call deltas into OpenAI-shaped tool_calls.
+
+    Accepts the list produced by ``_stream_from_provider_with_tool_calls``
+    (each entry is a partial ``{id, name, arguments}`` dict, with
+    ``arguments`` being a JSON fragment) and returns a list of
+    ``{id, name, arguments}`` dicts whose ``arguments`` is parsed JSON.
+
+    The orchestrator passes the result straight into
+    ``_execute_tool_calls_async``.
+    """
+    if not accumulated:
+        return []
+    out: list[dict] = []
+    for tc in accumulated:
+        tc_id = tc.get("id", "") or ""
+        name = tc.get("name", "") or ""
+        raw_args = tc.get("arguments", "") or ""
+        if not tc_id or not name:
+            continue
+        try:
+            arguments = json.loads(raw_args) if raw_args.strip() else {}
+        except json.JSONDecodeError:
+            log.warning(
+                "accumulated tool_call arguments not valid JSON for %s: %r",
+                name,
+                raw_args[:200],
+            )
+            arguments = {"_raw": raw_args}
+        out.append({"id": tc_id, "name": name, "arguments": arguments})
+    return out
+
+
+async def generate_ai_response_streaming_with_tool_calls(
+    profile: dict[str, Any],
+    user_message: str,
+    interface: str = "terminal",
+    session_id: int | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    image_content_for_context: list[dict[str, Any]] | None = None,
+    ephemeral_context: list[dict[str, str]] | None = None,
+    is_tool_loop: bool = False,
+) -> AsyncIterator[tuple[str, list[dict] | None]]:
+    """Stream a response and surface accumulated native tool_calls.
+
+    Each yield is (content_chunk, accumulated_tool_calls_or_None). The
+    final accumulated_tool_calls value (last non-None) is what the
+    orchestrator should pass to ``_execute_tool_calls_async``.
+    """
+    if session_id is None:
+        session_id = (await Database.get_active_session_async())["id"]
+
+    resolved_provider, resolved_model = _resolve_provider(profile, provider, model)
+
+    if multimodal_tools.has_images(
+        user_message
+    ) and not multimodal_tools.is_vision_model(resolved_model):
+        error_msg = "[System] Current model does not support vision. Please reconfigure your active model to a multimodal one first~ :3"
+        await Database.add_message_async("system", error_msg, session_id=session_id)
+        yield error_msg, None
+        return
+
+    messages = await build_messages(
+        profile, session_id, interface, user_message, include_image_paths=True
+    )
+    if ephemeral_context:
+        messages.extend(ephemeral_context)
+    messages = multimodal_tools.inject_vision_context(messages, resolved_model)
+
+    if image_content_for_context:
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Here's the generated image for your reference.",
+                    },
+                    *image_content_for_context,
+                ],
+            }
+        )
+
+    _inject_persistent_visual(
+        messages, user_message, session_id, is_tool_loop=is_tool_loop
+    )
+
+    async for content, accumulated in _stream_from_provider_with_tool_calls(
+        resolved_provider,
+        resolved_model,
+        messages,
+        image_context=image_content_for_context,
+        source="chat",
+    ):
+        yield content, accumulated

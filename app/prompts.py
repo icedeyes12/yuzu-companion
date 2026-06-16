@@ -303,63 +303,17 @@ async def _session_events_block_async(session_id: int) -> str:
 
 
 def _get_relevant_tools(user_message: str) -> str:
-    """Return tool documentation only for tools relevant to the current query.
+    """Stub kept for backwards compatibility.
 
-    OPTIMIZATION: Reduces system prompt size by ~60% for normal conversations.
+    The full tool catalogue is now injected by the OpenAI SDK's ``tools[]``
+    schema. The model receives JSON-Schema definitions for every registered
+    tool on every request — there is no longer a need to inline example
+    invocations in the system prompt.
+
+    Phase E: returns an empty string. The function is preserved (and called
+    from ``build_system_message_async``) so the call site is unchanged.
     """
-    msg_lower = user_message.lower()
-
-    # Always-available core tools
-    base_tools = """
-### Core Tools
-<command>bash ls -la ~</command>
-<command>python print(2 + 2)</command>
-"""
-
-    # Conditionally add tools based on context
-    tools_sections = [base_tools]
-
-    # Image tools (only if image-related)
-    if any(
-        kw in msg_lower
-        for kw in [
-            "imagine",
-            "draw",
-            "create",
-            "generate",
-            "picture",
-            "image",
-            "visual",
-            "show",
-        ]
-    ):
-        tools_sections.append("""
-### Image Generation
-<command>imagine [detailed visual prompt]</command>
-**Must start with:** partner_name, a young teenage girl, 15 years old
-""")
-
-    # Memory tools (only if memory-related)
-    if any(
-        kw in msg_lower for kw in ["remember", "memory", "memorize", "forget", "recall"]
-    ):
-        tools_sections.append("""
-### Memory Tools
-<command>memory_search query="what does my human like"</command>
-<command>memory_store fact="Something to remember"</command>
-""")
-
-    # File tools (only if file-related)
-    if any(
-        kw in msg_lower for kw in ["file", "read", "write", "code", "script", "path"]
-    ):
-        tools_sections.append("""
-### File Tools
-<command>read path/to/file.txt</command>
-<command>write path/to/file.txt content to write</command>
-""")
-
-    return "\n".join(tools_sections)
+    return ""
 
 
 async def build_system_message_async(
@@ -439,10 +393,7 @@ Immediately follow with:
 {memory_block}
 
 # TOOL EXECUTION
-- Output `<command>...</command>` blocks only (max 3 per response).
-- **Critical Rule**: Never generate `<tools>` or `</tools>` tags. Wait for system-injected observations.
-- **Iteration Limit**: Max 30 automatic iterations; abort on repeated errors.
-- **Global Abort**: Require human confirmation for destructive actions (`rm -rf`, DB writes).
+- **Use native function calling exclusively.** The available tools are injected by the system.
 
 ## AVAILABLE TOOLS
 
