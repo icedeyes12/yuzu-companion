@@ -303,13 +303,14 @@ async def execute(
     try:
         start_time = time.time()
 
-        # Use asyncio.create_subprocess_shell
-        process = await asyncio.create_subprocess_shell(
-            command,
+        # Use asyncio.create_subprocess_exec
+        import shutil
+        bash_path = shutil.which("bash") or "/bin/bash"
+        process = await asyncio.create_subprocess_exec(
+            bash_path, "-c", command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(DEFAULT_CWD),
-            executable="/data/data/com.termux/files/usr/bin/bash",
         )
 
         try:
