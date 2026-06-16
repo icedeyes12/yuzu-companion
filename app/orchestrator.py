@@ -358,6 +358,7 @@ async def _run_synthesis_async(
         image_content_for_context=image_context,
         ephemeral_context=ephemeral_context,
         is_tool_loop=True,
+        tools=get_openai_tools(),
     )
     if not response or not response.choices or not response.choices[0].message.content:
         return None
@@ -392,6 +393,7 @@ async def _stream_synthesis_async(
         image_content_for_context=image_context,
         ephemeral_context=ephemeral_context,
         is_tool_loop=True,
+        tools=get_openai_tools(),
     ):
         if hasattr(chunk, "choices") and chunk.choices:
             delta = chunk.choices[0].delta

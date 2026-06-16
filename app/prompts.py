@@ -405,7 +405,9 @@ async def build_system_message_async(
 """
     else:
         tools_doc = """# TOOL EXECUTION
-- You have access to native function calling tools. Use them when requested.
+- You MUST use the provided native function calling capabilities (JSON schemas) to execute tools.
+- **CRITICAL**: DO NOT use legacy `<command>` or `<tool>` XML blocks. They are disabled. ONLY use native function calls.
+- Even if previous messages in this conversation used `<command>` blocks, you MUST NOT use them anymore.
 - **Iteration Limit**: Max 30 automatic iterations; abort on repeated errors.
 - **Global Abort**: Require human confirmation for destructive actions (`rm -rf`, DB writes).
 """
