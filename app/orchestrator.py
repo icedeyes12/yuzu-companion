@@ -653,151 +653,123 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
 
     active_session = await Database.get_active_session_async()
     session_id = active_session["id"]
-    # Assuming _cache_images_from_message is fast (local check + small download)
-    # If it downloads, it should be async. Let's check multimodal_tools.
     cached_images = await asyncio.to_thread(_cache_images_from_message, user_message)
 
-    # Fast-path: user typed /imagine directly
     stripped = user_message.strip()
     if stripped.startswith("/imagine ") or stripped.startswith("<command>"):
         commands, _ = parse_tool_blocks(stripped)
         if commands or stripped.startswith("/imagine"):
             if stripped.startswith("/imagine"):
                 commands = [stripped]
-
             await _persist_user_async(user_message, session_id, cached_images)
-
             results = await execute_commands(commands, session_id=session_id)
             tool_markdowns = []
-
             for tool_name, result in results:
                 tool_markdown = result.get("markdown", str(result))
                 tool_markdowns.append(tool_markdown)
                 await _persist_tool_result_async(
                     tool_name, tool_markdown, session_id, tool_call_id=None
                 )
-
             combined = "\n\n".join(tool_markdowns)
-
-            generated_paths = []
-            for tm in tool_markdowns:
-                path = parse_image_path(tm)
-                if path:
-                    generated_paths.append(path)
-
-            # Run synthesis
-            synthesis = await _run_synthesis_async(
-                profile, session_id, interface, combined
-            )
-            if synthesis:
-                await _persist_assistant_async(synthesis, session_id, generated_paths)
-                final = (
-                    f"{combined}\n\n{synthesis}"
-                    if parse_image_path(combined)
-                    else synthesis
-                )
-            else:
-                final = combined
-
             await _post_turn_async(
-                profile, user_message, final, session_id, active_session
+                profile, user_message, combined, session_id, active_session
             )
-            return final
-
-    try:
-        response = await generate_ai_response(
-            profile, user_message, interface, session_id, tools=get_openai_tools()
-        )
-    except Exception:
-        await _persist_user_async(user_message, session_id, cached_images)
-        raise
+            return combined
 
     await _persist_user_async(user_message, session_id, cached_images)
 
-    if response is None:
-        log.error("AI provider returned None")
-        return ""
+    loop_count = 0
+    ephemeral_context = []
+    final_response_text = ""
+    start_time = asyncio.get_event_loop().time()
 
-    text_response = response.choices[0].message.content or ""
-    text_response = _clean(text_response) or _EMPTY_RESPONSE_FALLBACK
+    while loop_count < _MAX_ORCHESTRATION_LOOPS:
+        loop_count += 1
+        if (
+            asyncio.get_event_loop().time() - start_time > 900
+        ):  # 15 minutes absolute timeout
+            log.warning("[non-stream] 15-minute timeout reached")
+            break
 
-    if is_markdown_image_shortcut(text_response):
-        return IMAGE_SHORTCUT_WARNING
+        try:
+            response = await generate_ai_response(
+                profile,
+                user_message,
+                interface,
+                session_id,
+                tools=get_openai_tools(),
+                ephemeral_context=ephemeral_context,
+                is_tool_loop=(loop_count > 1),
+            )
+        except Exception:
+            raise
 
-    # Try native tool-call execution first
-    tool_calls = []
-    if response.choices[0].message.tool_calls:
-        for tc in response.choices[0].message.tool_calls:
+        if response is None:
+            log.error("AI provider returned None")
+            return final_response_text
+
+        text_response = response.choices[0].message.content or ""
+        text_response = _clean(text_response) or _EMPTY_RESPONSE_FALLBACK
+
+        finish_reason = getattr(response.choices[0], "finish_reason", None)
+
+        tool_calls = []
+        if getattr(response.choices[0].message, "tool_calls", None):
             import json as _json
 
-            tool_calls.append(
-                {
-                    "name": tc.function.name,
-                    "arguments": _json.loads(tc.function.arguments),
-                    "id": tc.id,
-                }
-            )
-    if tool_calls:
-        tool_results = await _execute_tool_calls_async(tool_calls, session_id)
+            for tc in response.choices[0].message.tool_calls:
+                try:
+                    tool_calls.append(
+                        {
+                            "name": tc.function.name,
+                            "arguments": _json.loads(tc.function.arguments),
+                            "id": tc.id,
+                        }
+                    )
+                except Exception:
+                    pass
 
-        # SAFEGUARD: Persist clean text_response BEFORE tool execution
+        tool_calls = tool_calls[:3]
+
         tc_dicts = None
-        if response.choices[0].message.tool_calls:
+        if getattr(response.choices[0].message, "tool_calls", None):
             tc_dicts = [
                 tc.model_dump() for tc in response.choices[0].message.tool_calls
-            ]
-        if text_response and text_response.strip() or tc_dicts:
+            ][:3]
+
+        if text_response.strip() or tc_dicts:
             await _persist_assistant_async(
                 text_response, session_id, tool_calls=tc_dicts
             )
-            log.info("[non-stream] persisted clean text_response (pre-tool)")
+            ephemeral_context.append(
+                {"role": "assistant", "content": text_response, "tool_calls": tc_dicts}
+            )
 
-        if tool_results:
-            tool_name, tool_result, tc_id = tool_results[0]
+        final_response_text = text_response
+
+        if not tool_calls and finish_reason != "tool_calls":
+            break
+
+        if not tool_calls:
+            break
+
+        tool_results = await _execute_tool_calls_async(tool_calls, session_id)
+
+        tool_markdowns = []
+        for tool_name, tool_result, tc_id in tool_results:
             tool_markdown = tool_result.get("markdown", str(tool_result))
+            tool_markdowns.append(tool_markdown)
             await _persist_tool_result_async(
                 tool_name, tool_markdown, session_id, tool_call_id=tc_id
             )
-
-            is_image_tool = parse_image_path(tool_markdown) is not None
-            generated_paths = (
-                [parse_image_path(tool_markdown)] if is_image_tool else None
+            ephemeral_context.append(
+                {"role": "tool", "content": tool_markdown, "tool_call_id": tc_id}
             )
 
-            # Build ephemeral context for synthesis
-            ephemeral_context = [
-                {"role": "assistant", "content": text_response},
-                {"role": "tool", "content": tool_markdown, "tool_call_id": tc_id},
-            ]
-
-            synthesis = await _run_synthesis_async(
-                profile,
-                session_id,
-                interface,
-                tool_markdown,
-                ephemeral_context=ephemeral_context,
-            )
-
-            if synthesis:
-                await _persist_assistant_async(synthesis, session_id, generated_paths)
-                final_response = (
-                    f"{tool_markdown}\n\n{synthesis}" if is_image_tool else synthesis
-                )
-                await _post_turn_async(
-                    profile, user_message, final_response, session_id, active_session
-                )
-                return final_response
-
-            await _post_turn_async(
-                profile, user_message, tool_markdown, session_id, active_session
-            )
-            return tool_markdown
-
-    await _persist_assistant_async(text_response, session_id)
     await _post_turn_async(
-        profile, user_message, text_response, session_id, active_session
+        profile, user_message, final_response_text, session_id, active_session
     )
-    return text_response
+    return final_response_text
 
 
 class StreamFence:
@@ -876,15 +848,6 @@ async def handle_user_message_streaming(
     abort_check: callable[[], bool] | None = None,
     image_paths: list[str] | None = None,
 ) -> AsyncIterator[str]:
-    """Streaming entrypoint (async) with fence protection.
-
-    FENCE PROTECTION: Wraps user message persistence in a fence to prevent
-    ghost turns if stream is interrupted before completion.
-
-    COORDINATOR: Delegates tool execution to _process_tool_commands_async,
-    synthesis loops to _run_orchestration_loop_async, and finalization
-    to _finalize_and_persist_async.
-    """
     profile = await Database.get_profile_async()
     if not user_message.strip() and not image_paths:
         yield "Please enter a message!"
@@ -899,120 +862,121 @@ async def handle_user_message_streaming(
     else:
         active_session = {"id": session_id}
 
-    # Cache any images referenced in the message (URLs, etc.)
     cached_images = await asyncio.to_thread(_cache_images_from_message, user_message)
-
-    # Merge with explicitly provided image_paths
     all_image_paths = list(cached_images) if cached_images else []
     if image_paths:
         all_image_paths.extend(image_paths)
 
-    # FENCE: Acquire fence before persisting user message
     user_msg_id = await _persist_user_async(
         user_message, session_id, all_image_paths or None
     )
     fence_id = await StreamFence.acquire(session_id, user_msg_id or 0)
     log.info(f"[stream] fence {fence_id} acquired for session {session_id}")
 
-    # === PHASE 1: Initial LLM response streaming ===
-    response_chunks: list[str] = []
-
-    try:
-        tool_call_acc: dict[int, dict] = {}
-        async for chunk in generate_ai_response_streaming(
-            profile,
-            user_message,
-            interface,
-            session_id,
-            provider,
-            model,
-            tools=get_openai_tools(),
-        ):
-            if abort_check and abort_check():
-                log.info(f"[stream] abort detected, fence {fence_id} not completed")
-                return
-
-            if hasattr(chunk, "choices") and chunk.choices:
-                delta = chunk.choices[0].delta
-
-                # Accumulate content (stream to client)
-                if getattr(delta, "content", None):
-                    response_chunks.append(delta.content)
-                    yield delta.content  # SSE to frontend
-
-                # Accumulate tool call deltas (buffer silently)
-                if getattr(delta, "tool_calls", None):
-                    for tc_delta in delta.tool_calls:
-                        idx = getattr(tc_delta, "index", 0)
-                        if idx not in tool_call_acc:
-                            tool_call_acc[idx] = {
-                                "name": "",
-                                "arguments": "",
-                                "id": "",
-                            }
-                        if getattr(tc_delta, "id", None):
-                            tool_call_acc[idx]["id"] = tc_delta.id
-                        if getattr(tc_delta, "function", None):
-                            if getattr(tc_delta.function, "name", None):
-                                tool_call_acc[idx]["name"] += tc_delta.function.name
-                            if getattr(tc_delta.function, "arguments", None):
-                                tool_call_acc[idx]["arguments"] += (
-                                    tc_delta.function.arguments
-                                )
-
-                # Check finish reason
-                if getattr(chunk.choices[0], "finish_reason", None) == "tool_calls":
-                    break
-    except asyncio.CancelledError:
-        log.info("[stream] cancelled in first pass - propagating to StreamBuffer")
-        log.warning(f"[stream] fence {fence_id} incomplete due to cancellation")
-        raise
-    except Exception as e:
-        log.error("[stream] error in first pass: %s", e)
-        log.warning(f"[stream] fence {fence_id} incomplete due to error: {e}")
-        raise
-
-    full_response = "".join(response_chunks)
-
-    # === PHASE 2: Handle empty response ===
-    if not _clean(full_response) and not tool_call_acc:
-        await _finalize_and_persist_async(
-            session_id,
-            fence_id,
-            profile,
-            user_message,
-            _EMPTY_RESPONSE_FALLBACK,
-            active_session,
-        )
-        yield _EMPTY_RESPONSE_FALLBACK
-        return
-
-    # === PHASE 3: Handle markdown image shortcut ===
-    if is_markdown_image_shortcut(full_response):
-        await StreamFence.complete(session_id, fence_id)
-        yield IMAGE_SHORTCUT_WARNING
-        return
-
-    # === PHASE 3.5: Auto-close cognitive blocks ===
-    for tag in ["analysis", "think", "decision"]:
-        open_count = full_response.count(f"<{tag}>")
-        close_count = full_response.count(f"</{tag}>")
-        if open_count > close_count:
-            closing_tag = f"\n</{tag}>\n" * (open_count - close_count)
-            full_response += closing_tag
-            yield closing_tag
-
-    # === PHASE 4: Parse and execute tool commands ===
+    loop_count = 0
+    ephemeral_context = []
+    final_full_response = ""
     any_image_tool = False
-    all_generated_paths = []
-    combined_tool_markdown = ""
-    ephemeral_context: list[dict[str, str]] = []
+    start_time = asyncio.get_event_loop().time()
 
-    if tool_call_acc:
+    while loop_count < _MAX_ORCHESTRATION_LOOPS:
+        loop_count += 1
+        log.info("[stream] orchestration loop %d", loop_count)
+
+        if asyncio.get_event_loop().time() - start_time > 900:  # 15 minutes
+            log.warning("[stream] 15-minute timeout reached, breaking loop")
+            break
+
+        if abort_check and abort_check():
+            log.info(f"[stream] abort detected, fence {fence_id} not completed")
+            return
+
+        response_chunks = []
+        tool_call_acc = {}
+        finish_reason = None
+
+        try:
+            async for chunk in generate_ai_response_streaming(
+                profile,
+                user_message,
+                interface,
+                session_id,
+                provider,
+                model,
+                ephemeral_context=ephemeral_context,
+                is_tool_loop=(loop_count > 1),
+                tools=get_openai_tools(),
+            ):
+                if abort_check and abort_check():
+                    log.info(f"[stream] abort detected in loop {loop_count}")
+                    return
+
+                if hasattr(chunk, "choices") and chunk.choices:
+                    delta = chunk.choices[0].delta
+
+                    if getattr(delta, "content", None):
+                        response_chunks.append(delta.content)
+                        if any_image_tool and not response_chunks[:-1]:
+                            yield "\n\n" + delta.content
+                        else:
+                            yield delta.content
+
+                    if getattr(delta, "tool_calls", None):
+                        for tc_delta in delta.tool_calls:
+                            idx = getattr(tc_delta, "index", 0)
+                            if idx not in tool_call_acc:
+                                tool_call_acc[idx] = {
+                                    "name": "",
+                                    "arguments": "",
+                                    "id": "",
+                                }
+                            if getattr(tc_delta, "id", None):
+                                tool_call_acc[idx]["id"] = tc_delta.id
+                            if getattr(tc_delta, "function", None):
+                                if getattr(tc_delta.function, "name", None):
+                                    tool_call_acc[idx]["name"] += tc_delta.function.name
+                                if getattr(tc_delta.function, "arguments", None):
+                                    tool_call_acc[idx]["arguments"] += (
+                                        tc_delta.function.arguments
+                                    )
+
+                    finish_reason = getattr(chunk.choices[0], "finish_reason", None)
+                    if finish_reason == "tool_calls":
+                        break
+        except asyncio.CancelledError:
+            log.info("[stream] cancelled - propagating to StreamBuffer")
+            raise
+        except Exception as e:
+            log.error("[stream] error in loop %d: %s", loop_count, e)
+            raise
+
+        full_response = "".join(response_chunks)
+        final_full_response = full_response
+
+        # Auto-close cognitive blocks
+        for tag in ["analysis", "think", "decision"]:
+            open_count = full_response.count(f"<{tag}>")
+            close_count = full_response.count(f"</{tag}>")
+            if open_count > close_count:
+                closing_tag = f"\n</{tag}>\n" * (open_count - close_count)
+                full_response += closing_tag
+                final_full_response += closing_tag
+                yield closing_tag
+
+        if not tool_call_acc and finish_reason != "tool_calls":
+            if loop_count == 1:
+                if not _clean(full_response):
+                    final_full_response = _EMPTY_RESPONSE_FALLBACK
+                    yield _EMPTY_RESPONSE_FALLBACK
+                elif is_markdown_image_shortcut(full_response):
+                    final_full_response = IMAGE_SHORTCUT_WARNING
+                    yield IMAGE_SHORTCUT_WARNING
+            break
+
         tool_calls_list = []
-        for tc in tool_call_acc.values():
-            import json as _json
+        import json as _json
 
+        for tc in list(tool_call_acc.values())[:3]:  # Limit to 3 tools
             try:
                 tool_calls_list.append(
                     {
@@ -1024,66 +988,41 @@ async def handle_user_message_streaming(
             except Exception:
                 pass
 
-        if full_response and full_response.strip():
-            # tool_call_acc has values that we can just pass
-            tcalls = list(tool_call_acc.values())
-            await _persist_assistant_async(full_response, session_id, tool_calls=tcalls)
-            log.info("[stream] persisted clean full_response (pre-tool)")
+        if not tool_calls_list:
+            break
+
+        tcalls = list(tool_call_acc.values())[:3]
+        await _persist_assistant_async(full_response, session_id, tool_calls=tcalls)
+        ephemeral_context.append(
+            {"role": "assistant", "content": full_response, "tool_calls": tcalls}
+        )
 
         results = await _execute_tool_calls_async(tool_calls_list, session_id)
+
         tool_markdowns = []
+        any_image_tool = False
         for tool_name, result, tc_id in results:
             tm = result.get("markdown", str(result))
             tool_markdowns.append(tm)
             p = parse_image_path(tm)
             if p:
                 any_image_tool = True
-                all_generated_paths.append(p)
             await _persist_tool_result_async(
                 tool_name, tm, session_id, tool_call_id=tc_id
             )
-
-        combined_tool_markdown = "\n\n".join(tool_markdowns)
-        ephemeral_context.append({"role": "assistant", "content": full_response})
-        for tool_name, result, tc_id in results:
-            tm = result.get("markdown", str(result))
             ephemeral_context.append(
                 {"role": "tool", "content": tm, "tool_call_id": tc_id}
             )
-    else:
-        # Fallback text-based parser
-        tool_result = await _process_tool_commands_async(full_response, session_id)
-        combined_tool_markdown, any_image_tool, all_generated_paths = tool_result
-        ephemeral_context.append({"role": "assistant", "content": full_response})
-        ephemeral_context.append({"role": "user", "content": combined_tool_markdown})
 
-    # Yield tool markdown chunks
-    if combined_tool_markdown:
-        yield "\n\n" + combined_tool_markdown
+        combined_tool_markdown = "\n\n".join(tool_markdowns)
+        if combined_tool_markdown:
+            yield "\n\n" + combined_tool_markdown
 
-    current_synthesis_context = combined_tool_markdown
-    # all_generated_paths is already a list from _process_tool_commands_async
-
-    if not combined_tool_markdown:
-        # No tool output, just finalize
-        await _finalize_and_persist_async(
-            session_id, fence_id, profile, user_message, full_response, active_session
-        )
-        return
-
-    # === PHASE 6: Run orchestration loop (synthesis with potential tool blocks) ===
-    async for chunk in _run_orchestration_loop_async(
-        profile=profile,
-        session_id=session_id,
-        interface=interface,
-        current_synthesis_context=current_synthesis_context,
-        ephemeral_context=ephemeral_context,
-        any_image_tool=any_image_tool,
-        fence_id=fence_id,
-        abort_check=abort_check,
-        user_message=user_message,
-        active_session=active_session,
-    ):
-        yield chunk
-
-    return  # Orchestration loop handles finalization
+    await _finalize_and_persist_async(
+        session_id,
+        fence_id,
+        profile,
+        user_message,
+        final_full_response,
+        active_session,
+    )
