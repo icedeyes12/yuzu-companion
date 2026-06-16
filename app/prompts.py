@@ -531,6 +531,15 @@ async def build_messages(
         entry = {"role": m["role"], "content": content}
         if "image_paths" in m and m["image_paths"]:
             entry["image_paths"] = m["image_paths"]
+        
+        # Include native tool calling fields if present
+        if "tool_calls" in m and m["tool_calls"]:
+            entry["tool_calls"] = m["tool_calls"]
+        if "tool_call_id" in m and m["tool_call_id"]:
+            entry["tool_call_id"] = m["tool_call_id"]
+        if "name" in m and m["name"]:
+            entry["name"] = m["name"]
+            
         messages.append(entry)
 
     return messages
