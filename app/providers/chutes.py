@@ -1,37 +1,99 @@
 from __future__ import annotations
 
-import json
-import logging
-import httpx
+# FILE: app/providers/chutes.py
+# DESCRIPTION: Chutes AI provider (OpenAI-compatible, https://llm.chutes.ai/v1)
+#              Migrated to use the official openai SDK (AsyncOpenAI) via the
+#              OpenAICompatibleProvider mixin in app/providers/openai_base.py.
+#
+# Phase B scope:
+#   - HTTP/streaming moved from raw httpx to AsyncOpenAI
+#   - Hardcoded available_models list replaced with dynamic /v1/models fetch
+#   - Vision message rewriting + model fallback (Qwen priority) preserved
+#   - 429 retry with exponential backoff preserved at the rate-limit layer
+#   - 30-iteration outer model-fallback loop preserved
+
 import asyncio
+import logging
+import time
 from typing import AsyncGenerator
-from app.providers.base import AIProvider, _rate_limit_provider
+
+from app.providers.base import AIProvider
+from app.providers.openai_base import OpenAICompatibleProvider
 from app.tools import multimodal_tools
 
 logger = logging.getLogger(__name__)
 
 
-class ChutesProvider(AIProvider):
+# A small static set of "preferred" models we know work well for Chutes.
+# This is NOT a hardcoded allow-list — the live model catalogue comes from
+# /v1/models. The preferred set is used to (a) bias the fallback chain and
+# (b) decide whether a user-supplied model hint is worth trying first.
+_PREFERRED_CHUTES_MODELS: list[str] = [
+    "Qwen/Qwen3-235B-A22B-Thinking-2507",
+    "Qwen/Qwen3.6-27B-TEE",
+]
+
+
+class ChutesProvider(OpenAICompatibleProvider, AIProvider):
     def __init__(self, config: dict | None = None):
         super().__init__("chutes", config)
-        self.base_url = "https://llm.chutes.ai/v1/chat/completions"
-        self._last_error = None
-        self.available_models = [
-            "google/gemma-4-31B-turbo-TEE",
-            "Qwen/Qwen3.6-27B-TEE",
-            "Qwen/Qwen3.5-397B-A17B-TEE",
-            "Qwen/Qwen3-32B-TEE",
-            "Qwen/Qwen3-235B-A22B-Thinking-2507",
-            "deepseek-ai/DeepSeek-V3.2-TEE",
-            "MiniMaxAI/MiniMax-M2.5-TEE",
-            "moonshotai/Kimi-K2.5-TEE",
-            "moonshotai/Kimi-K2.6-TEE",
-            "Nemotron-3-Nano-Omni-30B-TEE",
-            "Qwen/Qwen2.5-Coder-32B-Instruct-TEE",
-            "unsloth/Mistral-Nemo-Instruct-2407-TEE",
-            "zai-org/GLM-5-TEE",
-            "zai-org/GLM-5.1-TEE",
-        ]
+        self.base_url = "https://llm.chutes.ai/v1"
+        self._last_error: str | None = None
+        # Cached list fetched lazily from /v1/models. Populated on first
+        # get_models() call. An empty list means "not yet fetched".
+        self._remote_models: list[str] = []
+        self._remote_models_fetched_at: float = 0.0
+        # Refresh the model catalogue at most every 5 minutes
+        self._remote_models_ttl: float = 300.0
+
+    # ── Model catalogue (dynamic) ──────────────────────────────────────
+
+    async def _refresh_remote_models(self, force: bool = False) -> list[str]:
+        """Fetch the live model list from Chutes' /v1/models endpoint.
+
+        Cached for ``self._remote_models_ttl`` seconds. On any error the
+        previous list (possibly empty) is returned.
+        """
+        now = time.time()
+        if (
+            not force
+            and self._remote_models
+            and (now - self._remote_models_fetched_at) < self._remote_models_ttl
+        ):
+            return self._remote_models
+
+        try:
+            ids = await self.fetch_remote_models()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[chutes] /v1/models refresh failed: %s", e)
+            return self._remote_models
+
+        if ids:
+            self._remote_models = sorted(set(ids))
+            self._remote_models_fetched_at = now
+        return self._remote_models
+
+    async def get_models(self) -> list[str]:
+        """Return the current best-known Chutes model list.
+
+        Strategy:
+          1. Return the cached remote list (refreshed every 5 min).
+          2. Merge the small _PREFERRED_CHUTES_MODELS whitelist at the top
+             so they're always available even if /v1/models is briefly down.
+        """
+        remote = await self._refresh_remote_models()
+        if not remote:
+            return list(_PREFERRED_CHUTES_MODELS)
+        # Preferred first, then everything else, deduped
+        preferred_present = [m for m in _PREFERRED_CHUTES_MODELS if m in remote]
+        preferred_only = [m for m in _PREFERRED_CHUTES_MODELS if m not in remote]
+        return preferred_present + remote + preferred_only
+
+    def _known_models(self) -> set[str]:
+        """Return the union of remote + preferred models (synchronous, cached)."""
+        return set(self._remote_models) | set(_PREFERRED_CHUTES_MODELS)
+
+    # ── Message normalization ──────────────────────────────────────────
 
     def _normalize_messages_for_chutes(self, messages: list[dict]) -> list[dict]:
         if not messages:
@@ -58,8 +120,7 @@ class ChutesProvider(AIProvider):
             return [{"role": "system", "content": merged_system}] + normalized_messages
         return normalized_messages
 
-    async def get_models(self) -> list[str]:
-        return self.available_models
+    # ── Main sync send_message ─────────────────────────────────────────
 
     async def send_message(
         self, messages: list[dict], model: str, source: str = "llm", **kwargs
@@ -69,19 +130,26 @@ class ChutesProvider(AIProvider):
         Retry architecture:
         1. Outer loop: Model selection/fallback
         2. Inner loop: 429 retry with exponential backoff
-
-        IMPORTANT: Sleep happens OUTSIDE rate limit lock to not block queue.
         """
-        if not self.api_key or model not in self.available_models:
+        if not self.api_key:
             return None
+        known = self._known_models()
+        if model not in known:
+            # We don't have this model locally; allow the request anyway
+            # because the remote catalogue may list models we haven't cached.
+            logger.debug(
+                "[chutes] %s not in local cache, will trust server", model
+            )
 
         log_prefix = kwargs.pop("log_prefix", "[CHAT]")
         kwargs.pop("model", None)
         kwargs.pop("model_name", None)
 
+        # Record source for the rate-limit context (used by the mixin)
+        self._last_source = source
+
         model_hint = kwargs.get("model") or kwargs.get("model_name")
-        explicit_model = model_hint and model_hint in self.available_models
-        retryable_codes = {0, 400, 429, 500, 502, 503, 504}
+        explicit_model = bool(model_hint and model_hint in known)
 
         attempt = 0
         last_error = None
@@ -89,7 +157,9 @@ class ChutesProvider(AIProvider):
         max_429_retries = 3
         backoff_base = 2.0  # 2s, 4s, 8s
 
-        tried_models = set()
+        tried_models: set[str] = set()
+        # Build the priority list lazily so we hit /v1/models exactly once
+        all_models = await self.get_models()
 
         while attempt < max_model_attempts:
             attempt += 1
@@ -97,7 +167,7 @@ class ChutesProvider(AIProvider):
 
             # Model fallback selection
             if current_model is None:
-                priority = [m for m in self.available_models if m not in tried_models]
+                priority = [m for m in all_models if m not in tried_models]
                 qwen_first = sorted(priority, key=lambda m: 0 if "Qwen" in m else 1)
                 for candidate in qwen_first:
                     if explicit_model and candidate == model_hint:
@@ -116,44 +186,31 @@ class ChutesProvider(AIProvider):
                 data = None
                 error_msg = None
 
-                # Rate-limited HTTP request (lock held during request only)
-                async with _rate_limit_provider("chutes", current_model, source):
-                    result = await self._chutes_raw(current_model, messages, kwargs)
-                    status = result[0]
-                    data = result[1] if len(result) > 1 else None
-                    error_msg = result[2] if len(result) > 2 else str(status)
-
-                # Handle success
-                if status == 200:
+                try:
+                    data = await self._chutes_raw(current_model, messages, kwargs)
                     self._last_error = None
                     return data
+                except _ChutesError as err:
+                    status = err.status
+                    error_msg = err.message
+                    last_error = error_msg
+                    self._last_error = last_error
 
-                last_error = error_msg
-                self._last_error = last_error
-
-                # Handle 429 with exponential backoff OUTSIDE lock
-                if status == 429:
-                    if retry < max_429_retries - 1:
+                    # 429 with retries left → back off outside the lock
+                    if status == 429 and retry < max_429_retries - 1:
                         backoff = backoff_base * (2**retry)  # 2s, 4s
                         logger.warning(
                             f"{log_prefix} 429 on {current_model}, "
                             f"retry {retry + 1}/{max_429_retries} in {backoff}s..."
                         )
                         await asyncio.sleep(backoff)
-                        continue  # Retry same model
-                    else:
-                        logger.warning(
-                            f"{log_prefix} Max 429 retries for {current_model}, "
-                            f"trying another model..."
-                        )
-                        break  # Try different model
-
-                # Non-429 errors - try another model
-                if status not in retryable_codes:
+                        continue
+                    # Try another model
+                    break
+                except Exception as e:  # noqa: BLE001
+                    last_error = str(e)
+                    self._last_error = last_error
                     return None
-
-                # Server errors - try another model
-                break
 
             # Delay before trying next model
             if attempt < max_model_attempts:
@@ -166,7 +223,12 @@ class ChutesProvider(AIProvider):
         logger.debug(f"{log_prefix} All models exhausted, last error: {last_error}")
         return None
 
-    async def _chutes_raw(self, model: str, messages: list[dict], kwargs) -> tuple:
+    async def _chutes_raw(self, model: str, messages: list[dict], kwargs) -> str:
+        """One non-streaming call to Chutes via the SDK.
+
+        Raises ``_ChutesError(status, message)`` on HTTP failure and lets
+        network exceptions propagate up.
+        """
         messages = self._normalize_messages_for_chutes(list(messages))
 
         if kwargs.get("skip_vision") is not True:
@@ -185,53 +247,49 @@ class ChutesProvider(AIProvider):
         max_tokens = kwargs.get("max_tokens")
         top_p = kwargs.get("top_p", 0.9)
         top_k = kwargs.get("top_k", 45)
-        stream = kwargs.get("stream", False)
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "top_p": top_p,
-            "top_k": top_k,
-            "stream": stream,
-        }
+        extra: dict = {}
+        # Chutes accepts a few non-standard knobs; pass them through if set
+        if top_k is not None:
+            extra["top_k"] = top_k
+        typical_p = kwargs.get("typical_p")
+        if typical_p is not None:
+            extra["typical_p"] = typical_p
 
         log_prefix = kwargs.get("log_prefix", "[CHAT]")
         logger.debug(f"{log_prefix} {model} | max_tokens={max_tokens or 'unlimited'}")
 
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    self.base_url,
-                    headers=headers,
-                    json=payload,
-                    timeout=kwargs.get("timeout", 120),
-                )
-                if response.status_code == 200:
-                    content = response.json()["choices"][0]["message"]["content"]
-                    return (
-                        200,
-                        content.strip() if content else "",
-                    )
-                return (response.status_code, None, response.text[:200])
-            except Exception as e:
-                return (0, None, str(e))
+        # Map non-200 responses to _ChutesError so the retry loop can branch
+        try:
+            raw = await self._chat_complete(
+                model,
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                top_p=top_p,
+                extra=extra,
+            )
+        except Exception as e:  # noqa: BLE001
+            # The openai SDK wraps non-200 in APIStatusError. Surface status
+            status = getattr(e, "status_code", None) or 0
+            message = str(e)
+            raise _ChutesError(status, message) from e
+
+        # Extract text content
+        try:
+            content = raw["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as e:
+            raise _ChutesError(500, f"parse-error: {e}") from e
+
+        return (content or "").strip()
+
+    # ── Streaming ──────────────────────────────────────────────────────
 
     async def send_message_streaming(
         self, messages: list[dict], model: str, source: str = "llm", **kwargs
     ) -> AsyncGenerator[str, None]:
-        if not self.api_key or model not in self.available_models:
-            reason = (
-                "missing API key"
-                if not self.api_key
-                else f"model {model} not in available"
-            )
+        if not self.api_key:
+            reason = "missing API key"
             logger.warning("Chutes stream aborted: %s", reason)
             yield (
                 "\n[System] Chutes provider error: "
@@ -256,62 +314,35 @@ class ChutesProvider(AIProvider):
             top_k = kwargs.get("top_k", 45)
             typical_p = kwargs.get("typical_p", 0.85)
 
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            }
+            extra: dict = {"stream": True}  # stream=True is set inside _chat_stream
+            if top_k is not None:
+                extra["top_k"] = top_k
+            if typical_p is not None:
+                extra["typical_p"] = typical_p
 
-            payload = {
-                "model": model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "top_p": top_p,
-                "top_k": top_k,
-                "typical_p": typical_p,
-                "stream": True,
-            }
+            # Track source for the rate-limit context
+            self._last_source = source
 
-            async with _rate_limit_provider("chutes", model, source):
-                async with httpx.AsyncClient() as client:
-                    async with client.stream(
-                        "POST",
-                        self.base_url,
-                        headers=headers,
-                        json=payload,
-                        timeout=kwargs.get("timeout", 120),
-                    ) as response:
-                        if response.status_code == 200:
-                            async for line in response.aiter_lines():
-                                if line and line.startswith("data: "):
-                                    if line == "data: [DONE]":
-                                        break
-                                    try:
-                                        json_data = json.loads(line[6:])
-                                        if (
-                                            "choices" in json_data
-                                            and len(json_data["choices"]) > 0
-                                        ):
-                                            delta = json_data["choices"][0].get(
-                                                "delta", {}
-                                            )
-                                            if "content" in delta and delta["content"]:
-                                                yield delta["content"]
-                                    except (json.JSONDecodeError, KeyError):
-                                        continue
-                        else:
-                            logger.warning(
-                                "Chutes HTTP %d for model %s",
-                                response.status_code,
-                                model,
-                            )
-                            yield (
-                                "\n[System] Chutes API returned HTTP "
-                                + str(response.status_code)
-                                + ". Please try again."
-                            )
+            async for chunk in self._chat_stream(
+                model,
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                top_p=top_p,
+                extra=extra,
+            ):
+                yield chunk
 
         except asyncio.CancelledError:
             raise
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             yield f"Error: {str(e)}"
+
+
+class _ChutesError(Exception):
+    """Internal exception used to thread HTTP status up to the retry loop."""
+
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+        self.message = message
