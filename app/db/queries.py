@@ -511,6 +511,8 @@ def parse_message_row(row: dict) -> dict:
         "role": row.get("role"),
         "content": row.get("content"),
         "image_paths": parse_json(row.get("image_paths", "[]")),
+        "tool_calls": row.get("tool_calls"),
+        "tool_call_id": row.get("tool_call_id"),
         "timestamp": str(row.get("timestamp", "")),
     }
 
@@ -603,6 +605,9 @@ def format_ai_history_rows(
     if not filtered_rows:
         return []
 
+    # Map tool_call_id to the exact tool name the LLM requested
+    tool_call_name_map = {}
+
     formatted: list[dict] = []
     for msg in filtered_rows:
         role = msg.get("role", "")
@@ -625,21 +630,28 @@ def format_ai_history_rows(
                 parsed_tcalls = parse_json(tool_calls_str)
                 if parsed_tcalls:
                     entry["tool_calls"] = parsed_tcalls
+                    for tc in parsed_tcalls:
+                        if isinstance(tc, dict) and "id" in tc and "function" in tc:
+                            tool_call_name_map[tc["id"]] = tc["function"].get("name")
         elif role in ALL_TOOL_ROLES or role == "tool":
             # Strip tool-contract markdown and keep only the raw result
             # so the AI can actually read the tool output.
             raw = extract_raw_result_from_markdown_contract(content)
             entry = {"role": role, "content": raw}
+            
             # The schema uses tool_call_id and name for OpenAI tool messages
             tool_call_id = msg.get("tool_call_id")
             if tool_call_id:
                 entry["tool_call_id"] = tool_call_id
                 
             tool_name = msg.get("name")
+            if not tool_name and tool_call_id in tool_call_name_map:
+                tool_name = tool_call_name_map[tool_call_id]
+                
             if tool_name:
                 entry["name"] = tool_name
-            # role="tool" expects role to be "tool", but our DB might have specific tool names as role 
-            # (e.g. "shell_tools", "memory_store"). We MUST normalize the role to "tool" for OpenAI!
+                
+            # Normalize role to "tool" for OpenAI API
             entry["role"] = "tool"
             
             if not tool_name and role != "tool":
