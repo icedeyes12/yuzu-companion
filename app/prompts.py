@@ -525,10 +525,14 @@ async def build_messages(
     for m in history:
         content = m["content"]
         if native_tools and isinstance(content, str):
-            # Strip legacy <tools>...</tools> blocks from history so the model doesn't copy the format
-            content = re.sub(
-                r"<tools>.*?</tools>", "", content, flags=re.DOTALL
-            ).strip()
+            # Strip hallucinated <tools>...</tools> and legacy <tool>...</tool> blocks from assistant history
+            if m["role"] == "assistant":
+                content = re.sub(
+                    r"<tools>.*?</tools>", "", content, flags=re.DOTALL
+                )
+                content = re.sub(
+                    r"<tool>.*?</tool>", "", content, flags=re.DOTALL
+                ).strip()
 
         entry = {"role": m["role"], "content": content}
         if "image_paths" in m and m["image_paths"]:

@@ -151,10 +151,20 @@ TOOL_PATCH = ToolDefinition(
 # Registry-compatible TOOL_DEFINITION (maps name -> definition)
 TOOL_DEFINITION = TOOL_READ  # Default for registry lookup
 
-
 # --------------------------------------------------------------------
 # Path Security
 # --------------------------------------------------------------------
+
+# Allowed base directories (Termux workspace)
+# Paths must be within these directories for security
+ALLOWED_BASE_DIRS = [
+    Path.cwd().resolve(),
+    Path("~/workspace").expanduser().resolve(),
+    Path("~/.config").expanduser().resolve(),
+    Path("~/.local").expanduser().resolve(),
+    Path(tempfile.gettempdir()).resolve(),
+    Path(os.environ.get("HOME", "/data/data/com.termux/files/home")).resolve(),
+]
 
 
 def _resolve_path(path: str) -> Path | None:
@@ -168,13 +178,12 @@ def _resolve_path(path: str) -> Path | None:
     # Expand ~ to home directory
     expanded = Path(path).expanduser()
 
+    # Make absolute FIRST, using current working directory for relative paths
+    if not expanded.is_absolute():
+        expanded = Path.cwd() / expanded
+
     # Normalize to prevent traversal
     normalized = expanded.resolve()
-
-    # Make absolute
-    if not normalized.is_absolute():
-        # Relative path: resolve from ~/workspace
-        normalized = (Path("~/workspace").expanduser() / normalized).resolve()
 
     # Check for path traversal attempts
     if (
@@ -182,6 +191,7 @@ def _resolve_path(path: str) -> Path | None:
         or str(normalized).startswith("/etc")
         or str(normalized).startswith("/sys")
         or str(normalized).startswith("/proc")
+        or str(normalized) == "/"
     ):
         logger.warning(f"[fs] Rejected path traversal attempt: {path}")
         return None
