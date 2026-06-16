@@ -216,10 +216,10 @@ async def _send_to_provider(
     *,
     image_context: list[dict[str, Any]] | None,
     source: str = "chat",
-) -> tuple[str | None, dict[str, Any] | None]:
+    tools: list[dict] | None = None,
+) -> Any:
     """Single LLM dispatch with timing log. Returns (text, raw_response)."""
     ai_manager = await get_ai_manager()
-    schemas = _unique_tool_schemas()
 
     if image_context and provider in ai_manager.providers:
         # Capability check: prefer native vision model if available
@@ -241,42 +241,25 @@ async def _send_to_provider(
                     v_model,
                 )
                 provider, model = v_provider, v_model
-                schemas = []  # vision models don't accept tool schemas
+                tools = None  # vision models don't accept tool schemas
 
     started = time.time()
     raw_response: dict[str, Any] | None = None
     try:
         raw_response = await ai_manager.send_message_raw(
-            provider, model, messages, source=source, timeout=180, tools=schemas
+            provider, model, messages, source=source, timeout=180, tools=tools
         )
     except Exception as e:  # noqa: BLE001
         log.error("send_message exception (%s/%s): %s", provider, model, e)
-        return None, None
+        return None
 
     duration = time.time() - started
     if raw_response is None:
         log.warning("chat %s/%s returned empty (%.1fs)", provider, model, duration)
-        return None, None
+        return None
 
-    # Extract text content from the raw response
-    try:
-        text = raw_response["choices"][0]["message"].get("content") or ""
-        text = text.strip()
-    except (KeyError, IndexError):
-        text = ""
-
-    if text:
-        log.info(
-            "chat %s/%s | tools=%d | %.1fs ok",
-            provider,
-            model,
-            len(schemas),
-            duration,
-        )
-        return text, raw_response
-
-    log.warning("chat %s/%s returned empty (%.1fs)", provider, model, duration)
-    return text, raw_response
+    log.info("chat %s/%s | %.1fs ok", provider, model, duration)
+    return raw_response
 
 
 async def generate_ai_response(
@@ -287,7 +270,8 @@ async def generate_ai_response(
     image_content_for_context: list[dict[str, Any]] | None = None,
     ephemeral_context: list[dict[str, str]] | None = None,
     is_tool_loop: bool = False,
-) -> tuple[str | None, dict[str, Any] | None]:
+    tools: list[dict] | None = None,
+) -> Any:
     """Single (text, raw_response) AI generation pass.
 
     raw_response is the full API response dict, used for tool-call parsing.
@@ -315,7 +299,7 @@ async def generate_ai_response(
     # build_messages() fetches history which ALREADY contains the user message
     # (persisted by orchestrator before calling this function)
     messages = await build_messages(
-        profile, session_id, interface, user_message, include_image_paths=True
+        profile, session_id, interface, user_message, include_image_paths=True, native_tools=bool(tools)
     )
 
     # Stitch in-memory context (assistant tool calls + results) not yet in DB
@@ -364,7 +348,8 @@ async def _stream_from_provider(
     *,
     image_context: list[dict[str, Any]] | None,
     source: str = "chat",
-) -> AsyncIterator[str]:
+    tools: list[dict] | None = None,
+) -> AsyncIterator[Any]:
     """Yield raw chunks from the provider's streaming API."""
     ai_manager = await get_ai_manager()
 
@@ -418,7 +403,8 @@ async def generate_ai_response_streaming(
     image_content_for_context: list[dict[str, Any]] | None = None,
     ephemeral_context: list[dict[str, str]] | None = None,
     is_tool_loop: bool = False,
-) -> AsyncIterator[str]:
+    tools: list[dict] | None = None,
+) -> AsyncIterator[Any]:
     """Stream a response from the configured provider chunk by chunk.
 
     Performs the same context assembly and vision routing as the
@@ -446,7 +432,7 @@ async def generate_ai_response_streaming(
     # build_messages() fetches history which ALREADY contains the user message
     # (persisted by orchestrator before calling this function)
     messages = await build_messages(
-        profile, session_id, interface, user_message, include_image_paths=True
+        profile, session_id, interface, user_message, include_image_paths=True, native_tools=bool(tools)
     )
 
     # Stitch in-memory context (assistant tool calls + results) not yet in DB
@@ -483,5 +469,6 @@ async def generate_ai_response_streaming(
         messages,
         image_context=image_content_for_context,
         source="chat",
+        tools=tools,
     ):
         yield chunk

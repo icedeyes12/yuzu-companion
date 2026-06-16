@@ -149,6 +149,8 @@ SCHEMA_DDL: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_api_keys_name ON api_keys(key_name)",
     # Migration: Add deleted_at column if it doesn't exist (safe to run multiple times)
     "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP DEFAULT NULL",
+    "ALTER TABLE messages ADD COLUMN IF NOT EXISTS tool_calls JSONB DEFAULT NULL",
+    "ALTER TABLE messages ADD COLUMN IF NOT EXISTS tool_call_id VARCHAR(255) DEFAULT NULL",
 )
 
 
@@ -396,12 +398,12 @@ def decrypt_api_key_rows(rows: list[dict]) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 SQL_MESSAGE_INSERT = """
-INSERT INTO messages (session_id, role, content, image_paths, timestamp, content_encrypted)
-VALUES (%s, %s, %s, %s, NOW(), FALSE) RETURNING id, timestamp
+INSERT INTO messages (session_id, role, content, image_paths, tool_calls, tool_call_id, timestamp, content_encrypted)
+VALUES (%s, %s, %s, %s, %s, %s, NOW(), FALSE) RETURNING id, timestamp
 """
 
 SQL_MESSAGE_SELECT_ASC_LIMIT = """
-SELECT id, session_id, role, content, image_paths, timestamp
+SELECT id, session_id, role, content, image_paths, tool_calls, tool_call_id, timestamp
 FROM messages
 WHERE session_id = %s
 ORDER BY timestamp ASC
@@ -409,7 +411,7 @@ LIMIT %s
 """
 
 SQL_MESSAGE_SELECT_DESC_LIMIT = """
-SELECT id, session_id, role, content, image_paths, timestamp
+SELECT id, session_id, role, content, image_paths, tool_calls, tool_call_id, timestamp
 FROM messages
 WHERE session_id = %s
 ORDER BY timestamp DESC
@@ -417,7 +419,7 @@ LIMIT %s
 """
 
 SQL_MESSAGE_SELECT_ASC_ALL = """
-SELECT id, session_id, role, content, image_paths, timestamp
+SELECT id, session_id, role, content, image_paths, tool_calls, tool_call_id, timestamp
 FROM messages
 WHERE session_id = %s
 ORDER BY timestamp ASC
@@ -425,7 +427,7 @@ ORDER BY timestamp ASC
 
 # Query messages after a specific ID (for memory pipeline ID-based tracking)
 SQL_MESSAGE_SELECT_AFTER_ID = """
-SELECT id, session_id, role, content, image_paths, timestamp
+SELECT id, session_id, role, content, image_paths, tool_calls, tool_call_id, timestamp
 FROM messages
 WHERE session_id = %s AND id > %s
 ORDER BY id ASC
@@ -466,7 +468,7 @@ LIMIT %s
 """
 
 SQL_MESSAGE_HISTORY_FOR_AI_ASC_LIMIT = """
-SELECT id, role, content, image_paths, timestamp
+SELECT id, role, content, image_paths, tool_calls, tool_call_id, timestamp
 FROM messages
 WHERE session_id = %s AND role IN ('user', 'assistant')
 ORDER BY timestamp ASC
@@ -474,7 +476,7 @@ LIMIT %s
 """
 
 SQL_MESSAGE_HISTORY_FOR_AI_DESC_LIMIT = """
-SELECT id, role, content, image_paths, timestamp
+SELECT id, role, content, image_paths, tool_calls, tool_call_id, timestamp
 FROM messages
 WHERE session_id = %s AND role IN ('user', 'assistant')
 ORDER BY timestamp DESC
@@ -482,7 +484,7 @@ LIMIT %s
 """
 
 SQL_MESSAGE_HISTORY_FOR_AI_ASC_ALL = """
-SELECT id, role, content, image_paths, timestamp
+SELECT id, role, content, image_paths, tool_calls, tool_call_id, timestamp
 FROM messages
 WHERE session_id = %s AND role IN ('user', 'assistant')
 ORDER BY timestamp ASC

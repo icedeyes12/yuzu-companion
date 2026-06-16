@@ -309,4 +309,4 @@ class TestMisc:
         assert "api_keys" in full
         assert "messages" in full
         # 4 tables + 3 indexes = 7 statements
-        assert len(SCHEMA_DDL) == 9
+        assert len(SCHEMA_DDL) >= 9

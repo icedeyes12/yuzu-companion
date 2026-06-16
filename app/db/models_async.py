@@ -342,6 +342,8 @@ async def add_message_async(
     role: str,
     content: str,
     image_paths: list[str] | None = None,
+    tool_calls: list[dict] | None = None,
+    tool_call_id: str | None = None,
 ) -> int | None:
     """Insert a message row, bump the session's message_count, return id.
 
@@ -352,9 +354,10 @@ async def add_message_async(
     paths_json = json.dumps(image_paths or [])
     try:
         async with AsyncPgSession() as s:
+            tcalls_json = json.dumps(tool_calls) if tool_calls else None
             row = await s.execute_returning(
                 SQL_MESSAGE_INSERT,
-                (session_id, role, content, paths_json),
+                (session_id, role, content, paths_json, tcalls_json, tool_call_id),
             )
             if row:
                 await increment_message_count_async(session_id)

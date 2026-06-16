@@ -28,6 +28,7 @@ from app.logging_config import get_logger
 from app.services.session_service import SessionService
 from app.services.memory_service import MemoryService
 from app.tools import multimodal_tools
+from app.tools.schemas import get_openai_tools
 from app.tools.registry import get_tool_role
 from app.visual_context import store_visual_context
 
@@ -244,7 +245,6 @@ async def _execute_tool_calls_async(
     """Execute a list of tool calls and return results (async)."""
     from app.commands import _TOOL_ALIASES
     from app.tools.registry import execute_tool, is_terminal_tool
-
     results: list[tuple[str, dict, str]] = []
     for tc in tool_calls:
         raw_name = tc["name"]
@@ -276,16 +276,16 @@ async def _persist_user_async(
 
 
 async def _persist_assistant_async(
-    content: str, session_id: int, image_paths: list[str] | None = None
+    content: str, session_id: int, image_paths: list[str] | None = None, tool_calls: list[dict] | None = None
 ) -> None:
     """Persist an assistant response, with optional image paths (async)."""
     await Database.add_message_async(
-        "assistant", content, session_id=session_id, image_paths=image_paths
+        session_id, "assistant", content, image_paths=image_paths, tool_calls=tool_calls
     )
 
 
 async def _persist_tool_result_async(
-    tool_name: str, markdown: str, session_id: int
+    tool_name: str, markdown: str, session_id: int, tool_call_id: str | None = None
 ) -> None:
     """Persist a tool result (async)."""
     from app.commands import parse_image_path
@@ -655,7 +655,7 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
             for tool_name, result in results:
                 tool_markdown = result.get("markdown", str(result))
                 tool_markdowns.append(tool_markdown)
-                await _persist_tool_result_async(tool_name, tool_markdown, session_id)
+                await _persist_tool_result_async(tool_name, tool_markdown, session_id, tool_call_id=None)
 
             combined = "\n\n".join(tool_markdowns)
 
@@ -688,7 +688,7 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
 
     try:
         response = await generate_ai_response(
-            profile, user_message, interface, session_id
+            profile, user_message, interface, session_id, tools=get_openai_tools()
         )
     except Exception:
         await _persist_user_async(user_message, session_id, cached_images)
@@ -716,14 +716,17 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
         tool_results = await _execute_tool_calls_async(tool_calls, session_id)
 
         # SAFEGUARD: Persist clean text_response BEFORE tool execution
-        if text_response and text_response.strip():
-            await _persist_assistant_async(text_response, session_id)
+        tc_dicts = None
+        if response.choices[0].message.tool_calls:
+            tc_dicts = [tc.model_dump() for tc in response.choices[0].message.tool_calls]
+        if text_response and text_response.strip() or tc_dicts:
+            await _persist_assistant_async(text_response, session_id, tool_calls=tc_dicts)
             log.info("[non-stream] persisted clean text_response (pre-tool)")
 
         if tool_results:
             tool_name, tool_result, tc_id = tool_results[0]
             tool_markdown = tool_result.get("markdown", str(tool_result))
-            await _persist_tool_result_async(tool_name, tool_markdown, session_id)
+            await _persist_tool_result_async(tool_name, tool_markdown, session_id, tool_call_id=tc_id)
 
             is_image_tool = parse_image_path(tool_markdown) is not None
             generated_paths = (
@@ -886,7 +889,7 @@ async def handle_user_message_streaming(
     try:
         tool_call_acc: dict[int, dict] = {}
         async for chunk in generate_ai_response_streaming(
-            profile, user_message, interface, session_id, provider, model
+            profile, user_message, interface, session_id, provider, model, tools=get_openai_tools()
         ):
             if abort_check and abort_check():
                 log.info(f"[stream] abort detected, fence {fence_id} not completed")
@@ -962,7 +965,9 @@ async def handle_user_message_streaming(
                 pass
         
         if full_response and full_response.strip():
-            await _persist_assistant_async(full_response, session_id)
+            # tool_call_acc has values that we can just pass
+            tcalls = list(tool_call_acc.values())
+            await _persist_assistant_async(full_response, session_id, tool_calls=tcalls)
             log.info("[stream] persisted clean full_response (pre-tool)")
             
         results = await _execute_tool_calls_async(tool_calls_list, session_id)
@@ -974,7 +979,7 @@ async def handle_user_message_streaming(
             if p:
                 any_image_tool = True
                 all_generated_paths.append(p)
-            await _persist_tool_result_async(tool_name, tm, session_id)
+            await _persist_tool_result_async(tool_name, tm, session_id, tool_call_id=tc_id)
         
         combined_tool_markdown = "\n\n".join(tool_markdowns)
         ephemeral_context.append({"role": "assistant", "content": full_response})
