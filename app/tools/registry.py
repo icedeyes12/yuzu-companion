@@ -233,7 +233,7 @@ def is_terminal_tool(tool_name: str) -> bool:
 
 
 async def execute_tool(
-    tool_name: str, arguments: dict, session_id: Optional[str] = None
+    tool_name: str, arguments: dict | str, session_id: Optional[str] = None
 ) -> dict:
     """Dispatch a tool call and return a structured result dict (async).
 

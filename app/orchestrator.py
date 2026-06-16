@@ -245,14 +245,14 @@ async def _execute_tool_calls_async(
     from app.commands import _TOOL_ALIASES
     from app.tools.registry import execute_tool, is_terminal_tool
 
-    results: list[tuple[str, dict]] = []
+    results: list[tuple[str, dict, str]] = []
     for tc in tool_calls:
         raw_name = tc["name"]
         tool_name = _TOOL_ALIASES.get(raw_name, raw_name)
         arguments = tc.get("arguments", {})
         log.info("native tool_call: %s %s", tool_name, arguments)
         result = await execute_tool(tool_name, arguments, session_id=session_id)
-        results.append((tool_name, result))
+        results.append((tool_name, result, tc.get("id", "")))
         if is_terminal_tool(tool_name) and result.get("ok"):
             break
     return results
@@ -684,12 +684,10 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
             )
             return final
 
-    provider_name = (profile.get("providers_config") or {}).get(
-        "preferred_provider", "ollama"
-    )
+
 
     try:
-        text_response, raw_api_response = await generate_ai_response(
+        response = await generate_ai_response(
             profile, user_message, interface, session_id
         )
     except Exception:
@@ -698,17 +696,22 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
 
     await _persist_user_async(user_message, session_id, cached_images)
 
-    if text_response is None:
+    if response is None:
         log.error("AI provider returned None")
         return ""
 
+    text_response = response.choices[0].message.content or ""
     text_response = _clean(text_response) or _EMPTY_RESPONSE_FALLBACK
 
     if is_markdown_image_shortcut(text_response):
         return IMAGE_SHORTCUT_WARNING
 
     # Try native tool-call execution first
-    tool_calls = await _parse_raw_tool_calls_async(provider_name, raw_api_response)
+    tool_calls = []
+    if response.choices[0].message.tool_calls:
+        for tc in response.choices[0].message.tool_calls:
+            import json as _json
+            tool_calls.append({"name": tc.function.name, "arguments": _json.loads(tc.function.arguments), "id": tc.id})
     if tool_calls:
         tool_results = await _execute_tool_calls_async(tool_calls, session_id)
 
@@ -718,7 +721,7 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
             log.info("[non-stream] persisted clean text_response (pre-tool)")
 
         if tool_results:
-            tool_name, tool_result = tool_results[0]
+            tool_name, tool_result, tc_id = tool_results[0]
             tool_markdown = tool_result.get("markdown", str(tool_result))
             await _persist_tool_result_async(tool_name, tool_markdown, session_id)
 
@@ -730,7 +733,7 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
             # Build ephemeral context for synthesis
             ephemeral_context = [
                 {"role": "assistant", "content": text_response},
-                {"role": "user", "content": tool_markdown},
+                {"role": "tool", "content": tool_markdown, "tool_call_id": tc_id},
             ]
 
             synthesis = await _run_synthesis_async(
@@ -881,16 +884,43 @@ async def handle_user_message_streaming(
     response_chunks: list[str] = []
 
     try:
+        tool_call_acc: dict[int, dict] = {}
         async for chunk in generate_ai_response_streaming(
             profile, user_message, interface, session_id, provider, model
         ):
-            if chunk:
-                if abort_check and abort_check():
-                    log.info(f"[stream] abort detected, fence {fence_id} not completed")
-                    return
+            if abort_check and abort_check():
+                log.info(f"[stream] abort detected, fence {fence_id} not completed")
+                return
 
-                response_chunks.append(chunk)
-                yield chunk
+            if hasattr(chunk, "choices") and chunk.choices:
+                delta = chunk.choices[0].delta
+
+                # Accumulate content (stream to client)
+                if getattr(delta, "content", None):
+                    response_chunks.append(delta.content)
+                    yield delta.content  # SSE to frontend
+
+                # Accumulate tool call deltas (buffer silently)
+                if getattr(delta, "tool_calls", None):
+                    for tc_delta in delta.tool_calls:
+                        idx = getattr(tc_delta, "index", 0)
+                        if idx not in tool_call_acc:
+                            tool_call_acc[idx] = {
+                                "name": "",
+                                "arguments": "",
+                                "id": "",
+                            }
+                        if getattr(tc_delta, "id", None):
+                            tool_call_acc[idx]["id"] = tc_delta.id
+                        if getattr(tc_delta, "function", None):
+                            if getattr(tc_delta.function, "name", None):
+                                tool_call_acc[idx]["name"] += tc_delta.function.name
+                            if getattr(tc_delta.function, "arguments", None):
+                                tool_call_acc[idx]["arguments"] += tc_delta.function.arguments
+
+                # Check finish reason
+                if getattr(chunk.choices[0], "finish_reason", None) == "tool_calls":
+                    break
     except asyncio.CancelledError:
         log.info("[stream] cancelled in first pass - propagating to StreamBuffer")
         log.warning(f"[stream] fence {fence_id} incomplete due to cancellation")
@@ -903,14 +933,9 @@ async def handle_user_message_streaming(
     full_response = "".join(response_chunks)
 
     # === PHASE 2: Handle empty response ===
-    if not _clean(full_response):
+    if not _clean(full_response) and not tool_call_acc:
         await _finalize_and_persist_async(
-            session_id,
-            fence_id,
-            profile,
-            user_message,
-            _EMPTY_RESPONSE_FALLBACK,
-            active_session,
+            session_id, fence_id, profile, user_message, _EMPTY_RESPONSE_FALLBACK, active_session
         )
         yield _EMPTY_RESPONSE_FALLBACK
         return
@@ -922,18 +947,50 @@ async def handle_user_message_streaming(
         return
 
     # === PHASE 4: Parse and execute tool commands ===
-    tool_result = await _process_tool_commands_async(full_response, session_id)
-    combined_tool_markdown, any_image_tool, all_generated_paths = tool_result
+    any_image_tool = False
+    all_generated_paths = []
+    combined_tool_markdown = ""
+    ephemeral_context: list[dict[str, str]] = []
+
+    if tool_call_acc:
+        tool_calls_list = []
+        for tc in tool_call_acc.values():
+            import json as _json
+            try:
+                tool_calls_list.append({"name": tc["name"], "arguments": _json.loads(tc["arguments"]), "id": tc["id"]})
+            except Exception:
+                pass
+        
+        if full_response and full_response.strip():
+            await _persist_assistant_async(full_response, session_id)
+            log.info("[stream] persisted clean full_response (pre-tool)")
+            
+        results = await _execute_tool_calls_async(tool_calls_list, session_id)
+        tool_markdowns = []
+        for tool_name, result, tc_id in results:
+            tm = result.get("markdown", str(result))
+            tool_markdowns.append(tm)
+            p = parse_image_path(tm)
+            if p:
+                any_image_tool = True
+                all_generated_paths.append(p)
+            await _persist_tool_result_async(tool_name, tm, session_id)
+        
+        combined_tool_markdown = "\n\n".join(tool_markdowns)
+        ephemeral_context.append({"role": "assistant", "content": full_response})
+        for tool_name, result, tc_id in results:
+            tm = result.get("markdown", str(result))
+            ephemeral_context.append({"role": "tool", "content": tm, "tool_call_id": tc_id})
+    else:
+        # Fallback text-based parser
+        tool_result = await _process_tool_commands_async(full_response, session_id)
+        combined_tool_markdown, any_image_tool, all_generated_paths = tool_result
+        ephemeral_context.append({"role": "assistant", "content": full_response})
+        ephemeral_context.append({"role": "user", "content": combined_tool_markdown})
 
     # Yield tool markdown chunks
     if combined_tool_markdown:
         yield "\n\n" + combined_tool_markdown
-
-    # === PHASE 5: Build ephemeral context for synthesis ===
-    ephemeral_context: list[dict[str, str]] = [
-        {"role": "assistant", "content": full_response},
-        {"role": "user", "content": combined_tool_markdown},
-    ]
 
     current_synthesis_context = combined_tool_markdown
     # all_generated_paths is already a list from _process_tool_commands_async
