@@ -58,14 +58,22 @@ def get_history(
     timeout: int = DEFAULT_TIMEOUT_GET,
 ) -> list[dict]:
     """Get last N messages from session."""
-    requests.post(
-        f"{url}/api/sessions/switch", json={"session_id": session_id}, timeout=timeout
-    )
-    resp = requests.get(f"{url}/api/get_profile", timeout=timeout)
-    data = resp.json()
-    history = data.get("chat_history", [])
-    history = [m for m in history if m.get("role") != "system"]
-    return history[-limit:] if limit else history
+    try:
+        requests.post(
+            f"{url}/api/sessions/switch", json={"session_id": session_id}, timeout=timeout
+        )
+        resp = requests.get(f"{url}/api/profile", timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+        history = data.get("chat_history", [])
+        history = [m for m in history if m.get("role") != "system"]
+        return history[-limit:] if limit else history
+    except requests.exceptions.RequestException as e:
+        print(f"[!] Error fetching history: {e}")
+        return []
+    except json.JSONDecodeError:
+        print("[!] Error: Server returned invalid JSON. It might be an HTML error page.")
+        return []
 
 
 def send_message(
@@ -102,9 +110,15 @@ def send_message(
 
     payload = {"message": full_message, "interface": interface}
 
-    resp = requests.post(f"{url}/api/send_message", json=payload, timeout=timeout)
-    data = resp.json()
-    return data.get("reply", "(no reply)")
+    try:
+        resp = requests.post(f"{url}/api/send_message", json=payload, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("reply", "(no reply)")
+    except requests.exceptions.RequestException as e:
+        return f"[!] Network error: {e}"
+    except json.JSONDecodeError:
+        return "[!] Error: Server returned invalid JSON. It might be an HTML error page."
 
 
 def format_history(history: list[dict], max_len: int = 0) -> str:
@@ -112,9 +126,21 @@ def format_history(history: list[dict], max_len: int = 0) -> str:
     lines = []
     for msg in history:
         role = msg.get("role", "?")
-        content = msg.get("content", "")
+        content = msg.get("content") or ""
+        
+        # Handle native tool calls where content might be empty
+        tool_calls = msg.get("tool_calls", [])
+        if tool_calls and not content:
+            tool_names = [tc.get("name", "unknown") for tc in tool_calls if isinstance(tc, dict)]
+            content = f"[{', '.join(tool_names)} tool call]"
+            
         if role == "system":
             continue
+            
+        # Tool observations role is 'tool'
+        if role == "tool":
+            content = "[tool result]"
+
         if max_len > 0 and len(content) > max_len:
             content = content[:max_len] + "..."
         lines.append(f"[{role}] {content}")
