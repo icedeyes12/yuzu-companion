@@ -246,8 +246,11 @@ async def _send_to_provider(
     started = time.time()
     raw_response: dict[str, Any] | None = None
     try:
-        raw_response = await ai_manager.send_message_raw(
-            provider, model, messages, source=source, timeout=180, tools=tools
+        provider_instance = ai_manager.providers.get(provider)
+        if not provider_instance:
+            return None
+        raw_response = await provider_instance.chat_complete(
+            messages, model, tools=tools
         )
     except Exception as e:  # noqa: BLE001
         log.error("send_message exception (%s/%s): %s", provider, model, e)
@@ -336,14 +339,15 @@ async def generate_ai_response(
         messages, user_message, session_id, is_tool_loop=is_tool_loop
     )
 
-    text, raw = await _send_to_provider(
+    response = await _send_to_provider(
         provider,
         model,
         messages,
         image_context=image_content_for_context,
         source="chat",
+        tools=tools,
     )
-    return text, raw
+    return response
 
 
 async def _stream_from_provider(
@@ -381,11 +385,13 @@ async def _stream_from_provider(
 
     received = 0
     try:
-        async for chunk in ai_manager.send_message_streaming(
-            provider, model, messages, source=source, timeout=180
+        provider_instance = ai_manager.providers.get(provider)
+        if not provider_instance:
+            return
+        async for chunk in provider_instance.chat_stream(
+            messages, model, tools=tools
         ):
             if chunk:
-                received += len(chunk)
                 yield chunk
     except asyncio.CancelledError:
         # Stream was cancelled (user clicked Stop) - propagate up

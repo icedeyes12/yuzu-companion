@@ -41,8 +41,8 @@ async def api_send_message(request: MessageRequest):
         return {"reply": ai_reply}
 
     except Exception as e:
-        log.error("Error in api_send_message: %s", type(e).__name__)
-        return {"reply": "Sorry, I encountered an error processing your message."}
+        log.error("Error in api_send_message: %s", e, exc_info=True)
+        return {"reply": f"Sorry, error: {str(e)}"}
 
 
 @router.post("/send_message_stream")

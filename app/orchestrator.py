@@ -349,7 +349,7 @@ async def _run_synthesis_async(
     """
     image_context = await _build_image_context_async(tool_markdown, session_id)
 
-    text, _ = await generate_ai_response(
+    response = await generate_ai_response(
         profile,
         "",
         interface,
@@ -358,6 +358,10 @@ async def _run_synthesis_async(
         ephemeral_context=ephemeral_context,
         is_tool_loop=True,
     )
+    if not response or not response.choices or not response.choices[0].message.content:
+        return None
+
+    text = response.choices[0].message.content
     if not text or not text.strip():
         return None
 
@@ -388,7 +392,10 @@ async def _stream_synthesis_async(
         ephemeral_context=ephemeral_context,
         is_tool_loop=True,
     ):
-        yield chunk
+        if hasattr(chunk, "choices") and chunk.choices:
+            delta = chunk.choices[0].delta
+            if getattr(delta, "content", None):
+                yield delta.content
 
 
 # --------------------------------------------------------------------
