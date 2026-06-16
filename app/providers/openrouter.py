@@ -94,8 +94,12 @@ class OpenRouterProvider(OpenAICompatibleProvider):
         kwargs["extra_body"].setdefault("provider", {"sort": "throughput"})
 
         return await super().chat_complete(
-            messages, model, tools=tools,
-            temperature=temperature, max_tokens=max_tokens, **kwargs,
+            messages,
+            model,
+            tools=tools,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            **kwargs,
         )
 
     async def chat_stream(
@@ -117,7 +121,11 @@ class OpenRouterProvider(OpenAICompatibleProvider):
         kwargs["extra_body"].setdefault("provider", {"sort": "throughput"})
 
         async for chunk in super().chat_stream(
-            messages, model, tools=tools,
-            temperature=temperature, max_tokens=max_tokens, **kwargs,
+            messages,
+            model,
+            tools=tools,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            **kwargs,
         ):
             yield chunk

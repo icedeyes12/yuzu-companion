@@ -484,11 +484,13 @@ class OpenAICompatibleProvider(AIProvider):
             results = []
             for tc in tool_calls:
                 fn = tc.get("function", {})
-                results.append({
-                    "id": tc.get("id", ""),
-                    "name": fn.get("name", ""),
-                    "arguments": _json.loads(fn.get("arguments", "{}")),
-                })
+                results.append(
+                    {
+                        "id": tc.get("id", ""),
+                        "name": fn.get("name", ""),
+                        "arguments": _json.loads(fn.get("arguments", "{}")),
+                    }
+                )
             return results
         except Exception:
             return []

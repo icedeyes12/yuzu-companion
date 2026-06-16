@@ -221,5 +221,5 @@ def _flatten_lines(data: dict) -> list[str]:
 def get_openai_tools() -> list[dict]:
     """Return all registered tools as OpenAI schema dictionaries."""
     from app.tools.registry import get_tool_definitions
-    
+
     return [t.to_llm_schema() for t in get_tool_definitions()]

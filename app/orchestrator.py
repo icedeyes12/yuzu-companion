@@ -245,6 +245,7 @@ async def _execute_tool_calls_async(
     """Execute a list of tool calls and return results (async)."""
     from app.commands import _TOOL_ALIASES
     from app.tools.registry import execute_tool, is_terminal_tool
+
     results: list[tuple[str, dict, str]] = []
     for tc in tool_calls:
         raw_name = tc["name"]
@@ -276,7 +277,10 @@ async def _persist_user_async(
 
 
 async def _persist_assistant_async(
-    content: str, session_id: int, image_paths: list[str] | None = None, tool_calls: list[dict] | None = None
+    content: str,
+    session_id: int,
+    image_paths: list[str] | None = None,
+    tool_calls: list[dict] | None = None,
 ) -> None:
     """Persist an assistant response, with optional image paths (async)."""
     await Database.add_message_async(
@@ -655,7 +659,9 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
             for tool_name, result in results:
                 tool_markdown = result.get("markdown", str(result))
                 tool_markdowns.append(tool_markdown)
-                await _persist_tool_result_async(tool_name, tool_markdown, session_id, tool_call_id=None)
+                await _persist_tool_result_async(
+                    tool_name, tool_markdown, session_id, tool_call_id=None
+                )
 
             combined = "\n\n".join(tool_markdowns)
 
@@ -684,8 +690,6 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
             )
             return final
 
-
-
     try:
         response = await generate_ai_response(
             profile, user_message, interface, session_id, tools=get_openai_tools()
@@ -711,22 +715,35 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
     if response.choices[0].message.tool_calls:
         for tc in response.choices[0].message.tool_calls:
             import json as _json
-            tool_calls.append({"name": tc.function.name, "arguments": _json.loads(tc.function.arguments), "id": tc.id})
+
+            tool_calls.append(
+                {
+                    "name": tc.function.name,
+                    "arguments": _json.loads(tc.function.arguments),
+                    "id": tc.id,
+                }
+            )
     if tool_calls:
         tool_results = await _execute_tool_calls_async(tool_calls, session_id)
 
         # SAFEGUARD: Persist clean text_response BEFORE tool execution
         tc_dicts = None
         if response.choices[0].message.tool_calls:
-            tc_dicts = [tc.model_dump() for tc in response.choices[0].message.tool_calls]
+            tc_dicts = [
+                tc.model_dump() for tc in response.choices[0].message.tool_calls
+            ]
         if text_response and text_response.strip() or tc_dicts:
-            await _persist_assistant_async(text_response, session_id, tool_calls=tc_dicts)
+            await _persist_assistant_async(
+                text_response, session_id, tool_calls=tc_dicts
+            )
             log.info("[non-stream] persisted clean text_response (pre-tool)")
 
         if tool_results:
             tool_name, tool_result, tc_id = tool_results[0]
             tool_markdown = tool_result.get("markdown", str(tool_result))
-            await _persist_tool_result_async(tool_name, tool_markdown, session_id, tool_call_id=tc_id)
+            await _persist_tool_result_async(
+                tool_name, tool_markdown, session_id, tool_call_id=tc_id
+            )
 
             is_image_tool = parse_image_path(tool_markdown) is not None
             generated_paths = (
@@ -889,7 +906,13 @@ async def handle_user_message_streaming(
     try:
         tool_call_acc: dict[int, dict] = {}
         async for chunk in generate_ai_response_streaming(
-            profile, user_message, interface, session_id, provider, model, tools=get_openai_tools()
+            profile,
+            user_message,
+            interface,
+            session_id,
+            provider,
+            model,
+            tools=get_openai_tools(),
         ):
             if abort_check and abort_check():
                 log.info(f"[stream] abort detected, fence {fence_id} not completed")
@@ -919,7 +942,9 @@ async def handle_user_message_streaming(
                             if getattr(tc_delta.function, "name", None):
                                 tool_call_acc[idx]["name"] += tc_delta.function.name
                             if getattr(tc_delta.function, "arguments", None):
-                                tool_call_acc[idx]["arguments"] += tc_delta.function.arguments
+                                tool_call_acc[idx]["arguments"] += (
+                                    tc_delta.function.arguments
+                                )
 
                 # Check finish reason
                 if getattr(chunk.choices[0], "finish_reason", None) == "tool_calls":
@@ -938,7 +963,12 @@ async def handle_user_message_streaming(
     # === PHASE 2: Handle empty response ===
     if not _clean(full_response) and not tool_call_acc:
         await _finalize_and_persist_async(
-            session_id, fence_id, profile, user_message, _EMPTY_RESPONSE_FALLBACK, active_session
+            session_id,
+            fence_id,
+            profile,
+            user_message,
+            _EMPTY_RESPONSE_FALLBACK,
+            active_session,
         )
         yield _EMPTY_RESPONSE_FALLBACK
         return
@@ -959,17 +989,24 @@ async def handle_user_message_streaming(
         tool_calls_list = []
         for tc in tool_call_acc.values():
             import json as _json
+
             try:
-                tool_calls_list.append({"name": tc["name"], "arguments": _json.loads(tc["arguments"]), "id": tc["id"]})
+                tool_calls_list.append(
+                    {
+                        "name": tc["name"],
+                        "arguments": _json.loads(tc["arguments"]),
+                        "id": tc["id"],
+                    }
+                )
             except Exception:
                 pass
-        
+
         if full_response and full_response.strip():
             # tool_call_acc has values that we can just pass
             tcalls = list(tool_call_acc.values())
             await _persist_assistant_async(full_response, session_id, tool_calls=tcalls)
             log.info("[stream] persisted clean full_response (pre-tool)")
-            
+
         results = await _execute_tool_calls_async(tool_calls_list, session_id)
         tool_markdowns = []
         for tool_name, result, tc_id in results:
@@ -979,13 +1016,17 @@ async def handle_user_message_streaming(
             if p:
                 any_image_tool = True
                 all_generated_paths.append(p)
-            await _persist_tool_result_async(tool_name, tm, session_id, tool_call_id=tc_id)
-        
+            await _persist_tool_result_async(
+                tool_name, tm, session_id, tool_call_id=tc_id
+            )
+
         combined_tool_markdown = "\n\n".join(tool_markdowns)
         ephemeral_context.append({"role": "assistant", "content": full_response})
         for tool_name, result, tc_id in results:
             tm = result.get("markdown", str(result))
-            ephemeral_context.append({"role": "tool", "content": tm, "tool_call_id": tc_id})
+            ephemeral_context.append(
+                {"role": "tool", "content": tm, "tool_call_id": tc_id}
+            )
     else:
         # Fallback text-based parser
         tool_result = await _process_tool_commands_async(full_response, session_id)
