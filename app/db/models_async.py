@@ -73,6 +73,7 @@ from app.db.queries import (
     parse_profile_row,
     parse_session_memory_rows,
     parse_session_row,
+    stitch_chat_history,
     tool_role_for,
 )
 from app.logging_config import get_logger
@@ -425,7 +426,7 @@ async def get_chat_history_async(
         )
     else:
         rows = await pg_fetchall_async(SQL_MESSAGE_SELECT_ASC_ALL, (session_id,))
-    return [parse_message_row(r) for r in rows]
+    return stitch_chat_history([parse_message_row(r) for r in rows])
 
 
 async def clear_session_messages_async(session_id: int) -> bool:

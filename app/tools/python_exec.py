@@ -256,8 +256,8 @@ async def execute(
     formatted_output = (
         f"Exit Code: {exit_code}\n"
         f"Duration: {duration_ms}ms\n\n"
-        f"[STDOUT]\n{stdout_str}\n\n"
-        f"[STDERR]\n{stderr_str}"
+        f"**STDOUT:**\n{stdout_str}\n\n"
+        f"**STDERR:**\n{stderr_str}"
     )
 
     # Build result
