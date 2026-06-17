@@ -827,6 +827,7 @@ __all__ = [
     "format_session_event",
 ]
 
+
 def stitch_chat_history(messages: list[dict]) -> list[dict]:
     """
     Stitch tool execution results into the preceding assistant message.
@@ -835,10 +836,16 @@ def stitch_chat_history(messages: list[dict]) -> list[dict]:
     stitched = []
     for msg in messages:
         role = msg.get("role")
-        if (role in ALL_TOOL_ROLES or role == "tool" or role == "system_observation") and stitched and stitched[-1].get("role") == "assistant":
+        if (
+            (role in ALL_TOOL_ROLES or role == "tool" or role == "system_observation")
+            and stitched
+            and stitched[-1].get("role") == "assistant"
+        ):
             # Append the tool's content to the assistant's content
             if msg.get("content"):
-                stitched[-1]["content"] = f"{stitched[-1].get('content', '')}\n\n{msg['content']}".strip()
+                stitched[-1]["content"] = (
+                    f"{stitched[-1].get('content', '')}\n\n{msg['content']}".strip()
+                )
         else:
             stitched.append(msg)
     return stitched
