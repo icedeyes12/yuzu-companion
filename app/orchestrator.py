@@ -1071,7 +1071,6 @@ async def handle_user_message_streaming(
         results = await _execute_tool_calls_async(tool_calls_list, session_id)
 
         tool_markdowns = []
-        terminal_tool_executed = False
         generated_image_paths: list[str] = []
         for tool_name, result, tc_id in results:
             tm = result.get("markdown", str(result))
@@ -1081,11 +1080,6 @@ async def handle_user_message_streaming(
                 generated_image_paths.append(p)
                 any_image_tool = True
 
-            from app.tools.registry import is_terminal_tool
-
-            if is_terminal_tool(tool_name):
-                terminal_tool_executed = True
-
             await _persist_tool_result_async(
                 tool_name, tm, session_id, tool_call_id=tc_id
             )
@@ -1093,10 +1087,6 @@ async def handle_user_message_streaming(
         combined_tool_markdown = "\n\n".join(tool_markdowns)
         if combined_tool_markdown:
             yield "\n\n" + combined_tool_markdown
-
-        if terminal_tool_executed:
-            log.info("[stream] Terminal tool executed, skipping synthesis pass")
-            break
 
     await _finalize_and_persist_async(
         session_id,
