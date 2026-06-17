@@ -95,12 +95,13 @@ async def api_get_profile(session_id: int | None = None):
         if active_buf and active_buf.full_content:
             # Check if the last message in history is already this response
             last_msg = chat_history[-1] if chat_history else None
-            is_duplicate = False
-            if last_msg and last_msg.get("role") == "assistant":
-                if len(last_msg.get("content", "")) >= len(active_buf.full_content):
-                    is_duplicate = True
 
-            if not is_duplicate:
+            if last_msg and last_msg.get("role") == "assistant":
+                if len(last_msg.get("content", "")) < len(active_buf.full_content):
+                    # Active buffer is ahead of DB. Update the last message to avoid detachment.
+                    last_msg["content"] = active_buf.full_content
+                    last_msg["id"] = -99  # Sentinel ID for live content
+            else:
                 chat_history.append(
                     {
                         "id": -99,  # Sentinel ID for live content

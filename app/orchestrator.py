@@ -1039,23 +1039,6 @@ async def handle_user_message_streaming(
             await _persist_assistant_async(final_full_response, session_id)
             break
 
-        # If LLM text was blank and tool was called silently, or if it had text,
-        # we append our system preamble and yield it so it is accumulated.
-        for tc_item in tool_calls_list:
-            _tname = tc_item["name"]
-            _targs = tc_item.get("arguments", {})
-            _cmd_preview = ""
-            if isinstance(_targs, dict):
-                first_val = next(iter(_targs.values()), "") if _targs else ""
-                _cmd_preview = f": `{str(first_val)[:80]}`" if first_val else ""
-
-            preamble = f"_Menjalankan {_tname}{_cmd_preview}..._\n\n"
-            if final_full_response.strip() and not final_full_response.endswith("\n\n"):
-                preamble = f"\n\n{preamble}"
-
-            final_full_response += preamble
-            yield preamble
-
         # Format tcalls strictly to OpenAI spec
         tcalls = []
         for tc in list(tool_call_acc.values())[:3]:
