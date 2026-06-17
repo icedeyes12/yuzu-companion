@@ -395,6 +395,7 @@ async def build_system_message_async(
         relevant_tools = _get_relevant_tools(user_message or "")
         tools_doc = f"""# TOOL EXECUTION
 - Output `<command>...</command>` blocks only (max 3 per response).
+- **Critical Rule**: You MUST output a brief conversational preamble (e.g., 'Sebentar ya Om, aku cek dulu...') in your standard message content BEFORE invoking any tool. Never execute a tool silently.
 - **Critical Rule**: Never generate `<tools>` or `</tools>` tags. Wait for system-injected observations.
 - **Iteration Limit**: Max 30 automatic iterations; abort on repeated errors.
 - **Global Abort**: Require human confirmation for destructive actions (`rm -rf`, DB writes).
@@ -406,6 +407,7 @@ async def build_system_message_async(
     else:
         tools_doc = """# TOOL EXECUTION
 - You MUST use the provided native function calling capabilities (JSON schemas) to execute tools.
+- **Critical Rule**: You MUST output a brief conversational preamble (e.g., 'Sebentar ya Om, aku cek dulu...') in your standard message content BEFORE invoking any tool. Never execute a tool silently.
 - **CRITICAL**: DO NOT use legacy `<command>` or `<tool>` XML blocks. They are disabled. ONLY use native function calls.
 - **CRITICAL HALLUCINATION PREVENTION**: Never output `<tools>`, `</tools>`, or fake console outputs like `[STDOUT]`. If you want to use a tool, do NOT type it out as text. Invoke it via the native function call API!
 - Even if previous messages in this conversation used `<command>` blocks, you MUST NOT use them anymore.
