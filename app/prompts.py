@@ -381,8 +381,8 @@ async def build_system_message_async(
     static_ids, static_context, dynamic_context = await _retrieve_memories_async(
         session_id,
         user_message,
-        static_limit=5,
-        dynamic_limit=3,  # Reduced from 10, 5
+        static_limit=7,
+        dynamic_limit=5,
     )
     await _mark_facts_pending_async(static_ids, session_id)
     memory_block = (f"\n\n{static_context}" if static_context else "") + dynamic_context
