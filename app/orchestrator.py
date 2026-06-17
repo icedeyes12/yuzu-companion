@@ -1039,6 +1039,18 @@ async def handle_user_message_streaming(
             await _persist_assistant_async(final_full_response, session_id)
             break
 
+        # If LLM text was blank and tool was called silently,
+        # yield a preamble BEFORE persisting so UI isn't blank
+        if not final_full_response.strip():
+            for tc_item in tool_calls_list:
+                _tname = tc_item["name"]
+                _targs = tc_item.get("arguments", {})
+                _cmd_preview = ""
+                if isinstance(_targs, dict):
+                    first_val = next(iter(_targs.values()), "") if _targs else ""
+                    _cmd_preview = f": `{str(first_val)[:80]}`" if first_val else ""
+                yield f"_Menjalankan {_tname}{_cmd_preview}..._\n\n"
+
         # Format tcalls strictly to OpenAI spec
         tcalls = []
         for tc in list(tool_call_acc.values())[:3]:
@@ -1054,19 +1066,16 @@ async def handle_user_message_streaming(
             final_full_response, session_id, tool_calls=tcalls
         )
 
-        # Yield pre-execution preamble so the UI doesn't show a blank
-        # before the tool result arrives (matches dev branch behavior of
-        # having visible text before tool output block)
-
-        for tc_item in tool_calls_list:
-            _tname = tc_item["name"]
-            _targs = tc_item.get("arguments", {})
-            # Show a brief human-readable command preview
-            _cmd_preview = ""
-            if isinstance(_targs, dict):
-                first_val = next(iter(_targs.values()), "") if _targs else ""
-                _cmd_preview = f": `{str(first_val)[:80]}`" if first_val else ""
-            yield f"\n\n_Menjalankan {_tname}{_cmd_preview}..._"
+        # If LLM had text AND also called a tool, yield preamble after the text
+        if final_full_response.strip():
+            for tc_item in tool_calls_list:
+                _tname = tc_item["name"]
+                _targs = tc_item.get("arguments", {})
+                _cmd_preview = ""
+                if isinstance(_targs, dict):
+                    first_val = next(iter(_targs.values()), "") if _targs else ""
+                    _cmd_preview = f": `{str(first_val)[:80]}`" if first_val else ""
+                yield f"\n\n_Menjalankan {_tname}{_cmd_preview}..._\n\n"
 
         results = await _execute_tool_calls_async(tool_calls_list, session_id)
 
@@ -1087,6 +1096,18 @@ async def handle_user_message_streaming(
         combined_tool_markdown = "\n\n".join(tool_markdowns)
         if combined_tool_markdown:
             yield "\n\n" + combined_tool_markdown
+
+        # Issue 1 fix: inject generated images into vision context for next pass
+        # so the AI can actually "see" what it generated, not just assume
+        if generated_image_paths:
+            for img_path in generated_image_paths:
+                b64, mime = await asyncio.to_thread(_load_image_base64, img_path)
+                if b64 and mime:
+                    store_visual_context(session_id, b64, mime)
+                    log.info(
+                        "[stream] injected generated image into visual context: %s",
+                        img_path,
+                    )
 
     await _finalize_and_persist_async(
         session_id,
