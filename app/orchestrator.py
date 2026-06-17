@@ -910,10 +910,16 @@ async def handle_user_message_streaming(
 
                     if getattr(delta, "content", None):
                         response_chunks.append(delta.content)
-                        if any_image_tool and not response_chunks[:-1]:
-                            yield "\n\n" + delta.content
-                        else:
-                            yield delta.content
+                        # Strip Gemma TEE leaked tool syntax from visible stream
+                        visible = delta.content
+                        if (
+                            "<|tool_call>" not in visible
+                            and "<tool_call|>" not in visible
+                        ):
+                            if any_image_tool and not response_chunks[:-1]:
+                                yield "\n\n" + visible
+                            else:
+                                yield visible
 
                     if getattr(delta, "tool_calls", None):
                         for tc_delta in delta.tool_calls:
@@ -1048,16 +1054,32 @@ async def handle_user_message_streaming(
             final_full_response, session_id, tool_calls=tcalls
         )
 
+        # Yield pre-execution preamble so the UI doesn't show a blank
+        # before the tool result arrives (matches dev branch behavior of
+        # having visible text before tool output block)
+
+        for tc_item in tool_calls_list:
+            _tname = tc_item["name"]
+            _targs = tc_item.get("arguments", {})
+            # Show a brief human-readable command preview
+            _cmd_preview = ""
+            if isinstance(_targs, dict):
+                first_val = next(iter(_targs.values()), "") if _targs else ""
+                _cmd_preview = f": `{str(first_val)[:80]}`" if first_val else ""
+            yield f"\n\n_Menjalankan {_tname}{_cmd_preview}..._"
+
         results = await _execute_tool_calls_async(tool_calls_list, session_id)
 
         tool_markdowns = []
         terminal_tool_executed = False
+        generated_image_paths: list[str] = []
         for tool_name, result, tc_id in results:
             tm = result.get("markdown", str(result))
             tool_markdowns.append(tm)
             p = parse_image_path(tm)
             if p:
-                pass  # any_image_tool was unused and undefined properly here anyway
+                generated_image_paths.append(p)
+                any_image_tool = True
 
             from app.tools.registry import is_terminal_tool
 
