@@ -13,7 +13,7 @@ venv/
 *.key
 *.env
 
-# AI Assistants, Agents & Tools
+# Agents & Tools artifacts
 .copilot
 .gemini
 .yuzuki
