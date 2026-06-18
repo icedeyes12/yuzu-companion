@@ -470,7 +470,7 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
     stripped = user_message.strip()
     if stripped.startswith("/imagine "):
         # Direct /imagine shortcut — route to image_generate tool without LLM round-trip
-        prompt = stripped[len("/imagine "):].strip()
+        prompt = stripped[len("/imagine ") :].strip()
         await _persist_user_async(user_message, session_id, cached_images)
         from app.tools.registry import execute_tool
 
