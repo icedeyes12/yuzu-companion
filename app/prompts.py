@@ -385,7 +385,7 @@ async def build_messages(
         if content is None:
             if m["role"] == "tool":
                 content = "Executed successfully without output."
-            elif m["role"] == "assistant":
+            else:
                 content = ""
 
         if native_tools and isinstance(content, str):
@@ -406,9 +406,24 @@ async def build_messages(
 
         # Include native tool calling fields if present
         if "tool_calls" in m and m["tool_calls"]:
-            entry["tool_calls"] = m["tool_calls"]
+            sanitized_tc = []
+            for tc in m["tool_calls"]:
+                if isinstance(tc, dict) and "function" in tc:
+                    if tc.get("id") is None:
+                        tc["id"] = "call_fallback"
+                    if tc["function"].get("arguments") is None:
+                        tc["function"]["arguments"] = "{}"
+                sanitized_tc.append(tc)
+            entry["tool_calls"] = sanitized_tc
+
         if "tool_call_id" in m and m["tool_call_id"]:
             entry["tool_call_id"] = m["tool_call_id"]
+        elif role == "tool":
+            # REQUIRED: OpenAI API and vLLM crash if tool_call_id is missing for tool messages
+            # If we don't have a tool_call_id, fallback to user role to prevent crash
+            entry["role"] = "user"
+            entry["content"] = f"[System Observation - Tool Result]\n{entry['content']}"
+
         if "name" in m and m["name"]:
             entry["name"] = m["name"]
 
