@@ -411,9 +411,6 @@ class OpenAICompatibleProvider(AIProvider):
         if tools:
             params["tools"] = tools
             params.setdefault("tool_choice", "auto")
-        import json
-
-        logger.info(f"DEBUG CHUTES PAYLOAD: {json.dumps(params, indent=2)}")
         stream = await self._client.chat.completions.create(**params)
         async for chunk in stream:
             yield chunk
@@ -601,11 +598,6 @@ class AIProviderManager:
             raise
         except Exception as e:
             yield f"Streaming error: {str(e)}"
-
-    _PREFERRED_MODELS = [
-        "Qwen/Qwen3.6-27B-TEE",
-        "Qwen/Qwen3-235B-A22B-Thinking-2507",
-    ]
 
     async def _internal_llm_call(
         self, messages: list[dict], source: str = "internal", **kwargs

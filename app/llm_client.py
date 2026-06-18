@@ -132,18 +132,6 @@ async def chutes_chat(
 # ---------------------------------------------------------------------------
 
 
-def _apply_vision_routing(
-    messages: list[dict[str, Any]],
-    user_message: str,
-    provider: str,
-    model: str,
-    image_content_for_context: list[dict[str, Any]] | None,
-) -> tuple[list[dict[str, Any]], str, str]:
-    """Switch to vision provider/model when needed and rewrite the last user msg."""
-    # DEPRECATED: Automatic vision model switching is removed in favor of manual configuration and validation.
-    return messages, provider, model
-
-
 def _inject_persistent_visual(
     messages: list[dict[str, Any]],
     user_message: str,

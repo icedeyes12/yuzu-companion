@@ -241,8 +241,6 @@ async def execute(
             _get_partner_name(),
         )
 
-        log.info("[python] Executing code (%d chars)", len(code))
-
     # Execute
     success, stdout, stderr, duration_ms = await _execute_python(code)
 

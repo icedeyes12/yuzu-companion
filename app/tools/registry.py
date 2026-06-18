@@ -58,10 +58,6 @@ def _load_tool_module(tool_name: str):
             from app.tools import memory_search
 
             _TOOL_MODULES[tool_name] = memory_search
-        elif tool_name == "multimodal":
-            from app.tools import multimodal
-
-            _TOOL_MODULES[tool_name] = multimodal
         # File system tools
         elif tool_name in ("read", "write", "ls", "mkdir", "rm", "patch"):
             from app.tools import fs_operations
@@ -331,8 +327,3 @@ async def _get_partner_name_async() -> str:
         return profile.get("partner_name", "Yuzu")
     except Exception:
         return "Yuzu"
-
-
-def _get_partner_name() -> str:
-    """Legacy sync wrapper."""
-    return asyncio.run(_get_partner_name_async())

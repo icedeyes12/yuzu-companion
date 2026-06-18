@@ -42,7 +42,7 @@ async def api_send_message(request: MessageRequest):
 
     except Exception as e:
         log.error("Error in api_send_message: %s", e, exc_info=True)
-        return {"reply": f"Sorry, error: {str(e)}"}
+        return {"reply": "Sorry, I encountered an error processing your message."}
 
 
 @router.post("/send_message_stream")
