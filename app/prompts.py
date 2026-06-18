@@ -380,6 +380,14 @@ async def build_messages(
 
     for m in history:
         content = m["content"]
+
+        # Sanitize null contents to prevent OpenAI/Gemma client crash
+        if content is None:
+            if m["role"] == "tool":
+                content = "Executed successfully without output."
+            elif m["role"] == "assistant":
+                content = ""
+
         if native_tools and isinstance(content, str):
             # Strip hallucinated <tools>...</tools> and legacy <tool>...</tool> blocks from assistant history
             if m["role"] == "assistant":

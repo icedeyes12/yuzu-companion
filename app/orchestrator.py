@@ -293,9 +293,14 @@ async def _persist_assistant_async(
 
 
 async def _persist_tool_result_async(
-    tool_name: str, markdown: str, session_id: int, tool_call_id: str | None = None
+    tool_name: str,
+    markdown: str | None,
+    session_id: int,
+    tool_call_id: str | None = None,
 ) -> None:
     """Persist a tool result (async)."""
+    if markdown is None:
+        markdown = "Executed successfully without output."
     from app.commands import parse_image_path
 
     image_paths = []
@@ -468,7 +473,13 @@ async def _process_tool_commands_async(
     all_generated_paths: list[str] = []
 
     for tool_name, result in results:
-        tool_markdown = result.get("markdown", str(result))
+        tool_markdown = result.get("markdown")
+        if tool_markdown is None:
+            tool_markdown = (
+                str(result)
+                if result is not None
+                else "Executed successfully without output."
+            )
         tool_markdowns.append(tool_markdown)
 
         # SAFEGUARD: Persist each tool result immediately
@@ -588,7 +599,13 @@ async def _run_orchestration_loop_async(
         any_image_tool = False
 
         for tool_name, result in next_results:
-            tm = result.get("markdown", str(result))
+            tm = result.get("markdown")
+            if tm is None:
+                tm = (
+                    str(result)
+                    if result is not None
+                    else "Executed successfully without output."
+                )
             next_markdowns.append(tm)
             p = parse_image_path(tm)
             if p:
@@ -654,7 +671,13 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
             results = await execute_commands(commands, session_id=session_id)
             tool_markdowns = []
             for tool_name, result in results:
-                tool_markdown = result.get("markdown", str(result))
+                tool_markdown = result.get("markdown")
+                if tool_markdown is None:
+                    tool_markdown = (
+                        str(result)
+                        if result is not None
+                        else "Executed successfully without output."
+                    )
                 tool_markdowns.append(tool_markdown)
                 await _persist_tool_result_async(
                     tool_name, tool_markdown, session_id, tool_call_id=None
@@ -746,7 +769,13 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
         tool_markdowns = []
         terminal_tool_executed = False
         for tool_name, tool_result, tc_id in tool_results:
-            tool_markdown = tool_result.get("markdown", str(tool_result))
+            tool_markdown = tool_result.get("markdown")
+            if tool_markdown is None:
+                tool_markdown = (
+                    str(tool_result)
+                    if tool_result is not None
+                    else "Executed successfully without output."
+                )
             tool_markdowns.append(tool_markdown)
 
             from app.tools.registry import is_terminal_tool
@@ -1018,7 +1047,10 @@ async def handle_user_message_streaming(
                     yield IMAGE_SHORTCUT_WARNING
 
             import re
-            clean_db_response = re.sub(r"<tools>.*?</tools>", "", final_full_response, flags=re.DOTALL).strip()
+
+            clean_db_response = re.sub(
+                r"<tools>.*?</tools>", "", final_full_response, flags=re.DOTALL
+            ).strip()
             await _persist_assistant_async(clean_db_response, session_id)
             break
 
@@ -1061,7 +1093,13 @@ async def handle_user_message_streaming(
         tool_markdowns = []
         generated_image_paths: list[str] = []
         for tool_name, result, tc_id in results:
-            tm = result.get("markdown", str(result))
+            tm = result.get("markdown")
+            if tm is None:
+                tm = (
+                    str(result)
+                    if result is not None
+                    else "Executed successfully without output."
+                )
             tool_markdowns.append(tm)
             p = parse_image_path(tm)
             if p:
@@ -1089,7 +1127,10 @@ async def handle_user_message_streaming(
                     )
 
     import re
-    clean_final_response = re.sub(r"<tools>.*?</tools>", "", final_full_response, flags=re.DOTALL).strip()
+
+    clean_final_response = re.sub(
+        r"<tools>.*?</tools>", "", final_full_response, flags=re.DOTALL
+    ).strip()
     await _finalize_and_persist_async(
         session_id,
         fence_id,
