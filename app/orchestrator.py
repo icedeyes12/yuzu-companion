@@ -1017,7 +1017,9 @@ async def handle_user_message_streaming(
                     final_full_response = IMAGE_SHORTCUT_WARNING
                     yield IMAGE_SHORTCUT_WARNING
 
-            await _persist_assistant_async(final_full_response, session_id)
+            import re
+            clean_db_response = re.sub(r"<tools>.*?</tools>", "", final_full_response, flags=re.DOTALL).strip()
+            await _persist_assistant_async(clean_db_response, session_id)
             break
 
         tool_calls_list = []
@@ -1086,11 +1088,13 @@ async def handle_user_message_streaming(
                         img_path,
                     )
 
+    import re
+    clean_final_response = re.sub(r"<tools>.*?</tools>", "", final_full_response, flags=re.DOTALL).strip()
     await _finalize_and_persist_async(
         session_id,
         fence_id,
         profile,
         user_message,
-        final_full_response,
+        clean_final_response,
         active_session,
     )
