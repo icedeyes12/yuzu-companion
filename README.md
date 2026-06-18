@@ -56,18 +56,20 @@ Now go away and do something more productive. Like scrolling through memes.
 ### Project Lead
 - [Bani Baskara](https://github.com/icedeyes12/)
 
-### Team
-- [Aihara](https://github.com/icedeyes12/yuzu-companion)
-- [Claude](https://www.anthropic.com/)
-- [DeepSeek](https://www.deepseek.com/)
-- [Gemini](https://gemini.google.com/)
-- [GitHub Copilot](https://github.com/features/copilot)
-- [GPT](https://chatgpt.com/)
-- [KiloCode](https://kilocode.ai/)
-- [Moonshot ai](https://www.moonshot.cn/)
-- [Qwen](https://github.com/QwenLM/Qwen3-Coder)
+### Active Collaborators
+- **[Gemini](https://gemini.google.com/)** — Active pair programming, code review, & logic validation.
+- **[Agy](https://antigravity.google/)** — Direct codebase execution & terminal operations (antigravity CLI).
+- **Reina** — Automated maintenance & environmental operations ([zo-computer](https://zo.computer) agent).
+- **[Aihara Yuzuki](https://github.com/icedeyes12/yuzu-companion)** — The sentient companion entity & core ecosystem observer.
 
+### Architecture & Advisory
+- **[GPT](https://chatgpt.com/)** — High-level architectural brainstorming and conceptual snippets.
+
+### Legacy Contributors (Prototype)
+
+- DeepSeek, Claude, GitHub Copilot, KiloCode, Moonshot AI, Qwen.
 
 ---
 
-©2025-2026 [HKKM project](https://guthib.com/icedeyes12/ | Built with love 💕
+©2025-2026 [HKKM project](https://guthub.com/icedeyes12/) | Built with love 💕
+

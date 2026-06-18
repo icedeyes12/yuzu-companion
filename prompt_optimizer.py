@@ -73,7 +73,7 @@ async def invoke_chute():
     )
 
     body = {
-        "model": "Qwen/Qwen3.5-397B-A17B-TEE",
+        "model": "Qwen/Qwen3-32B-TEE",
         "prompt": instructions,
         "stream": True,
         "max_tokens": 4000,
