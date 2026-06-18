@@ -96,13 +96,38 @@ def _extract_json_from_markdown(text: str) -> str:
 
 
 async def load_relevant_semantic_facts_async(
-    session_id: int, limit: int = MAX_FACTS_FOR_PREDICTION
+    session_id: int, episode_summary: str, limit: int = MAX_FACTS_FOR_PREDICTION
 ):
-    """Fetch top semantic facts for a session (async)."""
-    facts = await MemoryDB.get_facts_by_session_async(
-        session_id, fact_type=FACT_TYPE_STATIC, limit=limit
+    """Fetch top semantic facts for a session using Vector RAG (async)."""
+    if not episode_summary:
+        facts = await MemoryDB.get_facts_by_session_async(
+            session_id, fact_type=FACT_TYPE_STATIC, limit=limit
+        )
+        return [f for f in facts if not f.get("invalid_at")]
+
+    from app.memory.embedder import get_embedding_async
+    emb = await get_embedding_async(episode_summary)
+    
+    if not emb:
+        facts = await MemoryDB.get_facts_by_session_async(
+            session_id, fact_type=FACT_TYPE_STATIC, limit=limit
+        )
+        return [f for f in facts if not f.get("invalid_at")]
+
+    facts = await MemoryDB.search_similar_async(
+        embedding=emb, limit=limit * 2, max_distance=1.5, fact_type=FACT_TYPE_STATIC
     )
-    return [f for f in facts if not f.get("invalid_at")]
+    
+    seen = set()
+    valid = []
+    for f in facts:
+        if not f.get("invalid_at") and f["id"] not in seen:
+            seen.add(f["id"])
+            valid.append(f)
+            if len(valid) >= limit:
+                break
+    
+    return valid
 
 
 # ── 2. PREDICT phase ──────────────────────────────────────────────────────────
@@ -391,14 +416,23 @@ def _map_category_to_relation(category: str) -> str:
 
 async def _get_category_counts_async(session_id: int) -> dict[str, int]:
     """Count existing facts per category (async)."""
-    facts = await MemoryDB.get_facts_by_session_async(
-        session_id=None, fact_type=FACT_TYPE_STATIC, limit=500
-    )
-    counts: dict[str, int] = {}
-    for f in facts:
-        cat = f.get("metadata", {}).get("category", "Experience")
-        counts[cat] = counts.get(cat, 0) + 1
-    return counts
+    from app.db import pg_fetchall_async
+    query = """
+        SELECT metadata->>'category' as cat, count(*) 
+        FROM semantic_facts 
+        WHERE fact_type='static' AND invalid_at IS NULL 
+        GROUP BY 1
+    """
+    try:
+        rows = await pg_fetchall_async(query, ())
+        counts = {}
+        for r in rows:
+            cat = r.get("cat") or "Experience"
+            counts[cat] = counts.get(cat, 0) + r.get("count", 0)
+        return counts
+    except Exception as e:
+        logger.warning(f"Failed to get category counts: {e}")
+        return {}
 
 
 async def consolidate_facts_async(
@@ -518,7 +552,7 @@ async def run_predict_calibrate_async(
 
     try:
         # 1. Load existing semantic facts
-        existing = await load_relevant_semantic_facts_async(session_id)
+        existing = await load_relevant_semantic_facts_async(session_id, episode_summary)
         logger.debug(f"PCL: Loaded {len(existing)} existing facts")
 
         # 2. PREDICT
