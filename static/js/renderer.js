@@ -583,8 +583,11 @@ class MessageRenderer {
 		if (!text) return text;
 		const sourceText = typeof text === "string" ? text : String(text || "");
 
-		// Pattern to match <tools>...</tools> blocks (including multiline)
-		const toolPattern = /<tools>([\s\S]*?)(?:<\/tools>|$)/g;
+		// Only match COMPLETE <tools>...</tools> blocks (stream-safe: no $ fallback)
+		// The old (?:<\/tools>|$) caused premature wrapping during streaming —
+		// partial chunks without </tools> got matched to end-of-string, then
+		// re-wrapped on the next chunk, causing visual jumping/flicker.
+		const toolPattern = /<tools>([\s\S]*?)<\/tools>/g;
 
 		const result = sourceText.replace(toolPattern, (_match, content) => {
 			const trimmedContent = content.trim();
@@ -601,10 +604,12 @@ class MessageRenderer {
 			</details>`;
 		});
 
-		return result;
+		// Strip unclosed <tools> opening tags during streaming so content
+		// shows as plain text until </tools> arrives (then full render fires).
+		// Only strips standalone <tools> on its own line to avoid hitting
+		// inline mentions inside code/narrative.
+		return result.replace(/^<tools>$/gm, "");
 	}
-
-
 
 	/**
 	 * Preprocess cognitive trace blocks (<think>, <analysis>, <decision>)
