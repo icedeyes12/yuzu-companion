@@ -941,10 +941,12 @@ async def handle_user_message_streaming(
                         response_chunks.append(delta.content)
                         # Strip Gemma TEE leaked tool syntax from visible stream
                         visible = delta.content
-                        if (
-                            "<|tool_call>" not in visible
-                            and "<tool_call|>" not in visible
-                        ):
+                        if "<|tool_call>" in visible:
+                            visible = visible.split("<|tool_call>")[0]
+                        if "<tool_call|>" in visible:
+                            visible = visible.split("<tool_call|>")[0]
+
+                        if visible:
                             if any_image_tool and not response_chunks[:-1]:
                                 yield "\n\n" + visible
                             else:
