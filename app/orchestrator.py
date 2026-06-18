@@ -13,10 +13,8 @@ from typing import Any, AsyncIterator
 
 from app.commands import (
     IMAGE_SHORTCUT_WARNING,
-    execute_commands,
     is_markdown_image_shortcut,
     parse_image_path,
-    parse_tool_blocks,
 )
 from app.db import Database
 from app.llm_client import (
@@ -470,31 +468,23 @@ async def handle_user_message(user_message: str, interface: str = "terminal") ->
     cached_images = await asyncio.to_thread(_cache_images_from_message, user_message)
 
     stripped = user_message.strip()
-    if stripped.startswith("/imagine ") or stripped.startswith("<command>"):
-        commands, _ = parse_tool_blocks(stripped)
-        if commands or stripped.startswith("/imagine"):
-            if stripped.startswith("/imagine"):
-                commands = [stripped]
-            await _persist_user_async(user_message, session_id, cached_images)
-            results = await execute_commands(commands, session_id=session_id)
-            tool_markdowns = []
-            for tool_name, result in results:
-                tool_markdown = result.get("markdown")
-                if tool_markdown is None:
-                    tool_markdown = (
-                        str(result)
-                        if result is not None
-                        else "Executed successfully without output."
-                    )
-                tool_markdowns.append(tool_markdown)
-                await _persist_tool_result_async(
-                    tool_name, tool_markdown, session_id, tool_call_id=None
-                )
-            combined = "\n\n".join(tool_markdowns)
-            await _post_turn_async(
-                profile, user_message, combined, session_id, active_session
-            )
-            return combined
+    if stripped.startswith("/imagine "):
+        # Direct /imagine shortcut — route to image_generate tool without LLM round-trip
+        prompt = stripped[len("/imagine "):].strip()
+        await _persist_user_async(user_message, session_id, cached_images)
+        from app.tools.registry import execute_tool
+
+        result = await execute_tool(
+            "image_generate", {"prompt": prompt}, session_id=session_id
+        )
+        tool_markdown = result.get("markdown") or "Image generation failed."
+        await _persist_tool_result_async(
+            "image_generate", tool_markdown, session_id, tool_call_id=None
+        )
+        await _post_turn_async(
+            profile, user_message, tool_markdown, session_id, active_session
+        )
+        return tool_markdown
 
     await _persist_user_async(user_message, session_id, cached_images)
 
