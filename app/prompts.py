@@ -361,11 +361,11 @@ async def build_messages(
         profile, session_id, interface, user_message, native_tools=native_tools
     )
 
-    # HARD CAP: Limit history
+    # HARD CAP: Limit history to 40 messages (20 turns)
     history = (
         await Database.get_chat_history_for_ai_async(
             session_id=session_id,
-            limit=100,  # .Fetch more, then trim by tokens
+            limit=40,  # 20 turns / 40 messages max
             recent=True,
             include_image_paths=include_image_paths,
         )
