@@ -105,9 +105,10 @@ async def load_relevant_semantic_facts_async(
         )
         return [f for f in facts if not f.get("invalid_at")]
 
-    from app.memory.embedder import get_embedding_async
-    emb = await get_embedding_async(episode_summary)
-    
+    from app.memory.embedder import embed_text_async
+
+    emb = await embed_text_async(episode_summary)
+
     if not emb:
         facts = await MemoryDB.get_facts_by_session_async(
             session_id, fact_type=FACT_TYPE_STATIC, limit=limit
@@ -117,7 +118,7 @@ async def load_relevant_semantic_facts_async(
     facts = await MemoryDB.search_similar_async(
         embedding=emb, limit=limit * 2, max_distance=1.5, fact_type=FACT_TYPE_STATIC
     )
-    
+
     seen = set()
     valid = []
     for f in facts:
@@ -126,7 +127,7 @@ async def load_relevant_semantic_facts_async(
             valid.append(f)
             if len(valid) >= limit:
                 break
-    
+
     return valid
 
 
@@ -417,6 +418,7 @@ def _map_category_to_relation(category: str) -> str:
 async def _get_category_counts_async(session_id: int) -> dict[str, int]:
     """Count existing facts per category (async)."""
     from app.db import pg_fetchall_async
+
     query = """
         SELECT metadata->>'category' as cat, count(*) 
         FROM semantic_facts 
