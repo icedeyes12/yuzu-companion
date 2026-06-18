@@ -1,27 +1,44 @@
-# Python
+# Python & Build Artifacts
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
 
-# Virtual env
+# Virtual Environments
 venv/
 .env/
 
-# SQLite
+# Secrets & Credentials
+*.key
+*.env
+
+# AI Assistants, Agents & Tools
+.copilot
+.gemini
+.yuzuki
+.aider*
+copilot/
+tools/static/
+
+# Databases & SQL
 *.db
 *.db-journal
 *.sqlite
 *.sqlite3
+*.sql
 
-# Backup & logs
+# Backup, Logs & Checkpoints
 backup/
 database_backups/
 debug_logs/
 *.log
 *.decay_state.json
+*_checkpoint.json
+*.tar
+*.gz
 
-# Runtime generated assets
+# Runtime Generated Assets
 app/static/
 static/uploads/
 static/generated_images/
@@ -29,32 +46,8 @@ static/image_cache/
 static/generated/
 static/media/
 
-# Secrets
-*.key
-*.env
-
-# OS
+# System, OS & Package Artifacts
 .DS_Store
 Thumbs.db
 .pytest_cache/
-
-# tool artifacts
-tools/static/
 package-lock.json
-
-
-copilot/
-.aider*
-*.tar
-*.gz
-
-# Migration checkpoints
-*_checkpoint.json
-
-
-*.sql
-
-# Python build artifacts
-*.egg-info/
-__pycache__/
-*.pyc
