@@ -33,6 +33,7 @@ export class BackgroundStreamManager {
 	startStream(sessionId, controller, messageId) {
 		this.streams.set(sessionId, {
 			buffer: "",
+			events: [],
 			controller,
 			messageId,
 			isActive: true,
@@ -44,19 +45,32 @@ export class BackgroundStreamManager {
 	}
 
 	/**
-	 * Append a chunk to the buffer. ALWAYS called by SSE reader, regardless of active session.
+	 * Append a chunk or structured event to the buffer.
+	 * ALWAYS called by SSE reader, regardless of active session.
 	 * @param {number} sessionId - Session ID
-	 * @param {string} chunk - Text chunk to append
+	 * @param {string|object} event - Text chunk (legacy) or structured event dict
 	 * @returns {string|null} The full accumulated text, or null if stream not found
 	 */
-	appendChunk(sessionId, chunk) {
+	appendChunk(sessionId, event) {
 		const stream = this.streams.get(sessionId);
 		if (!stream) {
 			console.warn(`[StreamManager] No stream found for session ${sessionId}`);
 			return null;
 		}
 
-		stream.buffer += chunk;
+		// Dual-read: handle both legacy string chunks and structured event dicts
+		if (typeof event === "string") {
+			// Legacy: raw string chunk → treat as delta
+			stream.buffer += event;
+			stream.events.push({ type: "delta", chunk: event });
+		} else if (event && event.type === "delta") {
+			stream.buffer += event.chunk || "";
+			stream.events.push(event);
+		} else if (event) {
+			// tool_start, tool_result, done — store in events, don't touch text buffer
+			// (buffer stays deltas-only for checksum compatibility with backend)
+			stream.events.push(event);
+		}
 
 		// Only return buffer if this is the active view
 		if (sessionId === this.activeViewSessionId) {
@@ -78,6 +92,16 @@ export class BackgroundStreamManager {
 	getBuffer(sessionId) {
 		const stream = this.streams.get(sessionId);
 		return stream?.buffer || "";
+	}
+
+	/**
+	 * Get the structured event list for a session.
+	 * @param {number} sessionId - Session ID
+	 * @returns {array} Array of event dicts (delta, tool_start, tool_result, done)
+	 */
+	getEvents(sessionId) {
+		const stream = this.streams.get(sessionId);
+		return stream?.events || [];
 	}
 
 	/**
@@ -211,6 +235,7 @@ export class BackgroundStreamManager {
 						`[StreamManager] Buffer mismatch, replacing with backend version`,
 					);
 					stream.buffer = data.content;
+					stream.events = [{ type: "delta", chunk: data.content }];
 					// Trigger re-render if this is active view
 					if (sessionId === this.activeViewSessionId) {
 						this.emit("resync", sessionId, data.content);

@@ -225,10 +225,10 @@ export class MultimodalManager {
 				);
 				if (existingElement) {
 					setCurrentStreamMessage(existingElement);
-					// Flush existing buffer
-					this.renderStreamChunk(
+					// Replay buffered events through segment renderer
+					this._renderFromEvents(
 						currentStreamMessage.querySelector(".message-content"),
-						existingStream.buffer,
+						backgroundStreams.getEvents(sessionId),
 					);
 				} else {
 					// Create new element with the same ID
@@ -236,9 +236,9 @@ export class MultimodalManager {
 						this.createStreamingMessageElement("ai", existingStream.messageId),
 					);
 					chatContainer.appendChild(currentStreamMessage);
-					this.renderStreamChunk(
+					this._renderFromEvents(
 						currentStreamMessage.querySelector(".message-content"),
-						existingStream.buffer,
+						backgroundStreams.getEvents(sessionId),
 					);
 				}
 				// Don't start a new fetch, the existing SSE reader is still running
@@ -267,7 +267,6 @@ export class MultimodalManager {
 
 			// [DOM REBIND FIX] Store messageId, look up contentDiv dynamically
 			// This prevents stale references when DOM is rebuilt
-			let localBuffer = ""; // Local buffer for this stream instance
 
 			const formData = new FormData();
 			formData.append("message", message);
@@ -305,50 +304,49 @@ export class MultimodalManager {
 				sseBuffer = lines.pop();
 
 				for (const line of lines) {
-					if (line.startsWith("data: ")) {
-						try {
-							const json = JSON.parse(line.slice(6));
-							if (json.chunk) {
-								// [CRITICAL] ALWAYS buffer to BackgroundStreamManager
-								// This happens regardless of which session is currently active
-								localBuffer += json.chunk;
-								backgroundStreams.appendChunk(sessionId, json.chunk);
+					const event = this._parseSSELine(line);
+					if (!event) continue;
 
-								// [CRITICAL] Only update DOM if this session is the active view
-								if (sessionId === backgroundStreams.activeViewSessionId) {
-									// [DOM REBIND FIX] Look up contentDiv dynamically by messageId
-									const contentDiv = this._getContentDivForMessage(messageId);
-									if (contentDiv) {
-										if (firstChunk) {
-											hideTypingIndicator();
-											const msgEl = contentDiv.closest(".message");
-											if (msgEl) msgEl.style.display = "";
-											firstChunk = false;
-										}
-										this.renderStreamChunk(
-											contentDiv,
-											backgroundStreams.getBuffer(sessionId),
-										);
-										scrollToBottom();
-									}
-								} else {
-									console.log(
-										`[Stream] Session ${sessionId} buffering in background (${localBuffer.length} chars)`,
-									);
-								}
-							}
-						} catch (_e) {
-							// Ignore parse errors
-						}
+					// [CRITICAL] ALWAYS buffer to BackgroundStreamManager
+					// Handles both structured dicts and legacy strings
+					backgroundStreams.appendChunk(sessionId, event);
+
+					// [CRITICAL] Only update DOM if this session is the active view
+					if (sessionId !== backgroundStreams.activeViewSessionId) {
+						console.log(
+							`[Stream] Session ${sessionId} buffering in background`,
+						);
+						continue;
 					}
+
+					// [DOM REBIND FIX] Look up contentDiv dynamically by messageId
+					const contentDiv = this._getContentDivForMessage(messageId);
+					if (!contentDiv) continue;
+
+					if (event.type === "delta") {
+						if (firstChunk) {
+							hideTypingIndicator();
+							const msgEl = contentDiv.closest(".message");
+							if (msgEl) msgEl.style.display = "";
+							firstChunk = false;
+						}
+						this._renderDeltaSegment(contentDiv, event.chunk);
+					} else if (event.type === "tool_start") {
+						this._renderToolStartPlaceholder(contentDiv, event);
+					} else if (event.type === "tool_result") {
+						this._renderToolResultBlock(contentDiv, event);
+					} else if (event.type === "done") {
+						this._finalizeStreamRender(contentDiv);
+					}
+					scrollToBottom();
 				}
 			}
 
-			// Final render with isComplete=true
+			// Final render (in case done event was missed or reader ended)
 			if (sessionId === backgroundStreams.activeViewSessionId) {
 				const contentDiv = this._getContentDivForMessage(messageId);
 				if (contentDiv) {
-					this.renderStreamChunk(contentDiv, localBuffer, true);
+					this._finalizeStreamRender(contentDiv);
 				}
 			}
 
@@ -376,6 +374,183 @@ export class MultimodalManager {
 		if (!messageId) return null;
 		const msgEl = document.querySelector(`[data-message-id="${messageId}"]`);
 		return msgEl?.querySelector(".message-content") || null;
+	}
+
+	// ── Structured SSE event parsing (Phase B) ──────────────────────
+
+	/**
+	 * Parse a single SSE line into a normalized event dict.
+	 * Handles both structured events (json.type) and legacy chunks (json.chunk).
+	 * @param {string} line - Raw SSE line starting with "data: "
+	 * @returns {object|null} Normalized event or null if unparseable
+	 */
+	_parseSSELine(line) {
+		if (!line.startsWith("data: ")) return null;
+		try {
+			return this._normalizeEvent(JSON.parse(line.slice(6)));
+		} catch (_e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Dual-read event normalizer: dispatch by json.type,
+	 * fall back to json.chunk for legacy backward compatibility.
+	 */
+	_normalizeEvent(json) {
+		if (!json) return null;
+		if (json.type === "delta")
+			return { type: "delta", chunk: json.chunk || "" };
+		if (json.type === "tool_start")
+			return {
+				type: "tool_start",
+				name: json.name,
+				arguments: json.arguments,
+				tool_call_id: json.tool_call_id,
+			};
+		if (json.type === "tool_result")
+			return {
+				type: "tool_result",
+				name: json.name,
+				output: json.output,
+				tool_call_id: json.tool_call_id,
+			};
+		if (json.type === "done") return { type: "done" };
+		// Legacy fallback: no type field but has chunk → treat as delta
+		if (!json.type && json.chunk) return { type: "delta", chunk: json.chunk };
+		return null;
+	}
+
+	// ── Segment-based stream rendering ──────────────────────────────
+	// Instead of replacing entire innerHTML on each delta, we maintain
+	// ordered DOM segments: prose-segment divs for text and tool-result-segment
+	// divs for tool blocks. This preserves interleaving (prose → tool → prose).
+
+	/**
+	 * Render a delta chunk into the current (or new) prose segment.
+	 * Reuses the last child if it's already a prose-segment; creates
+	 * a new one if a tool block was appended in between.
+	 */
+	_renderDeltaSegment(contentDiv, chunk) {
+		const lastChild = contentDiv.lastElementChild;
+		let proseDiv = lastChild?.classList?.contains("prose-segment")
+			? lastChild
+			: null;
+		if (!proseDiv) {
+			proseDiv = document.createElement("div");
+			proseDiv.className = "prose-segment";
+			contentDiv.appendChild(proseDiv);
+		}
+		proseDiv._text = (proseDiv._text || "") + chunk;
+
+		if (typeof renderer !== "undefined" && renderer.isMarkedReady) {
+			proseDiv.innerHTML = renderer.renderStreaming(proseDiv._text, true);
+			if (renderer.isMermaidReady)
+				renderer.initializeMermaidDiagrams(proseDiv, true);
+		} else {
+			proseDiv.textContent = proseDiv._text;
+		}
+	}
+
+	/**
+	 * Render a tool_start placeholder (spinner) as a new DOM segment.
+	 */
+	_renderToolStartPlaceholder(contentDiv, event) {
+		const placeholder = document.createElement("div");
+		placeholder.className = "tool-placeholder tool-result-block";
+		if (event.tool_call_id)
+			placeholder.setAttribute("data-tool-call-id", event.tool_call_id);
+		placeholder.innerHTML = `<details class="system-action-block tool-result-block" open><summary class="action-header">⚙️ ${event.name || "tool"}...</summary><div class="action-content"><span class="tool-spinner">Executing...</span></div></details>`;
+		contentDiv.appendChild(placeholder);
+	}
+
+	/**
+	 * Render a tool_result block, replacing the matching placeholder
+	 * (by tool_call_id) or appending as a new segment if no placeholder.
+	 */
+	_renderToolResultBlock(contentDiv, event) {
+		const toolCallId = event.tool_call_id || "";
+		let target = null;
+		if (toolCallId)
+			target = contentDiv.querySelector(`[data-tool-call-id="${toolCallId}"]`);
+
+		// Fallback: if no ID match, replace the last orphaned placeholder
+		// to prevent dangling "Executing..." elements
+		if (!target) {
+			const placeholders = contentDiv.querySelectorAll(".tool-placeholder");
+			if (placeholders.length > 0)
+				target = placeholders[placeholders.length - 1];
+		}
+
+		// Preserve open state from placeholder for smooth transition
+		let wasOpen = false;
+		if (target) {
+			const details = target.querySelector("details");
+			if (details?.hasAttribute("open")) wasOpen = true;
+		}
+
+		const toolDiv = document.createElement("div");
+		toolDiv.className = "tool-result-segment";
+		if (toolCallId) toolDiv.setAttribute("data-tool-call-id", toolCallId);
+		if (typeof renderer !== "undefined" && renderer.isMarkedReady) {
+			toolDiv.innerHTML = renderer.render(event.output || "");
+			// Inherit open state from placeholder
+			if (wasOpen) {
+				const resultDetails = toolDiv.querySelector("details");
+				if (resultDetails) resultDetails.setAttribute("open", "");
+			}
+			if (renderer.isMermaidReady)
+				renderer.initializeMermaidDiagrams(toolDiv, false);
+		} else {
+			toolDiv.textContent = event.output || "";
+		}
+
+		if (target) target.replaceWith(toolDiv);
+		else contentDiv.appendChild(toolDiv);
+	}
+
+	/**
+	 * Final render: convert all prose segments from streaming to
+	 * complete markdown mode (handles unclosed fences, mermaid, etc.).
+	 */
+	_finalizeStreamRender(contentDiv) {
+		// Guard: prevent double finalization (done event + post-loop fallback)
+		if (contentDiv._finalized) return;
+		contentDiv._finalized = true;
+
+		const proseSegments = contentDiv.querySelectorAll(".prose-segment");
+		for (const seg of proseSegments) {
+			if (
+				seg._text &&
+				typeof renderer !== "undefined" &&
+				renderer.isMarkedReady
+			) {
+				seg.innerHTML = renderer.render(seg._text);
+			}
+		}
+		if (typeof renderer !== "undefined" && renderer.isMermaidReady)
+			renderer.initializeMermaidDiagrams(contentDiv, false);
+		if (typeof renderer !== "undefined")
+			renderer.initializeTableCopyButtons?.(contentDiv);
+	}
+
+	/**
+	 * Replay buffered events into DOM (for background stream resume).
+	 * Reconstructs the full segment-based DOM from the event list.
+	 */
+	_renderFromEvents(contentDiv, events) {
+		contentDiv.innerHTML = "";
+		contentDiv._finalized = false; // Reset for fresh replay
+		if (!events || events.length === 0) return;
+		for (const event of events) {
+			if (event.type === "delta")
+				this._renderDeltaSegment(contentDiv, event.chunk);
+			else if (event.type === "tool_start")
+				this._renderToolStartPlaceholder(contentDiv, event);
+			else if (event.type === "tool_result")
+				this._renderToolResultBlock(contentDiv, event);
+		}
+		this._finalizeStreamRender(contentDiv);
 	}
 
 	renderStreamChunk(contentDiv, text, isComplete = false) {
@@ -583,29 +758,41 @@ export class MultimodalManager {
 				sseBuffer = lines.pop(); // Tahan string yg belum komplit
 
 				for (const line of lines) {
-					if (line.startsWith("data: ")) {
-						try {
-							const json = JSON.parse(line.slice(6));
-							if (json.chunk) {
-								if (firstChunk) {
-									hideTypingIndicator();
-									currentStreamMessage.style.display = "";
-									firstChunk = false;
-								}
+					const event = this._parseSSELine(line);
+					if (!event) continue;
 
-								accumulatedText += json.chunk;
-								this.renderStreamChunk(contentDiv, accumulatedText);
-								scrollToBottom();
-							}
-						} catch (_e) {
-							// Ignore parse errors
+					if (event.type === "delta") {
+						if (firstChunk) {
+							hideTypingIndicator();
+							currentStreamMessage.style.display = "";
+							firstChunk = false;
 						}
+						accumulatedText += event.chunk;
+						this.renderStreamChunk(contentDiv, accumulatedText);
+						scrollToBottom();
+						continue;
+					}
+
+					if (event.type === "done") {
+						continue;
+					}
+
+					if (event.type === "tool_result" && event.output) {
+						if (firstChunk) {
+							hideTypingIndicator();
+							currentStreamMessage.style.display = "";
+							firstChunk = false;
+						}
+						accumulatedText += `\n\n${event.output}`;
+						this.renderStreamChunk(contentDiv, accumulatedText);
+						scrollToBottom();
 					}
 				}
+
+				// Final render
+				this.renderStreamChunk(contentDiv, accumulatedText, true);
 			}
 
-			// Final render
-			this.renderStreamChunk(contentDiv, accumulatedText, true);
 			this.clearInput();
 		} catch (error) {
 			console.error("Image generation failed:", error);
