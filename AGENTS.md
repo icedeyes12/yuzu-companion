@@ -1,6 +1,6 @@
 # Yuzu Companion — Agent Operational Manual
 
-> **Version:** 3.2.0 · **Last Updated:** 2026-05-22
+> **Version:** 3.3.0 · **Last Updated:** 2026-06-18 · **Reconciled:** §1-§12 aligned with §14 backend-overhaul + actual codebase
 > This is the master behavior manual for any AI agent interacting with this codebase.
 
 ---
@@ -27,11 +27,11 @@
 
 Yuzu Companion is an intimate AI companion system. The codebase is Python 3.12+ (3.13 compatible) on the backend, vanilla JS on the frontend. Key facts:
 
-- **No ORM** — All database access is raw psycopg2 SQL. No SQLAlchemy, no Django ORM.
+- **No ORM** — All database access is raw psycopg v3 SQL (via `psycopg_pool`). No SQLAlchemy, no Django ORM.
 - **No SQLite** — PostgreSQL only, with pgvector extension for vector search.
 - **No build step** — Frontend is vanilla JS/ESM, no bundler, no npm.
 - **No Flask** — FastAPI only (migrated in v2.0.0).
-- **Pluggable LLM providers** — Ollama, Cerebras, OpenRouter, Chutes via `file providers.py`.
+- **Pluggable LLM providers** — Ollama, Cerebras, OpenRouter, Chutes via `file app/providers/` (package: `base.py` + 4 subclasses).
 - **Memory is first-class** — The memory subsystem (`app/memory/`) is not an afterthought; it's a core architectural layer.
 - **Tool protocol** — Uses `<tool>...</tool>` blocks for tool invocation (v3.1.0+). Legacy `/command` syntax removed.
 - **Streaming is stateful** — Long-running SSE responses are managed by `StreamManager`, not by the request thread.
@@ -44,14 +44,16 @@ Yuzu Companion is an intimate AI companion system. The codebase is Python 3.12+ 
 | `file app/llm_client.py` | LLM dispatch, vision routing, `chutes_chat()` helper |
 | `file app/prompts.py` | System prompt assembly, message context building |
 | `file app/commands.py` | `<tool>` block parsing, command dispatch, image guards |
-| `file app/providers.py` | AI provider hierarchy + `AIProviderManager` singleton |
+| `file app/providers/` | AI provider package (`base.py` + ollama/cerebras/openrouter/chutes) + `AIProviderManager` singleton |
 | `file app/tools/registry.py` | Central tool dispatch — **only** place tools are executed |
 | `app/memory/` | Full memory pipeline (extraction, embedding, retrieval, retention) |
-| `file app/db/facade.py` | `Database` class — stable API over raw psycopg2 |
+| `file app/db/facade.py` | `Database` class — stable API over raw psycopg v3 |
 | `file app/db/queries.py` | **Single source of truth** for all SQL strings |
 | `file app/stream_manager.py` | Background stream buffers, reconnect state, incremental persistence |
-| `file app/web.py` | FastAPI entry point (~130 lines, minimal) |
-| `file app/cli.py` | CLI entry point (Rich TUI) |
+| `file main.py` | FastAPI entry point (router + static mounts, minimal) |
+| `file cli/app.py` | CLI entry point (Textual TUI — `YuzuTUI`) |
+| `file app/api/` | FastAPI router aggregation (`main.py` + `endpoints/`) |
+| `file app/services/` | Service layer (`ChatService`, `SessionService`, `config_service`, `memory_service`) |
 | `file static/js/chat.js` | Chat UI, SSE streaming, typing indicator |
 | `file static/js/renderer.js` | Marked.js v18 + Mermaid rendering |
 
@@ -137,7 +139,7 @@ except Exception as e:
 **Why:** Exception messages can leak file paths, SQL queries, internal state. Always use generic messages for users, log details for debugging.
 
 **Files with exception handling:**
-- `app/api/routes.py` - All endpoints
+- `app/api/endpoints/` - All endpoints
 - `app/orchestrator.py` - Tool execution
 - `app/tools/*.py` - Individual tools
 
@@ -155,7 +157,7 @@ cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
 cursor.execute(f"SELECT * FROM users WHERE id = '{user_id}'")
 ```
 
-**All SQL lives in:** `app.db/db_queries.py` (single source of truth)
+**All SQL lives in:** `app/db/queries.py` (single source of truth)
 
 ---
 
@@ -203,14 +205,14 @@ If unsure, check `app/orchestrator.py` for reference implementations.
 1. **NEVER drop tables.** Only add columns or create new tables.
 2. **NEVER use** `DELETE` **on** `semantic_facts`**.** Use `invalid_at` (soft delete) only.
 3. **NEVER use raw string interpolation for user input in SQL.** Use parameterized queries.
-4. **ALWAYS use** `file app.db/db_queries.py` **for SQL strings** — never inline SQL in business logic.
-5. **ALWAYS use the** `Database` **facade** (`file app.db/facade.py`) — never import `db_pg_models` directly from outside the database package.
+4. **ALWAYS use** `file app/db/queries.py` **for SQL strings** — never inline SQL in business logic.
+5. **ALWAYS use the** `Database` **facade** (`file app/db/facade.py`) — never import `db_pg_models` directly from outside the database package.
 
 ### Code Safety
 
  6. **NEVER add** `print()` **statements.** Use `get_logger(__name__)` from `file logging_config.py`.
  7. **NEVER add new dependencies** without explicit approval. The dependency surface is intentionally minimal.
- 8. **NEVER modify** `file app/web.py` **unless the change is about routing or static mounts.** Business logic lives in `app/`.
+ 8. **NEVER modify** `file main.py` **unless the change is about routing or static mounts.** Business logic lives in `app/`.
  9. **NEVER add new streaming pipelines or files** when fixing streaming issues. Fix existing code.
 10. **ALWAYS use** `from __future__ import annotations` at the top of every Python file.
 11. **ALWAYS use modern type syntax** (`list[X]`, `X | None`) — never `typing.List`, `typing.Optional`.
@@ -218,7 +220,7 @@ If unsure, check `app/orchestrator.py` for reference implementations.
 ### Streaming Safety
 
 12. **Streaming state is owned by** `file app/stream_manager.py` **once a background stream starts.** The request handler is only the ingress/egress surface.
-13. **Active stream buffers remain attachable for 15 minutes** after inactivity. This preserves state across client disconnects and page reloads.
+13. **Active stream buffers: finished streams cleaned 5 min after last activity; hard cap 30 min for any stream.** This preserves state across client disconnects and page reloads. Reconnects reattach to the live `StreamManager` buffer.
 14. **Background streams continue independently of the HTTP request lifecycle.** Reconnect logic should read from the live buffer rather than assuming the original socket still exists.
 
 ### Security
@@ -234,7 +236,7 @@ If unsure, check `app/orchestrator.py` for reference implementations.
 ### Before Making Changes
 
 1. **Read the relevant module** — Understand the current implementation before modifying.
-2. **Check** `file app.db/db_queries.py` **— If touching DB logic, verify SQL constants are there.
+2. **Check** `file app/db/queries.py` **— If touching DB logic, verify SQL constants are there.
 3. **Check** `file app/tools/registry.py` **— If touching tool logic, verify dispatch goes through registry.
 4. **Plan before executing** — For complex changes, present a structured plan first.
 
@@ -274,7 +276,7 @@ python3 -m pytest tests/ -v
 1. **`file orchestrator.py` is the single entry point** — All user messages flow through `handle_user_message()` or `handle_user_message_streaming()`. No bypass.
 2. **`file tools/registry.py` is the single dispatch point** — All tool execution goes through `execute_tool()`. No direct tool module calls from business logic.
 3. `Database` **facade is the only DB surface** — No raw `db_pg_models` imports outside the database package.
-4. **`file db_queries.py` owns all SQL** — No SQL strings in business logic modules.
+4. **`file app/db/queries.py` owns all SQL** — No SQL strings in business logic modules.
 5. `AIProviderManager` **is a singleton** — Accessed via `get_ai_manager()`, never instantiated directly.
 6. **`file stream_manager.py` owns live streaming buffers** — It coordinates chunk accumulation, subscriber replay, completion signaling, and stale-buffer cleanup.
 
@@ -285,7 +287,7 @@ python3 -m pytest tests/ -v
  9. **Sequential tool execution** — Tools execute one after another, results collected into single observation.
 10. **Memory pipeline is throttled** — Pipeline gate check runs every 5th turn, not every turn.
 11. **Request caches are cleared at turn end** — Memory state cache and embedding cache must not leak across turns.
-12. **Tool results use markdown contracts** — All tool output wrapped in `<details>` markdown blocks.
+12. **Tool results use markdown contracts** — All tool output wrapped in `<tools>` markdown blocks (see `build_tool_contract` in `file app/tools/schemas.py`).
 
 ### What NOT to Change
 
@@ -305,7 +307,7 @@ flowchart TB
     subgraph Interfaces["User Interfaces"]
         direction LR
         TERM["Terminal (main.py)"]
-        WEB["Web Browser (web.py)"]
+        WEB["Web Browser (main.py)"]
         EXT["External API Consumers"]
     end
 
@@ -327,10 +329,10 @@ flowchart TB
         S2["Chunk accumulation"]
         S3["Subscriber replay"]
         S4["Incremental persistence"]
-        S5["15-minute TTL cleanup"]
+        S5["5-min finished / 30-min hard cap"]
     end
 
-    subgraph Providers["providers.py"]
+    subgraph Providers["providers/"]
         P1["OllamaProvider"]
         P2["CerebrasProvider"]
         P3["OpenRouterProvider"]
@@ -350,7 +352,7 @@ flowchart TB
     subgraph Memory["memory/"]
         M1["memory.py — pipeline + segmentation"]
         M2["db_memory.py — CRUD + pgvector search"]
-        M3["embedder.py — Chutes API (1024-dim)"]
+        M3["embedder.py — Qwen3-Embedding-8B (4096-dim)"]
         M4["retrieval.py — hybrid scoring + RRF"]
         M5["review.py — FSRS decay"]
         M6["pcl.py — Predict-Calibrate Learning"]
@@ -397,18 +399,18 @@ flowchart TB
 | `orchestrator.py` | `llm_client.py` | Generate AI response (sync + stream) |
 | `commands.py` | `tools/registry.py` | Execute parsed commands |
 | `orchestrator.py` | `db/facade.py` | Auto-name, summarize, pipeline trigger |
-| `llm_client.py` | `providers.py` | Dispatch to selected provider |
+| `llm_client.py` | `app/providers/` | Dispatch to selected provider |
 | `llm_client.py` | `prompts.py` | Build system message + context |
-| `llm_client.py` | `multimodal_tools.py` | Vision routing, image caching |
+| `llm_client.py` | `app/tools/multimodal.py` | Vision routing, image caching |
 | `prompts.py` | `visual_context.py` | Persistent visual context |
 | `prompts.py` | `memory/retrieval.py` | Combined memory retrieval |
 | `prompts.py` | `Database` facade | Profile, history, session data |
 | `tools/registry.py` | `tools/<tool>.py` | Lazy-load and dispatch tool modules |
 | `memory/retrieval.py` | `memory/embedder.py` | Query embedding |
-| `memory/embedder.py` | `providers.py` (Chutes) | Embedding API call |
+| `memory/embedder.py` | `app/providers/` (Chutes) | Embedding API call (Qwen3-Embedding-8B, 4096-dim) |
 | `memory/db_memory.py` | `Database` facade | Fact consolidation CRUD |
 | `memory/fsrs.py` | `Database` facade | FSRS decay updates |
-| `stream_manager.py` | `database/` | Incremental persistence and recovery state |
+| `file app/stream_manager.py` | `app/db/` | Incremental persistence and recovery state |
 
 ---
 
@@ -416,7 +418,7 @@ flowchart TB
 
 ### Connection Management
 
-- **Pool**: `ThreadedConnectionPool` in `file app/db/connection.py`
+- **Pool**: `ConnectionPool` / `AsyncConnectionPool` in `file app/db/connection.py` (psycopg v3)
 - **Sync access**: `PgSession` context manager or `pg_fetchone()`/`pg_fetchall()` helpers
 - **Async access**: `AsyncPgSession` for FastAPI routes (via `file app/db/models_async.py`)
 - **Environment config**: `PG_HOST`, `PG_PORT`, `PG_DBNAME`, `PG_USER`, `PG_PASSWORD`
@@ -429,14 +431,14 @@ flowchart TB
 | `chat_sessions` | `Database.create_session()`, `Database.get_active_session()` | Direct SQL from business logic |
 | `messages` | `Database.add_message()`, `Database.get_chat_history()` | Direct SQL from business logic |
 | `api_keys` | `Database.get_api_keys()`, `Database.add_api_key()` | Direct SQL from business logic |
-| `semantic_facts` | `file db_memory.py` functions | Direct SQL from outside `memory/` |
+| `semantic_facts` | `file app/memory/db_memory.py` functions | Direct SQL from outside `memory/` |
 
 ### Migration Rules
 
 - Add columns only, never drop
 - Use `IF NOT EXISTS` for table creation
 - Abort on corruption detection
-- All DDL lives in `file db_queries.py`
+- All DDL lives in `file app/db/queries.py`
 
 ---
 
@@ -498,7 +500,7 @@ print(os.getcwd())
 
 ### Dispatch Rules
 
-1. **Single entry point**: `execute_tool(name, arguments, session_id)` in `file registry.py`
+1. **Single entry point**: `async execute_tool(tool_name, arguments, session_id=None)` in `file app/tools/registry.py`
 2. **Lazy loading**: Tool modules imported on first dispatch
 3. **Alias resolution**: `imagine` → `image_generate`, `request` → `http_request`
 4. **Terminal tools**: `image_generate` is terminal — no synthesis pass on success
@@ -525,13 +527,13 @@ assistant:   "ada 5 file di folder tersebut"   ← synthesis
 
 ### Contract Rules
 
-7. **All tool results** wrapped in `<details>` markdown blocks
+7. **All tool results** wrapped in `<tools>` blocks via `build_tool_contract()`
 8. **Tool role mapping**: `get_tool_role()` maps tool name to DB role string
 9. **Error handling**: Tool errors return structured `{"ok": False, "error": ..., "markdown": ...}`
 
 ### Adding a New Tool
 
-1. Create `app/tools/<tool_name>.py` with `TOOL_DEFINITION` dict and `execute()` function
+1. Create `app/tools/<tool_name>.py` with a `TOOL_DEFINITION` (`ToolDefinition` instance; dict-of-defs for multi-tool modules like `shell_exec`) and an `async def execute(arguments, **kwargs)` function
 2. Add import in `registry.py` `_collect_definitions()` and `_load_tool_module()`
 3. Update `prompts.py` system prompt with `<tool>` documentation
 4. No need to add aliases in `commands.py` — tool name comes from block content
@@ -612,7 +614,7 @@ python3 -m pytest tests/ -v
 - Use `get_logger(__name__)` for all logging
 - Use `Database` facade for all DB access
 - Use `execute_tool()` for all tool dispatch
-- Use `file db_queries.py` for SQL strings
+- Use `file app/db/queries.py` for SQL strings
 - Use `from __future__ import annotations` + modern type syntax
 - Use parameterized queries for user input
 - Clear request caches at turn end
@@ -630,7 +632,7 @@ python3 -m pytest tests/ -v
 - Don't add new LLM call sites outside `file llm_client.py`
 - Don't drop tables or hard-delete facts
 - Don't add npm/bundler to the frontend
-- Don't modify `file web.py` for business logic
+- Don't modify `file main.py` for business logic
 - Don't assume a client disconnect invalidates the in-flight assistant response
 
 ---
