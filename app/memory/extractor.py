@@ -168,7 +168,7 @@ def upsert_semantic_memory(session_id, entity, relation, target, episode_id=None
                 # Exact content match — reinforce existing
                 from app.memory.db_memory_facade import MemoryDB
 
-                from app.db import pg_execute
+                from app.db import pg_execute_async
                 from datetime import datetime
 
                 MemoryDB.increment_importance(e["id"], delta=0.1, cap=1.0)
@@ -180,23 +180,22 @@ def upsert_semantic_memory(session_id, entity, relation, target, episode_id=None
                     ids = [episode_id] if episode_id else []
                 meta["source_episodic_ids"] = ids
                 meta["category"] = category
-                pg_execute(
+                await pg_execute_async(
                     "UPDATE semantic_facts SET last_accessed=%s, metadata=%s WHERE id=%s",
                     (datetime.now(), Json(meta), e["id"]),
                 )
                 return  # done — no insert needed
 
         # Also check by exact content match directly in DB
-        from app.db import pg_fetchone
+        from app.db import pg_fetchone_async
 
-        existing_exact = pg_fetchone(
+        existing_exact = await pg_fetchone_async(
             "SELECT id, metadata FROM semantic_facts WHERE fact_type=%s AND content=%s AND invalid_at IS NULL LIMIT 1",
             (FACT_TYPE_STATIC, text),
         )
         if existing_exact:
             from app.memory.db_memory_facade import MemoryDB
-
-            from app.db import pg_execute
+            from app.db import pg_execute_async
             from datetime import datetime
 
             MemoryDB.increment_importance(existing_exact["id"], delta=0.1, cap=1.0)
@@ -208,7 +207,7 @@ def upsert_semantic_memory(session_id, entity, relation, target, episode_id=None
                 ids = [episode_id] if episode_id else []
             meta["source_episodic_ids"] = ids
             meta["category"] = category
-            pg_execute(
+            await pg_execute_async(
                 "UPDATE semantic_facts SET last_accessed=%s, metadata=%s WHERE id=%s",
                 (datetime.now(), Json(meta), existing_exact["id"]),
             )
