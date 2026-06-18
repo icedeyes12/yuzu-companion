@@ -104,13 +104,11 @@ class ChatService:
         q = buffer.subscribe()
         try:
             while True:
-                # q is now an asyncio.Queue, so just await it
-                chunk = await q.get()
-                if chunk is None:
+                event = await q.get()
+                if event is None:
                     break
-                if chunk:
-                    escaped_chunk = json.dumps(chunk)
-                    yield f'data: {{"chunk": {escaped_chunk}}}\n\n'
+                if event:
+                    yield f'data: {json.dumps(event)}\n\n'
         except asyncio.CancelledError:
             # Client disconnected - cancel the producer task
             log.info(f"[Stream] Client disconnected for session {session_id}")

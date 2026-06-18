@@ -294,8 +294,14 @@ async def _persist_tool_result_async(
     markdown: str | None,
     session_id: int,
     tool_call_id: str | None = None,
+    role: str | None = None,
 ) -> None:
-    """Persist a tool result (async)."""
+    """Persist a tool result (async).
+
+    Args:
+        role: Override the DB role. If None, falls back to get_tool_role(tool_name).
+              Streaming path passes role="tool" for OpenAI-spec compliance.
+    """
     if markdown is None:
         markdown = "Executed successfully without output."
     from app.commands import parse_image_path
@@ -306,7 +312,7 @@ async def _persist_tool_result_async(
         image_paths.append(path)
 
     await Database.add_message_async(
-        get_tool_role(tool_name),
+        role if role is not None else get_tool_role(tool_name),
         markdown,
         session_id=session_id,
         image_paths=image_paths or None,
@@ -670,10 +676,11 @@ async def handle_user_message_streaming(
     model: str | None = None,
     abort_check: callable[[], bool] | None = None,
     image_paths: list[str] | None = None,
-) -> AsyncIterator[str]:
+) -> AsyncIterator[dict]:
     profile = await Database.get_profile_async()
     if not user_message.strip() and not image_paths:
-        yield "Please enter a message!"
+        yield {"type": "delta", "chunk": "Please enter a message!"}
+        yield {"type": "done"}
         return
 
     if abort_check and abort_check():
@@ -746,9 +753,9 @@ async def handle_user_message_streaming(
 
                         if visible:
                             if any_image_tool and not response_chunks[:-1]:
-                                yield "\n\n" + visible
+                                yield {"type": "delta", "chunk": "\n\n" + visible}
                             else:
-                                yield visible
+                                yield {"type": "delta", "chunk": visible}
 
                     if getattr(delta, "tool_calls", None):
                         for tc_delta in delta.tool_calls:
@@ -798,7 +805,7 @@ async def handle_user_message_streaming(
                 closing_tag = f"\n</{tag}>\n" * (open_count - close_count)
                 full_response += closing_tag
                 final_full_response += closing_tag
-                yield closing_tag
+                yield {"type": "delta", "chunk": closing_tag}
 
         # --- Fallback for Gemma TEE native tool calls leaked as text ---
         import json as _json
@@ -809,6 +816,8 @@ async def handle_user_message_streaming(
         )
         gemma_matches = list(gemma_tool_pattern.finditer(full_response))
 
+        # Gemma TEE fallback: tool_start events are emitted by the unified
+        # path below (after tool_calls_list is built), not here.
         if not tool_call_acc and gemma_matches:
             for match in gemma_matches:
                 name = match.group(1)
@@ -841,10 +850,10 @@ async def handle_user_message_streaming(
             if loop_count == 1:
                 if not _clean(full_response):
                     final_full_response = _EMPTY_RESPONSE_FALLBACK
-                    yield _EMPTY_RESPONSE_FALLBACK
+                    yield {"type": "delta", "chunk": _EMPTY_RESPONSE_FALLBACK}
                 elif is_markdown_image_shortcut(full_response):
                     final_full_response = IMAGE_SHORTCUT_WARNING
-                    yield IMAGE_SHORTCUT_WARNING
+                    yield {"type": "delta", "chunk": IMAGE_SHORTCUT_WARNING}
 
             import re
 
@@ -868,6 +877,16 @@ async def handle_user_message_streaming(
                 )
             except Exception:
                 pass
+
+        # Emit tool_start events for each detected tool call (covers both
+        # native OpenAI tool_calls and Gemma TEE fallback parsed calls)
+        for tc in tool_calls_list:
+            yield {
+                "type": "tool_start",
+                "name": tc["name"],
+                "arguments": tc["arguments"],
+                "tool_call_id": tc["id"],
+            }
 
         if not tool_calls_list:
             await _persist_assistant_async(final_full_response, session_id)
@@ -907,12 +926,14 @@ async def handle_user_message_streaming(
                 any_image_tool = True
 
             await _persist_tool_result_async(
-                tool_name, tm, session_id, tool_call_id=tc_id
+                tool_name, tm, session_id, tool_call_id=tc_id, role="tool"
             )
-
-        combined_tool_markdown = "\n\n".join(tool_markdowns)
-        if combined_tool_markdown:
-            yield "\n\n" + combined_tool_markdown
+            yield {
+                "type": "tool_result",
+                "name": tool_name,
+                "output": tm,
+                "tool_call_id": tc_id,
+            }
 
         # Issue 1 fix: inject generated images into vision context for next pass
         # so the AI can actually "see" what it generated, not just assume
@@ -927,6 +948,8 @@ async def handle_user_message_streaming(
                     )
 
     import re
+
+    yield {"type": "done"}
 
     clean_final_response = re.sub(
         r"<tools>.*?</tools>", "", final_full_response, flags=re.DOTALL

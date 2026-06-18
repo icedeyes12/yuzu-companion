@@ -96,11 +96,19 @@ class StreamBuffer:
                 image_paths=self.image_paths,
             )
 
-            # No filter - pass through all chunks directly
+            # No filter - pass through all events directly
+            # Structured events: {"type": "delta|tool_start|tool_result|done", ...}
+            # Legacy fallback: raw strings wrapped as delta events
             async for chunk in raw_stream:
                 if chunk:
+                    # Normalize: wrap raw strings as delta events (backward compat)
+                    if isinstance(chunk, str):
+                        chunk = {"type": "delta", "chunk": chunk}
+
                     async with self.lock:
-                        self.full_content += chunk
+                        # Only delta events contribute to full_content (checksum + persist)
+                        if chunk.get("type") == "delta" and chunk.get("chunk"):
+                            self.full_content += chunk["chunk"]
                         self.last_activity = time.time()
                         for q in self.queues:
                             await q.put(chunk)
@@ -123,7 +131,7 @@ class StreamBuffer:
                 # Send partial content + None to subscribers
                 if self.full_content:
                     for q in self.queues:
-                        await q.put("\n\n*[Stream Interrupted]*")
+                        await q.put({"type": "delta", "chunk": "\n\n*[Stream Interrupted]*"})
                         await q.put(None)
                 else:
                     for q in self.queues:
@@ -142,7 +150,7 @@ class StreamBuffer:
                 error_msg = f"\n\n*[Stream Error: {str(e)}]*"
                 for q in self.queues:
                     if self.full_content:
-                        await q.put(error_msg)
+                        await q.put({"type": "delta", "chunk": error_msg})
                     await q.put(None)
 
             # Persist partial content with error marker
@@ -155,9 +163,9 @@ class StreamBuffer:
     def subscribe(self) -> asyncio.Queue:
         """Create a new async queue for a client to consume chunks."""
         q = asyncio.Queue()
-        # If there's already content, push it to the new subscriber
+        # If there's already content, push it to the new subscriber as a delta event
         if self.full_content:
-            q.put_nowait(self.full_content)
+            q.put_nowait({"type": "delta", "chunk": self.full_content})
         if self.is_finished:
             q.put_nowait(None)
 
