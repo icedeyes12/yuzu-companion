@@ -18,7 +18,6 @@ from app.db import (
 )
 from app.stream_manager import StreamManager
 from app.services.config_service import ConfigService
-from app.api.utils import stitch_chat_history
 from app.providers import get_ai_manager
 from app.logging_config import get_logger
 
@@ -119,7 +118,7 @@ async def api_get_profile(session_id: int | None = None):
 
         return {
             **profile_dict,
-            "chat_history": stitch_chat_history(chat_history),
+            "chat_history": chat_history,
             "api_keys": api_keys,
             "active_session": active_session,
             "session_memory": session_memory,

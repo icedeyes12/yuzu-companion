@@ -18,7 +18,7 @@ from app.db import (
     Database,
 )
 from app.services.session_service import SessionService
-from app.api.utils import get_client_id, stitch_chat_history
+from app.api.utils import get_client_id
 from app.logging_config import get_logger
 
 log = get_logger(__name__)
@@ -55,7 +55,7 @@ async def api_get_chat_history(session_id: int | None = None):
                 chat_history = await get_chat_history_async(active_session["id"])
             else:
                 chat_history = await get_chat_history_async()
-        return {"status": "success", "chat_history": stitch_chat_history(chat_history)}
+        return {"status": "success", "chat_history": chat_history}
     except Exception as e:
         log.error("Error getting chat history: %s", e)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -107,7 +107,7 @@ async def api_switch_session(request: SessionSwitchRequest, http_request: Reques
         return {
             "status": "success",
             "session_id": request.session_id,
-            "chat_history": stitch_chat_history(chat_history),
+            "chat_history": chat_history,
             "session_memory": session_memory,
         }
     except Exception as e:
@@ -154,7 +154,7 @@ async def api_delete_session(request: SessionDeleteRequest):
             return {
                 "status": "success",
                 "active_session": active_session,
-                "chat_history": stitch_chat_history(chat_history),
+                "chat_history": chat_history,
                 "session_memory": session_memory,
             }
         else:
