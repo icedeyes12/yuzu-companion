@@ -229,13 +229,23 @@ export class BackgroundStreamManager {
 					`frontend: ${stream.buffer.length} chars, backend: ${data.length} chars`,
 				);
 
-				// If mismatch, replace with backend version
+				// If mismatch, replace ONLY delta text in buffer.
+				// Preserve tool_start/tool_result events — wiping them would
+				// cause tool blocks to vanish on resync/replay.
 				if (!valid && data.content) {
 					console.warn(
-						`[StreamManager] Buffer mismatch, replacing with backend version`,
+						`[StreamManager] Buffer mismatch, replacing delta text only (preserving tool events)`,
 					);
 					stream.buffer = data.content;
-					stream.events = [{ type: "delta", chunk: data.content }];
+					// Rebuild events: keep all non-delta events, replace delta
+					// events with a single delta from backend content.
+					const toolEvents = (stream.events || []).filter(
+						(e) => e.type !== "delta",
+					);
+					stream.events = [
+						{ type: "delta", chunk: data.content },
+						...toolEvents,
+					];
 					// Trigger re-render if this is active view
 					if (sessionId === this.activeViewSessionId) {
 						this.emit("resync", sessionId, data.content);

@@ -323,13 +323,17 @@ export class MultimodalManager {
 					const contentDiv = this._getContentDivForMessage(messageId);
 					if (!contentDiv) continue;
 
+					// Unhide bubble + hide typing indicator on FIRST event of any type
+					// (not just delta — tool_start can arrive first when model emits
+					// tool_calls with null content, leaving the bubble hidden otherwise)
+					if (firstChunk) {
+						hideTypingIndicator();
+						const msgEl = contentDiv.closest(".message");
+						if (msgEl) msgEl.style.display = "";
+						firstChunk = false;
+					}
+
 					if (event.type === "delta") {
-						if (firstChunk) {
-							hideTypingIndicator();
-							const msgEl = contentDiv.closest(".message");
-							if (msgEl) msgEl.style.display = "";
-							firstChunk = false;
-						}
 						this._renderDeltaSegment(contentDiv, event.chunk);
 					} else if (event.type === "tool_start") {
 						this._renderToolStartPlaceholder(contentDiv, event);

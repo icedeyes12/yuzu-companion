@@ -88,7 +88,28 @@ export function createMessageElement(
 		contentContainer.className = "message-content";
 
 		if (typeof renderer !== "undefined") {
-			contentContainer.innerHTML = renderMessageContent(safeContent, false);
+			// Native tool calling: assistant row may contain only tool_calls
+			// (no synthesis text). Render the native tool call block inline
+			// so the bubble isn't empty. Also render any grouped tool_results
+			// (from history grouping) before the synthesis prose.
+			let html = "";
+			if (toolCalls.length > 0) {
+				html += renderer.renderNativeToolCalls?.(toolCalls) || "";
+			}
+			if (Array.isArray(meta?.tool_results)) {
+				for (const tr of meta.tool_results) {
+					html +=
+						renderer.renderNativeToolResultBlock?.({
+							content: tr.content || "",
+							tool_call_id: tr.tool_call_id || "",
+						}) || "";
+				}
+			}
+			if (safeContent) {
+				html += renderMessageContent(safeContent, false);
+			}
+			contentContainer.innerHTML =
+				html || renderMessageContent(safeContent, false);
 			setTimeout(() => {
 				if (typeof hljs !== "undefined") {
 					const codeBlocks = contentContainer.querySelectorAll("pre code");

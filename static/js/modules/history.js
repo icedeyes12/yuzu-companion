@@ -101,46 +101,120 @@ export async function loadChatHistory(sessionId = null) {
 
 			const fragment = document.createDocumentFragment();
 
-			messagesToShow.forEach((msg, index) => {
-				// [TEXT OVERLAP FALLBACK] Skip last AI message if we have an active stream
-				const isLastMessage = index === messagesToShow.length - 1;
+			// [Phase D+] Group multi-loop native tool turns into one cohesive bubble.
+			// DB rows for a tool turn: assistant(tool_calls, empty) → tool(result)* → assistant(synthesis).
+			// Without grouping these render as 3 separate bubbles. Group them so the
+			// tool_calls block + tool results + synthesis render in ONE message bubble,
+			// matching the streaming UI.
+			const isToolRole = (r) =>
+				r === "tool" || (typeof r === "string" && r.endsWith("_tools"));
+
+			for (let i = 0; i < messagesToShow.length; i++) {
+				const msg = messagesToShow[i];
+				const isLastMessage = i === messagesToShow.length - 1;
 				const isAIMessage = msg.role !== "user";
 
+				// [TEXT OVERLAP FALLBACK] Skip last AI message if we have an active stream
 				if (hasActiveStream && isLastMessage && isAIMessage) {
 					console.log(
 						`[History] Skipping last AI message - active stream will handle it`,
 					);
-					return; // Skip this message
+					continue;
 				}
 
-				// [Phase C] Skip system_observation rows — internal messages, not user-facing
+				// [Phase C] Skip system_observation rows
 				if (msg.role === "system_observation") {
-					return;
+					continue;
 				}
 
-				if (isRenderableHistoryRole(msg.role)) {
-					console.log("[History] Raw message before render:", {
-						role: msg.role,
-						preview: String(msg.content || "").slice(0, 200),
-						has_tool_calls: !!msg.tool_calls,
-						tool_call_id: msg.tool_call_id,
+				if (!isRenderableHistoryRole(msg.role)) continue;
+
+				// [Phase D+] Group: assistant(tool_calls, empty content) + tool rows + synthesis assistant
+				if (
+					msg.role === "assistant" &&
+					Array.isArray(msg.tool_calls) &&
+					msg.tool_calls.length > 0 &&
+					!msg.content
+				) {
+					const groupToolCalls = msg.tool_calls;
+					const groupTimestamp = msg.timestamp;
+					const groupToolResults = [];
+
+					// Consume following tool/*_tools rows
+					let j = i + 1;
+					while (
+						j < messagesToShow.length &&
+						isToolRole(messagesToShow[j].role)
+					) {
+						const tr = messagesToShow[j];
+						// [TEXT OVERLAP FALLBACK] don't consume a tool row that is the
+						// last message under an active stream (stream owns it)
+						if (hasActiveStream && j === messagesToShow.length - 1) break;
+						groupToolResults.push({
+							content: tr.content || "",
+							tool_call_id: tr.tool_call_id || "",
+						});
+						j++;
+					}
+
+					// Consume following synthesis assistant (no tool_calls)
+					let synthesisContent = "";
+					if (
+						j < messagesToShow.length &&
+						messagesToShow[j].role === "assistant" &&
+						!messagesToShow[j].tool_calls
+					) {
+						// [TEXT OVERLAP FALLBACK] don't consume synthesis if it's the
+						// last message under an active stream
+						if (!(hasActiveStream && j === messagesToShow.length - 1)) {
+							synthesisContent = messagesToShow[j].content || "";
+							j++;
+						}
+					}
+
+					i = j - 1; // advance outer loop past consumed rows
+
+					console.log("[History] Grouped native tool turn:", {
+						tool_calls: groupToolCalls.length,
+						tool_results: groupToolResults.length,
+						has_synthesis: !!synthesisContent,
 					});
 					const msgElement = createMessageElement(
-						msg.role === "user"
-							? "user"
-							: msg.role === "assistant"
-								? "ai"
-								: msg.role,
-						msg.content,
-						msg.timestamp,
+						"ai",
+						synthesisContent,
+						groupTimestamp,
 						{
-							tool_calls: msg.tool_calls,
-							tool_call_id: msg.tool_call_id,
+							tool_calls: groupToolCalls,
+							tool_results: groupToolResults,
 						},
 					);
 					if (msgElement) fragment.appendChild(msgElement);
+					continue;
 				}
-			});
+
+				// Standalone tool/*_tools row not preceded by a grouped assistant
+				// (e.g. legacy history) — render as its own native block.
+				console.log("[History] Raw message before render:", {
+					role: msg.role,
+					preview: String(msg.content || "").slice(0, 200),
+					has_tool_calls: !!msg.tool_calls,
+					tool_call_id: msg.tool_call_id,
+				});
+				const msgElement = createMessageElement(
+					msg.role === "user"
+						? "user"
+						: msg.role === "assistant"
+							? "ai"
+							: msg.role,
+					msg.content,
+					msg.timestamp,
+					{
+						tool_calls: msg.tool_calls,
+						tool_call_id: msg.tool_call_id,
+					},
+				);
+				if (msgElement) fragment.appendChild(msgElement);
+			}
 
 			chatContainer.appendChild(fragment);
 
