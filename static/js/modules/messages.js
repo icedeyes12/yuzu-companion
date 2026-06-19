@@ -5,45 +5,42 @@ import { findMessageById } from "./state.js";
 
 /**
  * Create a message element with proper structure.
- * @param {string} role - 'user' or 'ai'
+ * @param {string} role - 'user', 'ai', 'tool', or '*_tools'
  * @param {string} content - Message content
  * @param {string|null} timestamp - Optional timestamp
- * @returns {HTMLElement} The message element
+ * @param {object|null} meta - Optional metadata: { tool_calls, tool_call_id }
+ * @returns {HTMLElement|null} The message element (null if role is unrenderable)
  */
-export function createMessageElement(role, content, timestamp = null) {
+export function createMessageElement(
+	role,
+	content,
+	timestamp = null,
+	meta = null,
+) {
+	if (!isRenderableHistoryRole(role)) return null;
+
 	const msg = document.createElement("div");
-	msg.className = `message ${role}`;
+	msg.className = `message ${role === "assistant" ? "ai" : role}`;
 
-	// User messages use nested bubble structure: wrapper > bubble + footer
-	// AI messages keep the original flat structure for backward compatibility
 	const isUserMessage = role === "user";
-
-	// Format timestamp
+	const isToolMessage =
+		role === "tool" || (typeof role === "string" && role.endsWith("_tools"));
 	const displayTime = timestamp
 		? formatTimestamp(timestamp)
 		: getCurrentTime24h();
+	const safeContent = String(content ?? "");
+	const toolCalls = Array.isArray(meta?.tool_calls) ? meta.tool_calls : [];
+	const toolCallId = meta?.tool_call_id || meta?.toolCallId || "";
 
 	if (isUserMessage) {
-		// === USER MESSAGE: NESTED BUBBLE STRUCTURE ===
-		// Outer wrapper contains bubble + footer stacked vertically
-		// This keeps the colored background only on the text content
-
-		// Bubble container - holds the colored background
 		const bubble = document.createElement("div");
 		bubble.className = "message-bubble";
 
-		// Content inside the bubble
 		const contentContainer = document.createElement("div");
 		contentContainer.className = "message-content";
 
-		// Render content through a single safe pipeline
 		if (typeof renderer !== "undefined") {
-			contentContainer.innerHTML = renderMessageContent(
-				String(content),
-				role === "user",
-			);
-
-			// Apply syntax highlighting to code blocks after rendering
+			contentContainer.innerHTML = renderMessageContent(safeContent, true);
 			setTimeout(() => {
 				if (typeof hljs !== "undefined") {
 					const codeBlocks = contentContainer.querySelectorAll("pre code");
@@ -55,49 +52,43 @@ export function createMessageElement(role, content, timestamp = null) {
 				}
 			}, 0);
 		} else {
-			contentContainer.textContent = String(content);
+			contentContainer.textContent = safeContent;
 		}
 
 		bubble.appendChild(contentContainer);
 		msg.appendChild(bubble);
+	} else if (isToolMessage) {
+		const contentContainer = document.createElement("div");
+		contentContainer.className = "message-content tool-message-content";
 
-		// Footer OUTSIDE the bubble (timestamp + copy button)
-		const footer = document.createElement("div");
-		footer.className = "message-footer message-footer--user";
+		if (
+			typeof renderer !== "undefined" &&
+			typeof renderer.renderNativeToolCalls === "function" &&
+			toolCalls.length > 0
+		) {
+			contentContainer.innerHTML = renderer.renderNativeToolCalls(toolCalls);
+		} else if (
+			typeof renderer !== "undefined" &&
+			typeof renderer.renderNativeToolResultBlock === "function" &&
+			toolCallId
+		) {
+			contentContainer.innerHTML = renderer.renderNativeToolResultBlock({
+				content: safeContent,
+				tool_call_id: toolCallId,
+			});
+		} else if (typeof renderer !== "undefined") {
+			contentContainer.innerHTML = renderMessageContent(safeContent, false);
+		} else {
+			contentContainer.textContent = safeContent;
+		}
 
-		const timeDiv = document.createElement("div");
-		timeDiv.className = "timestamp";
-		timeDiv.textContent = displayTime;
-		footer.appendChild(timeDiv);
-
-		const copyBtn = document.createElement("button");
-		copyBtn.className = "copy-message-btn";
-		copyBtn.setAttribute("data-action", "copy-message");
-		copyBtn.setAttribute("data-message-content", content);
-		copyBtn.title = "Copy full message";
-		copyBtn.innerHTML = `
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-				<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-			</svg>
-		`;
-		// Note: onclick removed - event delegation handles copy in renderer.js
-		// Content is passed via data-message-content attribute or looked up dynami
-		footer.appendChild(copyBtn);
-
-		msg.appendChild(footer);
+		msg.appendChild(contentContainer);
 	} else {
-		// === AI MESSAGE: ORIGINAL FLAT STRUCTURE ===
-		// Kept for backward compatibility with existing CSS
 		const contentContainer = document.createElement("div");
 		contentContainer.className = "message-content";
 
 		if (typeof renderer !== "undefined") {
-			contentContainer.innerHTML = renderMessageContent(
-				String(content),
-				role === "user",
-			);
-
+			contentContainer.innerHTML = renderMessageContent(safeContent, false);
 			setTimeout(() => {
 				if (typeof hljs !== "undefined") {
 					const codeBlocks = contentContainer.querySelectorAll("pre code");
@@ -109,37 +100,36 @@ export function createMessageElement(role, content, timestamp = null) {
 				}
 			}, 0);
 		} else {
-			contentContainer.textContent = String(content);
+			contentContainer.textContent = safeContent;
 		}
 
 		msg.appendChild(contentContainer);
-
-		const footer = document.createElement("div");
-		footer.className = "message-footer";
-
-		const timeDiv = document.createElement("div");
-		timeDiv.className = "timestamp";
-		timeDiv.textContent = displayTime;
-		footer.appendChild(timeDiv);
-
-		const copyBtn = document.createElement("button");
-		copyBtn.className = "copy-message-btn";
-		copyBtn.setAttribute("data-action", "copy-message");
-		copyBtn.setAttribute("data-message-content", content);
-		copyBtn.title = "Copy full message";
-		copyBtn.innerHTML = `
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-				<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-			</svg>
-		`;
-		// Note: onclick removed - event delegation handles copy in renderer.js
-		// Content is passed via data-message-content attribute or looked up dynami
-		footer.appendChild(copyBtn);
-
-		msg.appendChild(footer);
 	}
 
+	const footer = document.createElement("div");
+	footer.className = isUserMessage
+		? "message-footer message-footer--user"
+		: "message-footer";
+
+	const timeDiv = document.createElement("div");
+	timeDiv.className = "timestamp";
+	timeDiv.textContent = displayTime;
+	footer.appendChild(timeDiv);
+
+	const copyBtn = document.createElement("button");
+	copyBtn.className = "copy-message-btn";
+	copyBtn.setAttribute("data-action", "copy-message");
+	copyBtn.setAttribute("data-message-content", safeContent);
+	copyBtn.title = "Copy full message";
+	copyBtn.innerHTML = `
+		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+			<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+			<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+		</svg>
+	`;
+	footer.appendChild(copyBtn);
+
+	msg.appendChild(footer);
 	return msg;
 }
 
@@ -149,25 +139,31 @@ export function createMessageElement(role, content, timestamp = null) {
  * @param {string} content - Message content
  * @param {string|null} timestamp - Optional timestamp
  * @param {boolean} isHistory - Whether this is from history (skip scroll)
+ * @param {object|null} meta - Optional metadata passed through for tool/native messages
  * @returns {HTMLElement|null} The message element
  */
-export function addMessage(role, content, timestamp = null, isHistory = false) {
+export function addMessage(
+	role,
+	content,
+	timestamp = null,
+	isHistory = false,
+	meta = null,
+) {
 	const chatContainer = document.getElementById("chatContainer");
 	if (!chatContainer) {
 		console.error("Cannot add message: chat container not found!");
 		return null;
 	}
 
-	const msg = createMessageElement(role, content, timestamp);
+	const msg = createMessageElement(role, content, timestamp, meta);
+	if (!msg) return null;
 	chatContainer.appendChild(msg);
 
 	if (!isHistory) {
 		setTimeout(() => {
-			// Import scrollToBottom dynamically to avoid circular dependency
 			import("./scroll.js").then(({ scrollToBottom }) => {
 				scrollToBottom();
 			});
-			// Update layout after message append
 			if (typeof window.updateDynamicLayout === "function") {
 				window.updateDynamicLayout();
 			}
@@ -183,11 +179,9 @@ export function addMessage(role, content, timestamp = null, isHistory = false) {
  * @param {string} content - Content to copy
  */
 export function copyFullMessage(content) {
-	// Uses centralized ClipboardUtils from renderer.js for consistent behavior
 	if (typeof ClipboardUtils !== "undefined") {
 		ClipboardUtils.copyText(content);
 	} else {
-		// Fallback for cases where renderer.js hasn't loaded
 		navigator.clipboard
 			.writeText(content)
 			.then(() => {
@@ -208,6 +202,7 @@ export function isRenderableHistoryRole(role) {
 	return (
 		role === "user" ||
 		role === "assistant" ||
+		role === "tool" ||
 		(typeof role === "string" && role.endsWith("_tools"))
 	);
 }

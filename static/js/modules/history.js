@@ -103,7 +103,6 @@ export async function loadChatHistory(sessionId = null) {
 
 			messagesToShow.forEach((msg, index) => {
 				// [TEXT OVERLAP FALLBACK] Skip last AI message if we have an active stream
-				// The stream will provide the complete/continuing content
 				const isLastMessage = index === messagesToShow.length - 1;
 				const isAIMessage = msg.role !== "user";
 
@@ -114,17 +113,32 @@ export async function loadChatHistory(sessionId = null) {
 					return; // Skip this message
 				}
 
+				// [Phase C] Skip system_observation rows — internal messages, not user-facing
+				if (msg.role === "system_observation") {
+					return;
+				}
+
 				if (isRenderableHistoryRole(msg.role)) {
 					console.log("[History] Raw message before render:", {
 						role: msg.role,
 						preview: String(msg.content || "").slice(0, 200),
+						has_tool_calls: !!msg.tool_calls,
+						tool_call_id: msg.tool_call_id,
 					});
 					const msgElement = createMessageElement(
-						msg.role === "user" ? "user" : "ai",
+						msg.role === "user"
+							? "user"
+							: msg.role === "assistant"
+								? "ai"
+								: msg.role,
 						msg.content,
 						msg.timestamp,
+						{
+							tool_calls: msg.tool_calls,
+							tool_call_id: msg.tool_call_id,
+						},
 					);
-					fragment.appendChild(msgElement);
+					if (msgElement) fragment.appendChild(msgElement);
 				}
 			});
 
@@ -281,17 +295,28 @@ export function addScrollLoadListener(fullHistory) {
 				const fragment = document.createDocumentFragment();
 
 				messagesToLoad.forEach((msg) => {
+					if (msg.role === "system_observation") return;
 					if (isRenderableHistoryRole(msg.role)) {
 						console.log("[History] Raw lazy-loaded message before render:", {
 							role: msg.role,
 							preview: String(msg.content || "").slice(0, 200),
+							has_tool_calls: !!msg.tool_calls,
+							tool_call_id: msg.tool_call_id,
 						});
 						const msgElement = createMessageElement(
-							msg.role === "user" ? "user" : "ai",
+							msg.role === "user"
+								? "user"
+								: msg.role === "assistant"
+									? "ai"
+									: msg.role,
 							msg.content,
 							msg.timestamp,
+							{
+								tool_calls: msg.tool_calls,
+								tool_call_id: msg.tool_call_id,
+							},
 						);
-						fragment.appendChild(msgElement);
+						if (msgElement) fragment.appendChild(msgElement);
 					}
 				});
 

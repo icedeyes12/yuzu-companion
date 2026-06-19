@@ -873,7 +873,7 @@ class MessageRenderer {
 		return cleaned;
 	}
 
-	render(markdown) {
+	render(markdown, options = {}) {
 		if (markdown === null || markdown === undefined) return "";
 		const safeMarkdown =
 			typeof markdown === "string" ? markdown : String(markdown);
@@ -884,8 +884,11 @@ class MessageRenderer {
 		}
 
 		try {
-			// PRE-PROCESS: Handle <tools> blocks
-			let processedMarkdown = this.preprocessToolBlocks(safeMarkdown);
+			let processedMarkdown = safeMarkdown;
+			if (!options.skipToolBlocks) {
+				// PRE-PROCESS: Handle <tools> blocks
+				processedMarkdown = this.preprocessToolBlocks(processedMarkdown);
+			}
 
 			// PRE-PROCESS: Handle cognitive trace blocks (think, analysis, decision)
 			processedMarkdown = this.preprocessCognitiveBlocks(processedMarkdown);
@@ -964,6 +967,89 @@ class MessageRenderer {
 		}
 
 		return normalizedText;
+	}
+
+	renderMessage(content, _isUser = false, options = {}) {
+		return this.render(content, options);
+	}
+
+	renderNativeToolDetails({
+		toolCallId = "",
+		bodyHtml = "",
+		open = false,
+	} = {}) {
+		const idAttr = toolCallId
+			? ` data-tool-call-id="${this.escapeHtml(toolCallId)}"`
+			: "";
+		const openAttr = open ? " open" : "";
+		return `<details class="system-action-block tool-result-block"${idAttr}${openAttr}><summary class="action-header">Tool</summary><div class="action-content">${bodyHtml}</div></details>`;
+	}
+
+	renderNativeToolCalls(toolCalls) {
+		const normalized = Array.isArray(toolCalls) ? toolCalls : [];
+		if (!normalized.length) return "";
+
+		return normalized
+			.map((toolCall) => {
+				const functionData = toolCall?.function || {};
+				const name =
+					functionData.name ||
+					toolCall?.name ||
+					toolCall?.function_name ||
+					"tool";
+				const rawArguments =
+					functionData.arguments ?? toolCall?.arguments ?? toolCall?.args ?? "";
+				const formattedArguments = this.formatToolArguments(rawArguments);
+				const toolCallId = toolCall?.id || toolCall?.tool_call_id || "";
+				const callHtml = [
+					`<div class="native-tool-call-name"><strong>${this.escapeHtml(name)}</strong></div>`,
+					formattedArguments
+						? `<pre class="native-tool-call-arguments">${this.escapeHtml(formattedArguments)}</pre>`
+						: "",
+				]
+					.filter(Boolean)
+					.join("");
+				return this.renderNativeToolDetails({
+					toolCallId,
+					bodyHtml: callHtml,
+				});
+			})
+			.join("");
+	}
+
+	renderNativeToolResultBlock(message) {
+		const toolCallId = message?.tool_call_id || message?.toolCallId || "";
+		const bodyHtml = this.render(message?.content || "", {
+			skipToolBlocks: true,
+		});
+		return this.renderNativeToolDetails({ toolCallId, bodyHtml });
+	}
+
+	formatToolArguments(rawArguments) {
+		if (
+			rawArguments === null ||
+			rawArguments === undefined ||
+			rawArguments === ""
+		) {
+			return "";
+		}
+
+		if (typeof rawArguments === "string") {
+			try {
+				const parsed = JSON.parse(rawArguments);
+				return typeof parsed === "string"
+					? parsed
+					: JSON.stringify(parsed, null, 2);
+			} catch (_e) {
+				return rawArguments;
+			}
+		}
+
+		try {
+			return JSON.stringify(rawArguments, null, 2);
+		} catch (_e) {
+			return String(rawArguments);
+		}
 	}
 
 	postProcessHTML(html) {
@@ -1074,10 +1160,6 @@ class MessageRenderer {
 		const encodedCode = button.getAttribute("data-mermaid-code") || "";
 		const code = decodeURIComponent(encodedCode);
 		ClipboardUtils.copyText(code, button);
-	}
-
-	renderMessage(content, _isUser = false) {
-		return this.render(content);
 	}
 
 	containsImageMarkdown(content) {
