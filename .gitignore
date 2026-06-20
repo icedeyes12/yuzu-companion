@@ -58,3 +58,4 @@ copilot/
 *.egg-info/
 __pycache__/
 *.pyc
+.gemini/
