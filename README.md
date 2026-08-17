@@ -56,5 +56,5 @@ All active design records, architecture schemas, memory models, and API contract
 ---
 
 <p align="center">
-  <sub>Built with care by <a href="https://github.com/icedeyes12">Bani Baskara (icedeyes12)</a> ฅ^•ﻌ•^ฅ</sub>
+  <sub>Built with care by <a href="https://github.com/icedeyes12">icedeyes12</a> ฅ^•ﻌ•^ฅ</sub>
 </p>
